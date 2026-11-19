@@ -211,3 +211,18 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
 /* avatar luôn nằm cạnh tên hiển thị (đầu tin nhắn), không bị căn giữa theo chiều cao tin */
 .msg > .av, .msg > .av-btn { align-self: flex-start; flex: 0 0 auto; }
 .msg > .av-btn { display: block; line-height: 0; }
+
+/* gọn hơn: tin nhắn nhỏ lại một chút */
+.msgs { padding: 14px 18px; gap: 10px; }
+.msg { gap: 9px; }
+.msg > .av, .msg > .av-btn .av { width: 30px; height: 30px; font-size: 12px; }
+.msg .meta .who { font-size: 13px; }
+.msg .text { font-size: 14px; line-height: 1.4; }
+.msg.own .bubble { font-size: 14px; line-height: 1.4; padding: 6px 12px; }
+.msg img.pic { max-width: min(260px, 100%); max-height: 260px; }
+.lp { max-width: 340px; gap: 6px; padding: 8px 10px 8px 12px; }
+.lp-t { font-size: 13px; }
+.lp-d { -webkit-line-clamp: 6; }
+.lp img { max-height: 300px; }
+.lp-s { font-size: 11px; }
+@media (max-width: 899px) { .msgs { padding: 12px; } }
