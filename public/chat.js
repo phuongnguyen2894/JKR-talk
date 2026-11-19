@@ -47,6 +47,7 @@ export async function renderChat(view, gid) {
 }
 
 function subtitle(g) {
+  if (g.type === 'trend') return `Nơi đăng các bài cần tương tác · chỉ admin/mod được đăng · ${g.memberCount} thành viên`;
   if (isPublic(g)) return `Nhóm công khai · vào tự do, không cần duyệt · ${g.memberCount} thành viên`;
   if (g.type === 'private') return `Nhóm riêng · ${g.memberCount}/${g.memberLimit} thành viên`;
   const p = g.peer;
@@ -62,7 +63,7 @@ function drawChat(view) {
     <div class="grow"><h1>${esc(g.name)}</h1><div class="small muted sub">${subtitle(g)}</div></div>
     <button class="icon-btn info-btn" data-act="info" aria-label="Thông tin nhóm">${icon('info', 20)}</button>
     ${g.type !== 'dm' ? `<button class="icon-btn" data-act="mute-dialog" aria-label="Thông báo" title="${g.muted ? 'Đang tắt thông báo' : 'Tắt thông báo'}">${icon('bell', 20)}${g.muted ? '<span class="sr-only">đang tắt</span>' : ''}</button>
-    <button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">Rời nhóm</button>` : ''}
+    ${g.type !== 'trend' ? `<button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">Rời nhóm</button>` : ''}` : ''}
   </div>
   <div class="chat-body">
     <div class="chat-col">
@@ -78,6 +79,8 @@ function drawChat(view) {
 
 function composerHtml() {
   const g = C.group;
+  if (g.type === 'trend' && !g.canPost)
+    return `<div class="notice">Chỉ admin và mod được đăng ở đây. Bạn hãy bấm vào bài, tương tác rồi thả tim cho bài đó nhé.</div>`;
   if (isPublic(g) && !g.rulesAck)
     return `<div class="notice row between wrap"><span>Hãy xác nhận đã đọc quy tắc cộng đồng để bắt đầu chat.</span><button class="btn primary sm" data-act="rules">Xem quy tắc</button></div>`;
   if (g.modMutedUntil && g.modMutedUntil > Date.now())
@@ -159,7 +162,7 @@ function msgHtml(m) {
   const role = m.modRole ? `<span class="pill">${m.modRole === 'mod' ? 'Mod' : 'Admin'}</span>` : '';
   const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
   const acts = m.deleted ? '' : `<div class="actions">
-      <button class="link-btn" data-act="reply" data-id="${m.id}">Trả lời</button>
+      ${C.group.type === 'trend' && !C.group.canPost ? '' : `<button class="link-btn" data-act="reply" data-id="${m.id}">Trả lời</button>`}
       ${!own ? `<button class="link-btn" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
       ${canDelete(m) ? `<button class="link-btn" data-act="del-msg" data-id="${m.id}">Xóa</button>` : ''}</div>`;
   const who = m.user.deleted
@@ -429,7 +432,7 @@ function infoHtml() {
       <button class="btn sm" data-act="pg-edit">Đổi tên / giới hạn</button>
       <button class="btn sm danger" data-act="pg-dissolve">Giải tán nhóm</button></section>`;
   }
-  if (g.type !== 'dm') h += `<section><button class="btn danger block" data-act="leave" data-id="${g.id}">Rời nhóm</button></section>`;
+  if (g.type !== 'dm' && g.type !== 'trend') h += `<section><button class="btn danger block" data-act="leave" data-id="${g.id}">Rời nhóm</button></section>`;
   if (g.type !== 'dm') h += `<section><div class="h2">Gặp vấn đề?</div><button class="btn block" data-act="report-help">Báo cáo người dùng cho ${g.type === 'private' ? 'admin nhóm' : 'admin/mod'}</button></section>`;
   else h += `<section><div class="h2">Gặp vấn đề?</div><button class="btn block" data-act="report-user" data-id="${g.peer.id}" data-gid="${g.id}">Báo cáo người này</button></section>`;
   return h;

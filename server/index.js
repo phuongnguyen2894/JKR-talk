@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { db, now, homeGroupIds, nameKey } from './db.js';
+import { db, now, homeGroupIds, nameKey, trendGroupId } from './db.js';
 import { provinceById } from './geo.js';
 import { api, UPLOAD_DIR } from './routes.js';
 import { hub, hashPassword, getUser, addMember } from './lib.js';
@@ -23,7 +23,7 @@ function seedAdmin() {
   const r = db
     .prepare(`INSERT INTO users (email, pass_hash, display_name, name_key, province_id, role, verified, created_at) VALUES (?,?,?,?,?,?,?,?)`)
     .run(email, hashPassword(password), 'Admin JKR', nameKey('Admin JKR'), province.id, 'admin', 1, now());
-  for (const gid of homeGroupIds(province)) addMember(gid, Number(r.lastInsertRowid));
+  for (const gid of [...homeGroupIds(province), trendGroupId()]) addMember(gid, Number(r.lastInsertRowid));
   console.log(PROD ? `[seed] đã tạo admin: ${email}` : `[seed] admin: ${email} / ${password}`);
 }
 seedAdmin();

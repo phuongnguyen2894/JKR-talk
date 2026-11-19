@@ -139,6 +139,12 @@ export function isSystemAdmin(uid) {
   return getUser(uid)?.role === 'admin';
 }
 
+// Được đăng vào "Đẩy trend": admin hệ thống hoặc mod của bất kỳ nhóm công khai nào
+export function canPostTrend(uid) {
+  if (isSystemAdmin(uid)) return true;
+  return !!db.prepare("SELECT 1 FROM members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ? AND m.role = 'mod' AND g.type IN ('country','region','province') LIMIT 1").get(uid);
+}
+
 export function log(actor, action, { target, group, message, reason } = {}) {
   db.prepare(
     'INSERT INTO mod_logs (actor_id, action, target_user_id, group_id, message_id, reason, created_at) VALUES (?,?,?,?,?,?,?)'

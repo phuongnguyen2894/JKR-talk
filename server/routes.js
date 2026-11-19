@@ -2,12 +2,12 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { db, now, tx, homeGroupIds, nameKey } from './db.js';
+import { db, now, tx, homeGroupIds, nameKey, trendGroupId } from './db.js';
 import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
-  isSystemAdmin, log, hub, isOnline, notify, messageDto, areFriends, isBlockedEither, shareGroup, pair,
+  isSystemAdmin, canPostTrend, log, hub, isOnline, notify, messageDto, areFriends, isBlockedEither, shareGroup, pair,
   AVATAR_COUNT,
 } from './lib.js';
 
@@ -96,6 +96,7 @@ api.post(
         .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), province.id, AUTO_VERIFY ? 1 : 0, token, now());
       const uid = Number(r.lastInsertRowid);
       for (const gid of homeGroupIds(province)) addMember(gid, uid); // auto-join đủ 3 group
+      addMember(trendGroupId(), uid); // và nhóm Đẩy trend
       return uid;
     });
     const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${token}`;
@@ -291,6 +292,7 @@ function groupDto(g, uid, member) {
     dto.mutedUntil = member.notif_muted_until;
     dto.muted = isMuted(member);
     dto.rulesAck = !!member.rules_ack;
+    if (g.type === 'trend') dto.canPost = canPostTrend(uid);
     dto.modMutedUntil = member.mod_muted_until && member.mod_muted_until > now() ? member.mod_muted_until : null;
   }
   if (g.type === 'dm') {
@@ -312,7 +314,7 @@ api.get(
          FROM members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ?`
       )
       .all(req.user.id);
-    const order = { country: 0, region: 1, province: 2, private: 3, dm: 4 };
+    const order = { trend: -1, country: 0, region: 1, province: 2, private: 3, dm: 4 };
     const out = [];
     for (const r of rows) {
       const g = getGroup(r.gid);
@@ -410,6 +412,7 @@ api.post(
   wrap((req, res) => {
     const { g, m } = requireMember(int(req.params.id), req.user.id);
     if (g.type === 'dm') throw bad('Không thể rời cuộc trò chuyện 1-1');
+    if (g.type === 'trend') throw bad('Không thể rời nhóm Đẩy trend');
     if (g.type === 'private') return leavePrivate(g, req.user.id, res);
     removeMember(g.id, req.user.id);
     res.json({ ok: true });
@@ -463,6 +466,7 @@ api.post(
     const body = str(req.body.body, 2000);
     const imageUrl = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
     if (!body && !imageUrl) throw bad('Tin nhắn trống');
+    if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin và mod được đăng trong Đẩy trend');
     if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
     if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
     if (g.type === 'dm') {
@@ -517,7 +521,7 @@ api.get(
   '/hot',
   wrap(async (req, res) => {
     const scope = ['country', 'region', 'province'].includes(req.query.scope) ? req.query.scope : null;
-    const types = scope ? [scope] : ['country', 'region', 'province'];
+    const types = scope ? [scope] : ['trend', 'country', 'region', 'province'];
     const rows = db
       .prepare(
         `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m

@@ -42,16 +42,16 @@ test('đăng ký: email trùng bị từ chối, auto-join đúng 3 group', asyn
   const dup = await call('POST', '/auth/register', { email: 'mai@t.com', password: 'password1', acceptCommunity: true, displayName: 'x2', provinceId: 1 });
   assert.equal(dup.status, 400);
   const g = await call('GET', '/groups/mine', null, mai.token);
-  assert.deepEqual(g.data.groups.map((x) => x.name), ['Việt Nam', 'Miền Nam', 'TP. Hồ Chí Minh']);
+  assert.deepEqual(g.data.groups.filter((x) => x.type !== 'trend').map((x) => x.name), ['Việt Nam', 'Miền Nam', 'TP. Hồ Chí Minh']);
 });
 test('đăng ký: chọn Đà Nẵng -> Việt Nam, Miền Trung, Đà Nẵng', async () => {
   const geo = await call('GET', '/geo');
   linh = await signup('linh', geo.data.provinces.find((p) => p.name === 'Đà Nẵng').id);
   const g = await call('GET', '/groups/mine', null, linh.token);
-  assert.deepEqual(g.data.groups.map((x) => x.name), ['Việt Nam', 'Miền Trung', 'Đà Nẵng']);
+  assert.deepEqual(g.data.groups.filter((x) => x.type !== 'trend').map((x) => x.name), ['Việt Nam', 'Miền Trung', 'Đà Nẵng']);
 });
 test('chat: phải xác nhận quy tắc rồi mới gửi được; tin hiện trong lịch sử', async () => {
-  const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups[0];
+  const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups.find((x) => x.type === 'country');
   let r = await call('POST', `/groups/${vn.id}/messages`, { body: 'hi' }, mai.token);
   assert.equal(r.status, 403);
   await call('POST', `/groups/${vn.id}/rules-ack`, {}, mai.token);
@@ -122,7 +122,7 @@ test('đổi home: giới hạn 1 lần/30 ngày', async () => {
 test('report -> admin xử lý, người báo nhận thông báo, người thường không thấy hàng chờ', async () => {
   const l = await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' });
   admin = { token: l.data.token, id: l.data.user.id };
-  const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups[0];
+  const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups.find((x) => x.type === 'country');
   const msgs = (await call('GET', `/groups/${vn.id}/messages`, null, mai.token)).data.messages;
   const rp = await call('POST', '/reports', { messageId: msgs.at(-1).id, reason: 'spam' }, linh.token);
   assert.equal(rp.status, 201);
@@ -138,7 +138,7 @@ test('report -> admin xử lý, người báo nhận thông báo, người thư�
   assert.ok(n2.data.notifications.some((x) => x.type === 'moderation'));
 });
 test('mod: admin trao quyền; mod xóa tin/mute trong group được giao', async () => {
-  const vn = (await call('GET', '/groups/mine', null, khoa.token)).data.groups[0];
+  const vn = (await call('GET', '/groups/mine', null, khoa.token)).data.groups.find((x) => x.type === 'country');
   await call('POST', `/groups/${vn.id}/rules-ack`, {}, khoa.token);
   assert.equal((await call('POST', '/admin/mods', { groupId: vn.id, userId: khoa.id }, mai.token)).status, 403);
   assert.equal((await call('POST', '/admin/mods', { groupId: vn.id, userId: khoa.id }, admin.token)).status, 200);
@@ -187,7 +187,7 @@ test('thả tim: bật/tắt, không tự thả tim, vào Chủ đề nóng khi 
     await call('POST', '/auth/register', { email: `${n}@t.com`, password: 'password1', acceptCommunity: true, displayName: `Tim ${n}`, provinceId: 1 });
     ts.push(await login(`${n}@t.com`));
   }
-  const vn = (await call('GET', '/groups/mine', null, ts[0])).data.groups[0];
+  const vn = (await call('GET', '/groups/mine', null, ts[0])).data.groups.find((x) => x.type === 'country');
   for (const t of ts) await call('POST', `/groups/${vn.id}/rules-ack`, {}, t);
   const m = (await call('POST', `/groups/${vn.id}/messages`, { body: 'Tin nóng' }, ts[0])).data.message;
   assert.equal((await call('POST', `/messages/${m.id}/heart`, {}, ts[0])).status, 400); // tự thả tim
@@ -270,4 +270,31 @@ test('báo lỗi: người dùng gửi; chỉ admin xem/giao cho agent qua webho
   assert.equal((await call('PATCH', `/admin/bugs/${id}`, { status: 'fixed' }, admin.token)).status, 200);
   delete process.env.AGENT_WEBHOOK_URL;
   hook.close();
+});
+
+test('Đẩy trend: ai cũng vào sẵn và đọc được, chỉ admin/mod được đăng, không rời được', async () => {
+  const nguoi = await signup('nguoithuong', 1);
+  const mine = (await call('GET', '/groups/mine', null, nguoi.token)).data.groups;
+  const trend = mine[0];
+  assert.equal(trend.type, 'trend');
+  assert.equal(trend.name, 'Đẩy trend');
+  assert.equal(trend.canPost, false);
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'spam' }, nguoi.token)).status, 403);
+  assert.equal((await call('POST', `/groups/${trend.id}/leave`, {}, nguoi.token)).status, 400);
+  const p = await call('POST', `/groups/${trend.id}/messages`, { body: 'Mọi người cùng đẩy trend nhé' }, admin.token);
+  assert.equal(p.status, 201);
+  // mod của một nhóm công khai cũng được đăng
+  const modx = await signup('modtrend', 1);
+  const vn = (await call('GET', '/groups/mine', null, modx.token)).data.groups.find((x) => x.type === 'country');
+  assert.equal((await call('POST', '/admin/mods', { groupId: vn.id, userId: modx.id }, admin.token)).status, 200);
+  const khoaTrend = (await call('GET', '/groups/mine', null, modx.token)).data.groups[0];
+  assert.equal(khoaTrend.canPost, true);
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'mod đăng' }, modx.token)).status, 201);
+  // người thường đọc và thả tim được
+  const hist = (await call('GET', `/groups/${trend.id}/messages`, null, nguoi.token)).data.messages;
+  assert.equal(hist.length, 2);
+  assert.equal((await call('POST', `/messages/${p.data.message.id}/heart`, {}, nguoi.token)).status, 200);
+  // người đăng ký mới cũng được vào sẵn
+  const moi = await signup('nguoimoi', 1);
+  assert.equal((await call('GET', '/groups/mine', null, moi.token)).data.groups[0].type, 'trend');
 });

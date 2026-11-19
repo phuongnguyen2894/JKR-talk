@@ -179,6 +179,10 @@ export function seedGeoGroups() {
 }
 seedGeoGroups();
 
+// Nhóm "Đẩy trend": ai cũng đọc/thả tim, chỉ admin và mod được đăng
+export const trendGroupId = () => ensureGroup('trend', 'TREND', 'Đẩy trend', '🔥');
+db.prepare("INSERT OR IGNORE INTO members (group_id, user_id, role, joined_at) SELECT ?, id, 'member', ? FROM users WHERE status != 'deleted'").run(trendGroupId(), now());
+
 // 3 group (quốc gia, khu vực, tỉnh/thành) ứng với một tỉnh
 export function homeGroupIds(province) {
   return [

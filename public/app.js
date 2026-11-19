@@ -31,7 +31,7 @@ function renderSide() {
   };
   const nav = (hash, name, label, ic, badge) => `<a class="nav-item" href="${hash}" ${r.name === name ? 'aria-current="page"' : ''}>${icon(ic)}<span class="name">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
   side.innerHTML = `<div class="brand"><span class="logo">JK</span>JKR talks</div><h1 class="mob-title">Nhóm của bạn</h1>
-    ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}${sec('Nhóm riêng', 'private')}
+    ${sec('Đẩy trend', 'trend')}${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}${sec('Nhóm riêng', 'private')}
     <button class="nav-item accent" data-act="create-private">${icon('plus')}<span class="name">Tạo nhóm riêng</span></button>
     ${sec('Tin nhắn riêng', 'dm')}
     <div class="sec">Khác</div>
