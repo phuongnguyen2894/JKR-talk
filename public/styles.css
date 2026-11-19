@@ -207,3 +207,7 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
 .lp img{display:block;width:100%;max-height:420px;object-fit:cover;border-radius:8px}
 .lp-s{font-size:12px;color:var(--muted,#666)}
 .msg.own .lp{margin-left:auto}
+
+/* avatar luôn nằm cạnh tên hiển thị (đầu tin nhắn), không bị căn giữa theo chiều cao tin */
+.msg > .av, .msg > .av-btn { align-self: flex-start; flex: 0 0 auto; }
+.msg > .av-btn { display: block; line-height: 0; }
