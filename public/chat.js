@@ -343,7 +343,7 @@ actions['del-msg'] = async (el) => {
   try { await api('DELETE', `/messages/${msg.dataset.mid}`, { reason }); } catch (e) { fail(e); }
 };
 
-export const REPORT_REASONS = ['Spam hoặc quảng cáo', 'Quấy rối, công kích', 'Bàn tán chuyện đời tư của hai bạn diễn', 'Nội dung không phù hợp', 'Mạo danh', 'Khác'];
+export const REPORT_REASONS = ['Spam hoặc quảng cáo', 'Quấy rối, công kích', 'Nội dung không phù hợp', 'Mạo danh', 'Khác'];
 export async function reportDialog({ messageId, userId, groupId }) {
   const v = await ask({
     title: messageId ? 'Báo cáo tin nhắn' : 'Báo cáo người dùng',
