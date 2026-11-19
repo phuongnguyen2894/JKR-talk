@@ -179,7 +179,7 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
   .app.show-side .side { display: flex; }
   .app.show-side .main { display: none; }
   .tabs-bar { display: flex; }
-  .app.in-chat .tabs-bar { display: none; }
+  .app.in-chat .tabs-bar { display: flex; }
   .back { display: inline-flex; }
   .page { padding: 16px; }
   .msgs { padding: 16px; }
@@ -252,3 +252,6 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
 .msg.own .body { max-width: 80%; margin-left: auto; }
 .msg.own .meta { justify-content: flex-end; }
 .msg.own .row { justify-content: flex-end; }
+
+/* thanh tab dưới luôn cố định ở mọi màn hình (kể cả trong chat) */
+@media (max-width: 899px) { .tabs-bar { flex: 0 0 auto; position: sticky; bottom: 0; z-index: 5; } .main { min-height: 0; } .app.in-chat .composer { padding-bottom: 8px; } }
