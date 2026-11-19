@@ -46,7 +46,7 @@ app.get('/healthz', (_req, res) => {
 });
 app.use('/api', api);
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d', index: false }));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), { setHeaders: (res, f) => { if (/.(js|html|css)$/.test(f)) res.setHeader('Cache-Control', 'no-cache'); } }));
 
 const server = http.createServer(app);
 
