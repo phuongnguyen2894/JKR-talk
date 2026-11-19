@@ -346,3 +346,16 @@ test('lưu tin nhắn 38 ngày: xóa tin cũ hơn, giữ tin mới, xóa ảnh m
   purgeOldMessages(dir);
   assert.ok(!fs.existsSync(path.join(dir, 'oldpic.png')));
 });
+
+test('không lộ vị trí của người khác; chính chủ và admin vẫn thấy', async () => {
+  const a = await signup('vitri1', 1), b = await signup('vitri2', 1);
+  const other = (await call('GET', `/users/${b.id}`, null, a.token)).data.user;
+  assert.equal(other.location, undefined);
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, b.token);
+  const m = (await call('POST', `/groups/${vn.id}/messages`, { body: 'hi' }, b.token)).data.message;
+  assert.equal(m.user.location, undefined);
+  assert.ok((await call('GET', '/me', null, a.token)).data.user.location.province);
+  const users = (await call('GET', '/admin/users?q=vitri2', null, admin.token)).data.users;
+  assert.ok(users[0].location.province);
+});

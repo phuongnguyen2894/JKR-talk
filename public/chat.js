@@ -51,7 +51,7 @@ function subtitle(g) {
   if (isPublic(g)) return `Nhóm công khai · vào tự do, không cần duyệt · ${g.memberCount} thành viên`;
   if (g.type === 'private') return `Nhóm riêng · ${g.memberCount}/${g.memberLimit} thành viên`;
   const p = g.peer;
-  return `Tin nhắn riêng${p?.online ? ' · <span class="dot"></span> đang online' : ''}${p?.location?.province ? ' · ' + esc(p.location.province) : ''}`;
+  return `Tin nhắn riêng${p?.online ? ' · <span class="dot"></span> đang online' : ''}`;
 }
 
 function drawChat(view) {
@@ -374,14 +374,13 @@ export async function openProfile(uid, gid = C?.gid) {
   let r;
   try { r = await api('GET', `/users/${uid}`); } catch (e) { return fail(e); }
   const u = r.user;
-  const loc = [u.location?.province, u.location?.region, u.location?.country].filter(Boolean).slice(0, 2).join(' · ');
   const g = gid ? S.groups.find((x) => x.id === gid) : null;
   const rel = { none: `<button class="btn primary" data-act="friend-add" data-id="${u.id}">Kết bạn</button>`,
     sent: `<button class="btn" disabled>Đã gửi lời mời</button>`,
     received: `<button class="btn primary" data-act="fr-accept" data-id="${r.requestId}">Chấp nhận lời mời</button>`,
     friend: `<button class="btn primary" data-act="dm" data-id="${u.id}">Nhắn tin</button>` }[r.relation] || '';
   const staff = g && canModerate(g) && r.relation !== 'self';
-  openModal(`<div class="row">${avatar(u, 'lg')}<div class="grow"><h2>${esc(u.displayName)} ${u.isAdmin ? '<span class="pill">Admin</span>' : ''}</h2><div class="muted small">${esc(loc)}</div>
+  openModal(`<div class="row">${avatar(u, 'lg')}<div class="grow"><h2>${esc(u.displayName)} ${u.isAdmin ? '<span class="pill">Admin</span>' : ''}</h2>
       ${u.online ? '<div class="small"><span class="dot"></span> Đang online</div>' : ''}</div></div>
     <div class="row wrap">${rel}</div>
     <div class="row wrap">

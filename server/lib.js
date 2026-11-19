@@ -69,7 +69,6 @@ export function publicUser(u, viewerId) {
     avatarColor: u.avatar_color,
     avatarUrl: u.avatar_url,
     language: u.language,
-    location: locationOf(u),
     isAdmin: u.role === 'admin',
   };
   if (viewerId) out.online = presenceVisible(u, viewerId) ? isOnline(u.id) : undefined;
@@ -80,6 +79,7 @@ export function selfUser(u) {
   const base = publicUser(u);
   return {
     ...base,
+    location: locationOf(u), // chỉ chính chủ (và admin) mới thấy vị trí
     email: u.email,
     provinceId: u.province_id,
     verified: !!u.verified,

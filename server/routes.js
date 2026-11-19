@@ -7,7 +7,7 @@ import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
-  isSystemAdmin, canPostTrend, log, hub, isOnline, notify, messageDto, areFriends, isBlockedEither, shareGroup, pair,
+  isSystemAdmin, canPostTrend, locationOf, log, hub, isOnline, notify, messageDto, areFriends, isBlockedEither, shareGroup, pair,
   AVATAR_COUNT,
 } from './lib.js';
 
@@ -1084,7 +1084,7 @@ api.delete('/admin/news/:id', adminOnly, wrap((req, res) => {
 api.get('/admin/users', adminOnly, wrap((req, res) => {
   const q = `%${str(req.query.q, 60)}%`;
   const rows = db.prepare("SELECT * FROM users WHERE status != 'deleted' AND (display_name LIKE ? OR email LIKE ?) ORDER BY id DESC LIMIT 50").all(q, q);
-  res.json({ users: rows.map((u) => ({ ...publicUser(u), email: u.email, status: u.status, lockedUntil: u.locked_until, role: u.role })) });
+  res.json({ users: rows.map((u) => ({ ...publicUser(u), location: locationOf(u), email: u.email, status: u.status, lockedUntil: u.locked_until, role: u.role })) });
 }));
 api.post('/admin/users/:id/lock', adminOnly, wrap((req, res) => {
   const days = req.body.permanent ? null : Math.min(int(req.body.days) || 7, 365);
