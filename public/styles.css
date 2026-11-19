@@ -293,3 +293,7 @@ html, body { width: 100%; max-width: 100%; overflow: hidden; overscroll-behavior
 .msg img, .lp img { max-width: 100%; height: auto; }
 input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi bấm vào ô nhập */
 .auth { height: 100dvh; min-height: 0; overflow-y: auto; align-items: flex-start; } .auth-box { margin: auto; }
+
+/* chặn chụm/kéo ngang trên mọi phần tử (chỉ cho cuộn dọc) */
+* { touch-action: pan-y; }
+.msgs, .page, .side, .auth { touch-action: pan-y; }
