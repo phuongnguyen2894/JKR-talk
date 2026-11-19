@@ -516,15 +516,17 @@ const HOT_LIMIT = 38;
 api.get(
   '/hot',
   wrap(async (req, res) => {
+    const scope = ['country', 'region', 'province'].includes(req.query.scope) ? req.query.scope : null;
+    const types = scope ? [scope] : ['country', 'region', 'province'];
     const rows = db
       .prepare(
         `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m
          JOIN reactions r ON r.message_id = m.id AND r.created_at > ?
          JOIN groups g ON g.id = m.group_id
-         WHERE g.type IN ('country','region','province') AND m.deleted = 0
+         WHERE g.type IN (${types.map(() => '?').join(',')}) AND m.deleted = 0
          GROUP BY m.id ORDER BY hc DESC, m.id DESC LIMIT ?`
       )
-      .all(now() - DAY, HOT_LIMIT * 2) // lấy dư để còn lọc tin của người bị chặn
+      .all(now() - DAY, ...types, HOT_LIMIT * 2) // lấy dư để còn lọc tin của người bị chặn
       .filter((m) => !isBlockedEither(req.user.id, m.user_id))
       .slice(0, HOT_LIMIT);
     // tin cũ chưa có xem trước: lấy bù một lần (lưu '0' nếu không có để khỏi thử lại)

@@ -205,6 +205,9 @@ test('thả tim: bật/tắt, không tự thả tim, vào Chủ đề nóng khi 
   assert.equal(hot.length, 1);
   assert.equal(hot[0].hearts, 3);
   assert.equal(hot[0].hearted, true);
+  for (const [sc, n] of [['country', 1], ['region', 0], ['province', 0], ['bogus', 1]]) {
+    assert.equal((await call('GET', '/hot?scope=' + sc, null, ts[1])).data.items.length, n, 'lọc ' + sc);
+  }
   const hist = (await call('GET', `/groups/${vn.id}/messages`, null, ts[2])).data.messages.find((x) => x.id === m.id);
   assert.deepEqual([hist.hearts, hist.hearted], [3, true]);
 });
