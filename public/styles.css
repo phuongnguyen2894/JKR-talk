@@ -282,3 +282,14 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
 .read-toggle { position: absolute; right: 10px; bottom: 8px; width: 40px; height: 28px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--text); display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
 .app.in-chat.read-mode .chat-head, .app.in-chat.read-mode .composer, .app.in-chat.read-mode .tabs-bar { display: none; }
 .app.in-chat.read-mode .rt-wrap { margin-bottom: env(safe-area-inset-bottom); }
+
+/* khóa giao diện: không kéo ngang, không phóng to/thu nhỏ */
+html, body { width: 100%; max-width: 100%; overflow: hidden; overscroll-behavior: none; touch-action: pan-y; -webkit-text-size-adjust: 100%; position: fixed; inset: 0; }
+.app, .main, .chat-col, .chat-body { max-width: 100%; overflow-x: hidden; }
+.msgs { overflow-x: hidden; touch-action: pan-y; }
+.msg, .msg .body { min-width: 0; max-width: 100%; }
+.msg .text, .msg .bubble, .lp, .lp-t, .lp-d, .quote { overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
+.lp { max-width: min(290px, 100%); }
+.msg img, .lp img { max-width: 100%; height: auto; }
+input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi bấm vào ô nhập */
+.auth { height: 100dvh; min-height: 0; overflow-y: auto; align-items: flex-start; } .auth-box { margin: auto; }
