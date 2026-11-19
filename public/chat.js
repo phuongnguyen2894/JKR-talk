@@ -139,6 +139,14 @@ function wireComposer() {
 const mine = (m) => m.user.id === S.me.id;
 const canDelete = (m) => !m.deleted && (mine(m) || canModerate(C.group));
 
+const safeHref = (u) => (/^https?:\/\//i.test(u) ? u : '#');
+function previewHtml(p) {
+  if (!p) return '';
+  return `<a class="lp" href="${esc(safeHref(p.url))}" target="_blank" rel="noopener noreferrer nofollow">
+    ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : ''}
+    <span class="lp-t"><span class="lp-s">${esc(p.site)}</span><b>${esc(p.title)}</b>${p.description ? `<span class="lp-d">${esc(p.description)}</span>` : ''}</span></a>`;
+}
+
 function msgHtml(m) {
   const own = mine(m);
   const quote = m.reply ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
@@ -158,7 +166,7 @@ function msgHtml(m) {
     ${own ? avatar(m.user) : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatar(m.user)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}${own ? '' : role}<span class="tiny muted">${fmtTime(m.createdAt)}</span></div>
-      ${quote}${text}<div class="row" style="gap:4px;margin-top:2px">${heartBtn}${acts}</div>
+      ${quote}${text}${m.deleted ? '' : previewHtml(m.preview)}<div class="row" style="gap:4px;margin-top:2px">${heartBtn}${acts}</div>
     </div></div>`;
 }
 
@@ -204,6 +212,12 @@ export function onSocket(ev) {
     }
   } else if (ev.type === 'heart' && C && C.gid === ev.groupId) {
     setHeart($(`.msg[data-mid="${ev.messageId}"] .heart`), ev.hearts);
+  } else if (ev.type === 'message_preview' && C && C.gid === ev.groupId) {
+    const el = $(`.msg[data-mid="${ev.messageId}"] .body`);
+    if (el && !$('.lp', el)) {
+      const box = $('.actions', el)?.parentElement;
+      if (box) box.insertAdjacentHTML('beforebegin', previewHtml(ev.preview));
+    }
   } else if (ev.type === 'message_deleted' && C && C.gid === ev.groupId) {
     const el = $(`.msg[data-mid="${ev.messageId}"]`);
     if (el) {

@@ -191,6 +191,7 @@ export function homeGroupIds(province) {
 // ---- Tên hiển thị duy nhất (không phân biệt hoa/thường, bỏ khoảng trắng thừa) ----
 export const nameKey = (s) => String(s).normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
 try { db.exec('ALTER TABLE users ADD COLUMN name_key TEXT'); } catch { /* đã có cột */ }
+try { db.exec('ALTER TABLE messages ADD COLUMN preview TEXT'); } catch { /* đã có cột */ }
 for (const u of db.prepare("SELECT id, display_name FROM users WHERE name_key IS NULL AND status != 'deleted'").all()) {
   try { db.prepare('UPDATE users SET name_key = ? WHERE id = ?').run(nameKey(u.display_name), u.id); } catch { /* trùng cũ: bỏ qua */ }
 }

@@ -11,6 +11,8 @@ import {
   AVATAR_COUNT,
 } from './lib.js';
 
+import { firstUrl, buildPreview } from './preview.js';
+
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -479,6 +481,15 @@ api.post(
     db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
     hub.sendMany(memberIds(gid), { type: 'message', message: dto });
     res.status(201).json({ message: dto });
+    // xem trước liên kết: lấy nền, xong thì báo cho các thành viên
+    const link = firstUrl(body);
+    if (link) {
+      buildPreview(link, UPLOAD_DIR).then((p) => {
+        if (!p) return;
+        db.prepare('UPDATE messages SET preview = ? WHERE id = ?').run(JSON.stringify(p), dto.id);
+        hub.sendMany(memberIds(gid), { type: 'message_preview', groupId: gid, messageId: dto.id, preview: p });
+      }).catch(() => {});
+    }
   })
 );
 
