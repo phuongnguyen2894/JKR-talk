@@ -140,7 +140,7 @@ const mine = (m) => m.user.id === S.me.id;
 const canDelete = (m) => !m.deleted && (mine(m) || canModerate(C.group));
 
 const safeHref = (u) => (/^https?:\/\//i.test(u) ? u : '#');
-function previewHtml(p) {
+export function previewHtml(p) {
   if (!p) return '';
   return `<a class="lp" href="${esc(safeHref(p.url))}" target="_blank" rel="noopener noreferrer nofollow">
     <span class="lp-t"><b>${esc(p.title)}</b>${p.description ? `<span class="lp-d">${esc(p.description)}</span>` : ''}</span>

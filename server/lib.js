@@ -210,7 +210,7 @@ export function messageDto(m, viewerId) {
     modRole: member?.role === 'mod' ? 'mod' : member?.role === 'admin' ? 'admin' : null,
     body: m.deleted ? '' : m.body,
     imageUrl: m.deleted ? null : m.image_url,
-    preview: m.deleted || !m.preview ? null : JSON.parse(m.preview),
+    preview: m.deleted || !m.preview || m.preview === '0' ? null : JSON.parse(m.preview),
     deleted: !!m.deleted,
     reply,
     createdAt: m.created_at,

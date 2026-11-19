@@ -515,7 +515,7 @@ api.post(
 const HOT_LIMIT = 38;
 api.get(
   '/hot',
-  wrap((req, res) => {
+  wrap(async (req, res) => {
     const rows = db
       .prepare(
         `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m
@@ -527,6 +527,14 @@ api.get(
       .all(now() - DAY, HOT_LIMIT * 2) // lấy dư để còn lọc tin của người bị chặn
       .filter((m) => !isBlockedEither(req.user.id, m.user_id))
       .slice(0, HOT_LIMIT);
+    // tin cũ chưa có xem trước: lấy bù một lần (lưu '0' nếu không có để khỏi thử lại)
+    await Promise.all(
+      rows.filter((m) => m.preview == null && firstUrl(m.body)).slice(0, 10).map(async (m) => {
+        const p = await buildPreview(firstUrl(m.body), UPLOAD_DIR).catch(() => null);
+        m.preview = p ? JSON.stringify(p) : '0';
+        db.prepare('UPDATE messages SET preview = ? WHERE id = ?').run(m.preview, m.id);
+      })
+    );
     res.json({
       items: rows.map((m) => ({ ...messageDto(m, req.user.id), hearts: m.hc, groupName: getGroup(m.group_id).name })),
     });
