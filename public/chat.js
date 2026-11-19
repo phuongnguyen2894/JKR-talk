@@ -66,8 +66,8 @@ function drawChat(view) {
   </div>
   <div class="chat-body">
     <div class="chat-col">
-      <button class="read-toggle" id="readtoggle" data-act="toggle-read" aria-pressed="false" aria-label="Ẩn hoặc hiện thanh tiêu đề, ô nhập và menu"></button>
       <div class="msgs" id="msgs" aria-live="off"><div id="more" ${C.hasMore ? '' : 'hidden'} style="text-align:center"><button class="btn sm" data-act="load-more">Tải tin cũ hơn</button></div></div>
+      <div class="rt-wrap"><button class="read-toggle" id="readtoggle" data-act="toggle-read" aria-pressed="false" aria-label="Ẩn hoặc hiện thanh tiêu đề, ô nhập và menu"></button></div>
       <div class="composer" id="composer">${composerHtml()}</div>
     </div>
     <aside class="info wide" aria-label="Thông tin nhóm">${infoHtml()}</aside>
