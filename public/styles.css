@@ -243,3 +243,12 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
 .lp-s { font-size: 10.5px; }
 .msg .actions { margin-top: 0; }
 @media (max-width: 899px) { .msgs { padding: 10px; } }
+
+/* phân biệt tin của mình (phải, bong bóng màu) và của người khác (trái, avatar + bong bóng xám) */
+.msg { align-items: flex-start; }
+.msg:not(.own) .body { max-width: 82%; }
+.msg:not(.own) .text:not(.gone) { display: inline-block; background: color-mix(in srgb, currentColor 7%, transparent); border-radius: 4px 14px 14px 14px; padding: 6px 11px; margin-top: 2px; }
+.msg.own { justify-content: flex-start; }
+.msg.own .body { max-width: 80%; margin-left: auto; }
+.msg.own .meta { justify-content: flex-end; }
+.msg.own .row { justify-content: flex-end; }

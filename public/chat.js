@@ -164,7 +164,7 @@ function msgHtml(m) {
     ? `<span class="who muted">${esc(m.user.displayName)}</span>`
     : `<button class="who" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}</button>`;
   return `<div class="msg ${own ? 'own' : ''}" data-mid="${m.id}" data-uid="${m.user.id}" data-name="${esc(m.user.displayName)}">
-    ${own ? avatar(m.user) : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatar(m.user)}</button>`}
+    ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatar(m.user)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}${own ? '' : role}<span class="tiny muted">${fmtTime(m.createdAt)}</span></div>
       ${quote}${text}${m.deleted ? '' : previewHtml(m.preview)}<div class="row" style="gap:4px;margin-top:2px">${heartBtn}${acts}</div>
