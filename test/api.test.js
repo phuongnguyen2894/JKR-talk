@@ -365,3 +365,20 @@ test('không kết bạn được với admin hệ thống (cả hai chiều)', 
   assert.equal((await call('POST', '/friends/request', { userId: admin.id }, u.token)).status, 400);
   assert.equal((await call('POST', '/friends/request', { userId: u.id }, admin.token)).status, 400);
 });
+
+test('xem tin nhóm công khai không cần tham gia; không chat/thả tim được; nhóm riêng vẫn bị chặn', async () => {
+  const w = await signup('khach', 1);
+  const dn = (await call('GET', '/groups/discover?q=da nang', null, w.token)).data.groups.find((x) => x.type === 'province');
+  assert.equal(dn.joined, false);
+  // có sẵn một tin trong nhóm đó (do admin đăng)
+  const posted = await call('POST', `/groups/${dn.id}/messages`, { body: 'tin cho khách đọc' }, admin.token);
+  if (posted.status !== 201) { await call('POST', `/groups/${dn.id}/join`, {}, admin.token); await call('POST', `/groups/${dn.id}/rules-ack`, {}, admin.token); await call('POST', `/groups/${dn.id}/messages`, { body: 'tin cho khách đọc' }, admin.token); }
+  const r = await call('GET', `/groups/${dn.id}/messages`, null, w.token);
+  assert.equal(r.status, 200);
+  assert.ok(r.data.messages.some((m) => m.body === 'tin cho khách đọc'));
+  assert.equal((await call('POST', `/groups/${dn.id}/messages`, { body: 'xen vào' }, w.token)).status, 403);
+  assert.equal((await call('POST', `/messages/${r.data.messages[0].id}/heart`, {}, w.token)).status, 403);
+  // nhóm riêng: người ngoài không đọc được
+  const pg = await call('POST', '/private', { name: 'riêng tư', memberLimit: 10 }, admin.token);
+  if (pg.status < 300) assert.equal((await call('GET', `/groups/${pg.data.group.id}/messages`, null, w.token)).status, 403);
+});

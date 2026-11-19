@@ -446,7 +446,9 @@ api.get(
   '/groups/:id/messages',
   wrap((req, res) => {
     const gid = int(req.params.id);
-    const { g } = requireMember(gid, req.user.id);
+    // nhóm công khai: ai cũng đọc được, không cần tham gia
+    const pub = getGroup(gid);
+    const { g } = pub && PUBLIC_TYPES.includes(pub.type) ? { g: pub } : requireMember(gid, req.user.id);
     if (g.type === 'dm' && isBlockedEither(req.user.id, memberIds(gid).find((x) => x !== req.user.id))) throw forbidden();
     const limit = Math.min(Math.max(int(req.query.limit) || 40, 1), 100);
     const before = int(req.query.before);
