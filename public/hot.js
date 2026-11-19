@@ -20,5 +20,5 @@ export async function renderHot(view, sc = scope) {
       ${previewHtml(m.preview)}
     </div>`).join('') || '<p class="muted">Chưa có chủ đề nóng nào ở phạm vi này. Hãy thả tim cho những tin nhắn bạn thích!</p>'}</div>
   </div></div>`;
-  $('[data-sc]', view).forEach((b) => (b.onclick = () => renderHot(view, b.dataset.sc).catch(() => {})));
+  $$('[data-sc]', view).forEach((b) => (b.onclick = () => renderHot(view, b.dataset.sc).catch(() => {})));
 }
