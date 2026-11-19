@@ -451,7 +451,7 @@ api.get(
     const limit = Math.min(Math.max(int(req.query.limit) || 40, 1), 100);
     const before = int(req.query.before);
     const rows = db
-      .prepare(`SELECT * FROM messages WHERE group_id = ? ${before ? 'AND id < ?' : ''} ORDER BY id DESC LIMIT ?`)
+      .prepare(`SELECT * FROM messages WHERE group_id = ? AND deleted = 0 ${before ? 'AND id < ?' : ''} ORDER BY id DESC LIMIT ?`)
       .all(...(before ? [gid, before, limit] : [gid, limit]));
     res.json({ messages: rows.reverse().map((m) => messageDto(m, req.user.id)), hasMore: rows.length === limit });
   })

@@ -155,7 +155,7 @@ export function previewHtml(p) {
 
 function msgHtml(m) {
   const own = mine(m);
-  const quote = m.reply ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
+  const quote = m.reply && !m.reply.deleted ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
   const text = m.deleted
     ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
     : `${m.body ? (own ? `<div class="bubble">${esc(m.body)}</div>` : `<div class="text">${esc(m.body)}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy">` : ''}`;
@@ -184,6 +184,7 @@ function appendMsg(m, initial = false) {
   const k = dayKey(m.createdAt);
   let html = '';
   if (C.lastDay !== k) { html += `<div class="day">${fmtDate(m.createdAt)}</div>`; C.lastDay = k; }
+  if (m.deleted) return;
   box.insertAdjacentHTML('beforeend', html + msgHtml(m));
   C.last = m.id;
   if (!C.first) C.first = m.id;
@@ -226,8 +227,13 @@ export function onSocket(ev) {
     }
   } else if (ev.type === 'message_deleted' && C && C.gid === ev.groupId) {
     const el = $(`.msg[data-mid="${ev.messageId}"]`);
+    // tin bị xóa biến mất hẳn (kèm dòng ngày nếu không còn tin nào dưới nó) và bỏ trích dẫn trỏ tới nó
+    $$(`.quote[data-id="${ev.messageId}"]`).forEach((q) => q.hidden = true);
     if (el) {
-      $('.body', el).innerHTML = `<div class="meta"><span class="tiny muted">Đã xóa</span></div><div class="text gone">Tin nhắn đã bị xóa</div>`;
+      const prev = el.previousElementSibling, next = el.nextElementSibling;
+      el.hidden = true;
+      el.style.display = 'none';
+      if (prev?.classList.contains('day') && (!next || next.classList.contains('day'))) prev.style.display = 'none';
     }
   }
 }
