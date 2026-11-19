@@ -1,0 +1,1101 @@
+import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { db, now, tx, homeGroupIds, nameKey } from './db.js';
+import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
+import {
+  bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
+  getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
+  isSystemAdmin, log, hub, isOnline, notify, messageDto, areFriends, isBlockedEither, shareGroup, pair,
+  AVATAR_COUNT,
+} from './lib.js';
+
+export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const PROD = process.env.NODE_ENV === 'production';
+const AUTO_VERIFY = process.env.REQUIRE_VERIFY !== '1'; // mặc định bỏ qua xác nhận email; đặt REQUIRE_VERIFY=1 để bật lại
+const PRIVATE_LIMIT_DEFAULT = 100;
+const PRIVATE_LIMIT_MAX = 200;
+const HOME_CHANGE_COOLDOWN = 30 * 24 * 3600 * 1000;
+const DAY = 24 * 3600 * 1000;
+const MAX_IMAGE = 2 * 1024 * 1024;
+
+const wrap = (fn) => (req, res, next) => {
+  try {
+    const r = fn(req, res, next);
+    if (r && typeof r.catch === 'function') r.catch(next);
+  } catch (e) {
+    next(e);
+  }
+};
+const str = (v, max = 2000) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const int = (v) => (Number.isInteger(Number(v)) ? Number(v) : NaN);
+
+export const api = express.Router();
+api.use(express.json({ limit: '4mb' }));
+
+// ---- xác thực ----------------------------------------------------------------
+function auth(req, _res, next) {
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : '';
+  const s = token && db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
+  if (!s) throw new HttpError(401, 'Vui lòng đăng nhập');
+  const u = getUser(s.user_id);
+  if (!u || u.status === 'deleted') throw new HttpError(401, 'Tài khoản không tồn tại');
+  if (u.status === 'locked') {
+    if (u.locked_until && u.locked_until < now()) {
+      db.prepare("UPDATE users SET status='active', locked_until=NULL WHERE id=?").run(u.id);
+    } else {
+      throw new HttpError(403, u.locked_until ? 'Tài khoản đang bị khóa tạm thời' : 'Tài khoản đã bị khóa');
+    }
+  }
+  req.user = u;
+  req.token = token;
+  next();
+}
+const adminOnly = (req, _res, next) => {
+  if (req.user.role !== 'admin') throw forbidden();
+  next();
+};
+
+// ============================================================================
+// Công khai: địa lý, đăng ký, đăng nhập
+// ============================================================================
+api.get('/geo', (_req, res) => res.json({ country: COUNTRY, regions: REGIONS, provinces: PROVINCES }));
+
+api.post(
+  '/auth/register',
+  wrap((req, res) => {
+    rateLimit(`reg:${req.ip}`, Number(process.env.REGISTER_RATE_LIMIT || 10), 3600_000);
+    const email = str(req.body.email, 200).toLowerCase();
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    const displayName = str(req.body.displayName, 30);
+    const province = provinceById(req.body.provinceId);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw bad('Email không hợp lệ');
+    if (password.length < 8) throw bad('Mật khẩu cần ít nhất 8 ký tự');
+    if (req.body.acceptCommunity !== true) throw bad('Bạn cần đồng ý: JKR talks chỉ dành cho fan Only LingOrm, không chào đón multi, only toxic, anti, chỉ bàn luận về LingOrm ở các nhóm công khai');
+    if (req.body.passwordConfirm !== undefined && req.body.passwordConfirm !== password) throw bad('Mật khẩu xác nhận không khớp');
+    if (displayName.length < 2) throw bad('Tên hiển thị cần ít nhất 2 ký tự');
+    if (displayName.includes('@') || displayName.toLowerCase() === email) throw bad('Tên hiển thị không được trùng email');
+    if (req.body.country && req.body.country !== COUNTRY.code) throw bad('Hiện app mới hỗ trợ Việt Nam');
+    if (!province) throw bad('Vui lòng chọn tỉnh/thành');
+    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw bad('Email này đã được dùng');
+    if (db.prepare('SELECT 1 FROM users WHERE name_key = ?').get(nameKey(displayName))) throw bad('Tên hiển thị này đã có người dùng, hãy chọn tên khác');
+
+    const token = randomToken(24);
+    const id = tx(() => {
+      const r = db
+        .prepare(
+          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, verify_token, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)`
+        )
+        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), province.id, AUTO_VERIFY ? 1 : 0, token, now());
+      const uid = Number(r.lastInsertRowid);
+      for (const gid of homeGroupIds(province)) addMember(gid, uid); // auto-join đủ 3 group
+      return uid;
+    });
+    const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${token}`;
+    console.log(`[verify] ${email} -> ${verifyUrl}`); // TODO: gửi email thật khi có SMTP
+    res.status(201).json({ id, needVerify: !AUTO_VERIFY, devVerifyUrl: PROD ? undefined : verifyUrl });
+  })
+);
+
+api.get(
+  '/auth/verify',
+  wrap((req, res) => {
+    const token = str(req.query.token, 100);
+    const u = token && db.prepare('SELECT id FROM users WHERE verify_token = ?').get(token);
+    if (!u) return res.redirect('/#/login?verify=fail');
+    db.prepare('UPDATE users SET verified = 1, verify_token = NULL WHERE id = ?').run(u.id);
+    res.redirect('/#/login?verify=ok');
+  })
+);
+
+api.post(
+  '/auth/login',
+  wrap((req, res) => {
+    rateLimit(`login:${req.ip}`, Number(process.env.LOGIN_RATE_LIMIT || 20), 600_000);
+    const email = str(req.body.email, 200).toLowerCase();
+    const u = db.prepare("SELECT * FROM users WHERE email = ? AND status != 'deleted'").get(email);
+    if (!u || !checkPassword(String(req.body.password || ''), u.pass_hash)) throw new HttpError(401, 'Email hoặc mật khẩu không đúng');
+    if (!u.verified && !AUTO_VERIFY) throw new HttpError(403, 'Email chưa được xác nhận. Hãy bấm vào liên kết xác nhận.');
+    if (u.status === 'locked' && !(u.locked_until && u.locked_until < now()))
+      throw new HttpError(403, u.locked_until ? 'Tài khoản đang bị khóa tạm thời' : 'Tài khoản đã bị khóa');
+    if (u.status === 'locked') db.prepare("UPDATE users SET status='active', locked_until=NULL WHERE id=?").run(u.id);
+    const token = randomToken();
+    db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, u.id, now());
+    res.json({ token, user: selfUser(u) });
+  })
+);
+
+// Mọi route bên dưới cần đăng nhập
+api.use(auth);
+
+api.post('/auth/logout', wrap((req, res) => {
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(req.token);
+  res.json({ ok: true });
+}));
+
+// ============================================================================
+// Hồ sơ & cài đặt
+// ============================================================================
+api.get('/me', wrap((req, res) => res.json({ user: selfUser(req.user) })));
+
+api.patch(
+  '/me',
+  wrap((req, res) => {
+    const b = req.body;
+    const sets = [];
+    const vals = [];
+    const set = (col, v) => (sets.push(`${col} = ?`), vals.push(v));
+    if (b.displayName !== undefined) {
+      const n = str(b.displayName, 30);
+      if (n.length < 2) throw bad('Tên hiển thị cần ít nhất 2 ký tự');
+      if (n.includes('@') || n.toLowerCase() === req.user.email) throw bad('Tên hiển thị không được trùng email');
+      if (db.prepare('SELECT 1 FROM users WHERE name_key = ? AND id != ?').get(nameKey(n), req.user.id)) throw bad('Tên hiển thị này đã có người dùng, hãy chọn tên khác');
+      set('display_name', n);
+      set('name_key', nameKey(n));
+    }
+    if (b.language !== undefined) {
+      if (!['vi', 'en', 'th'].includes(b.language)) throw bad('Ngôn ngữ không hợp lệ');
+      set('language', b.language);
+    }
+    if (b.avatarColor !== undefined) set('avatar_color', Math.abs(int(b.avatarColor)) % AVATAR_COUNT || 0);
+    if (b.avatarUrl !== undefined) set('avatar_url', b.avatarUrl ? checkUploadUrl(b.avatarUrl) : null);
+    if (b.friendPolicy !== undefined) {
+      if (!['everyone', 'shared', 'none'].includes(b.friendPolicy)) throw bad('Giá trị không hợp lệ');
+      set('friend_policy', b.friendPolicy);
+    }
+    for (const [k, col] of [['showOnline', 'show_online'], ['newsPush', 'news_push'], ['hideSuggestions', 'hide_suggestions']])
+      if (b[k] !== undefined) set(col, b[k] ? 1 : 0);
+    if (sets.length) db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.user.id);
+    res.json({ user: selfUser(getUser(req.user.id)) });
+  })
+);
+
+// Đổi vị trí home (giới hạn 1 lần / 30 ngày)
+api.post(
+  '/me/home',
+  wrap((req, res) => {
+    const p = provinceById(req.body.provinceId);
+    if (!p) throw bad('Tỉnh/thành không hợp lệ');
+    const u = req.user;
+    if (p.id === u.province_id) throw bad('Bạn đang chọn tỉnh/thành này rồi');
+    if (u.home_changed_at && now() - u.home_changed_at < HOME_CHANGE_COOLDOWN) {
+      const days = Math.ceil((HOME_CHANGE_COOLDOWN - (now() - u.home_changed_at)) / DAY);
+      throw bad(`Bạn chỉ đổi được vị trí 1 lần / 30 ngày. Thử lại sau ${days} ngày.`);
+    }
+    const leaveOld = !!req.body.leaveOld;
+    tx(() => {
+      const oldIds = homeGroupIds(provinceById(u.province_id));
+      const newIds = homeGroupIds(p);
+      if (leaveOld) for (const gid of oldIds) if (!newIds.includes(gid)) removeMember(gid, u.id);
+      for (const gid of newIds) addMember(gid, u.id);
+      db.prepare('UPDATE users SET province_id = ?, home_changed_at = ? WHERE id = ?').run(p.id, now(), u.id);
+    });
+    res.json({ user: selfUser(getUser(u.id)) });
+  })
+);
+
+// Xóa tài khoản
+api.delete(
+  '/me',
+  wrap((req, res) => {
+    if (!checkPassword(String(req.body.password || ''), req.user.pass_hash)) throw bad('Mật khẩu không đúng');
+    const id = req.user.id;
+    tx(() => {
+      db.prepare(
+        `DELETE FROM messages WHERE group_id IN (SELECT id FROM groups WHERE type = 'dm' AND key LIKE 'dm:%'
+          AND id IN (SELECT group_id FROM members WHERE user_id = ?))`
+      ).run(id);
+      db.prepare("UPDATE users SET status='deleted', email=?, display_name='Người dùng đã xóa', name_key=NULL, pass_hash='', avatar_url=NULL, verify_token=NULL WHERE id=?").run(`deleted-${id}@deleted.invalid`, id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+      db.prepare('DELETE FROM members WHERE user_id = ?').run(id);
+      db.prepare('DELETE FROM friends WHERE a = ? OR b = ?').run(id, id);
+      db.prepare('DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?').run(id, id);
+      db.prepare('DELETE FROM blocks WHERE blocker = ? OR blocked = ?').run(id, id);
+      db.prepare('DELETE FROM notifications WHERE user_id = ?').run(id);
+      db.prepare('DELETE FROM reactions WHERE user_id = ?').run(id);
+      db.prepare('DELETE FROM join_requests WHERE user_id = ?').run(id);
+      db.prepare("DELETE FROM groups WHERE type = 'private' AND id NOT IN (SELECT group_id FROM members)").run();
+    });
+    res.json({ ok: true });
+  })
+);
+
+// ============================================================================
+// Upload ảnh (data URL, ≤ 2MB)
+// ============================================================================
+const IMG_TYPES = {
+  'image/png': { ext: 'png', magic: [0x89, 0x50, 0x4e, 0x47] },
+  'image/jpeg': { ext: 'jpg', magic: [0xff, 0xd8, 0xff] },
+  'image/gif': { ext: 'gif', magic: [0x47, 0x49, 0x46] },
+  'image/webp': { ext: 'webp', magic: [0x52, 0x49, 0x46, 0x46] },
+};
+const checkUploadUrl = (u) => {
+  if (typeof u !== 'string' || !/^\/uploads\/[A-Za-z0-9_-]+\.(png|jpg|gif|webp)$/.test(u)) throw bad('Ảnh không hợp lệ');
+  return u;
+};
+
+api.post(
+  '/upload',
+  wrap((req, res) => {
+    rateLimit(`up:${req.user.id}`, 20, 60_000);
+    const m = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.dataUrl || ''));
+    const t = m && IMG_TYPES[m[1]];
+    if (!t) throw bad('Chỉ hỗ trợ ảnh PNG, JPG, GIF, WEBP');
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > MAX_IMAGE) throw bad('Ảnh quá lớn (tối đa 2MB)');
+    if (!t.magic.every((b, i) => buf[i] === b)) throw bad('Tệp ảnh không hợp lệ');
+    const name = `${randomToken(12)}.${t.ext}`;
+    fs.writeFileSync(path.join(UPLOAD_DIR, name), buf);
+    res.json({ url: `/uploads/${name}` });
+  })
+);
+
+// ============================================================================
+// Group
+// ============================================================================
+const PUBLIC_TYPES = ['country', 'region', 'province'];
+const isMuted = (m) => m.notif_muted_until === -1 || (m.notif_muted_until && m.notif_muted_until > now());
+
+function groupDto(g, uid, member) {
+  const dto = {
+    id: g.id, type: g.type, name: g.name, short: g.short, lang: g.lang, avatarUrl: g.avatar_url,
+    memberLimit: g.member_limit, createdBy: g.created_by,
+  };
+  if (member) {
+    dto.role = member.role;
+    dto.mutedUntil = member.notif_muted_until;
+    dto.muted = isMuted(member);
+    dto.rulesAck = !!member.rules_ack;
+    dto.modMutedUntil = member.mod_muted_until && member.mod_muted_until > now() ? member.mod_muted_until : null;
+  }
+  if (g.type === 'dm') {
+    const other = memberIds(g.id).find((x) => x !== uid);
+    dto.peer = publicUser(getUser(other), uid);
+    dto.name = dto.peer.displayName;
+  }
+  return dto;
+}
+
+api.get(
+  '/groups/mine',
+  wrap((req, res) => {
+    const rows = db
+      .prepare(
+        `SELECT g.*, m.* , g.id AS gid,
+           (SELECT COUNT(*) FROM messages x WHERE x.group_id = g.id AND x.id > m.last_read_id AND x.user_id != m.user_id AND x.deleted = 0) AS unread,
+           (SELECT MAX(id) FROM messages x WHERE x.group_id = g.id) AS last_id
+         FROM members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ?`
+      )
+      .all(req.user.id);
+    const order = { country: 0, region: 1, province: 2, private: 3, dm: 4 };
+    const out = [];
+    for (const r of rows) {
+      const g = getGroup(r.gid);
+      const dto = groupDto(g, req.user.id, getMember(g.id, req.user.id));
+      if (g.type === 'dm' && isBlockedEither(req.user.id, dto.peer.id)) continue;
+      dto.unread = Math.min(r.unread, 99);
+      dto.lastId = r.last_id || 0;
+      out.push(dto);
+    }
+    out.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name, 'vi'));
+    res.json({ groups: out });
+  })
+);
+
+api.get(
+  '/groups/discover',
+  wrap((req, res) => {
+    const type = PUBLIC_TYPES.includes(req.query.type) ? req.query.type : null;
+    const q = str(req.query.q, 60).toLowerCase();
+    const rows = db
+      .prepare(
+        `SELECT g.*, (SELECT COUNT(*) FROM members WHERE group_id = g.id) AS cnt,
+                EXISTS(SELECT 1 FROM members WHERE group_id = g.id AND user_id = ?) AS joined
+         FROM groups g WHERE g.type IN ('country','region','province') ${type ? 'AND g.type = ?' : ''}`
+      )
+      .all(...(type ? [req.user.id, type] : [req.user.id]));
+    const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').toLowerCase();
+    const groups = rows
+      .filter((g) => !q || norm(g.name).includes(norm(q)))
+      .map((g) => ({ id: g.id, type: g.type, name: g.name, short: g.short, lang: g.lang, memberCount: g.cnt, joined: !!g.joined }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    res.json({ groups });
+  })
+);
+
+// Gợi ý group gần vị trí / cùng ngôn ngữ (chưa tham gia)
+api.get(
+  '/groups/suggestions',
+  wrap((req, res) => {
+    if (req.user.hide_suggestions) return res.json({ groups: [], hidden: true });
+    const home = provinceById(req.user.province_id);
+    const sameRegion = PROVINCES.filter((p) => p.region === home.region && p.id !== home.id).slice(0, 4);
+    const keys = sameRegion.map((p) => `${COUNTRY.code}:p:${p.id}`);
+    const rows = keys
+      .map((k) => db.prepare('SELECT * FROM groups WHERE key = ?').get(k))
+      .filter((g) => g && !getMember(g.id, req.user.id));
+    res.json({
+      groups: rows.map((g) => ({ id: g.id, type: g.type, name: g.name, lang: g.lang, reason: 'Cùng khu vực với bạn' })),
+    });
+  })
+);
+
+function requireMember(gid, uid) {
+  const g = getGroup(gid);
+  if (!g) throw notFound('Không tìm thấy nhóm');
+  const m = getMember(gid, uid);
+  if (!m) throw forbidden('Bạn chưa tham gia nhóm này');
+  return { g, m };
+}
+
+api.get(
+  '/groups/:id',
+  wrap((req, res) => {
+    const id = int(req.params.id);
+    const g = getGroup(id);
+    if (!g) throw notFound('Không tìm thấy nhóm');
+    const m = getMember(id, req.user.id);
+    if (!m && !PUBLIC_TYPES.includes(g.type)) throw forbidden();
+    const dto = groupDto(g, req.user.id, m);
+    dto.memberCount = db.prepare('SELECT COUNT(*) c FROM members WHERE group_id = ?').get(id).c;
+    dto.mods = db
+      .prepare("SELECT user_id FROM members WHERE group_id = ? AND role IN ('mod','admin')")
+      .all(id)
+      .map((r) => ({ ...publicUser(getUser(r.user_id)), role: getMember(id, r.user_id).role }));
+    if (g.type === 'private' && m) {
+      dto.members = memberIds(id).map((uid) => ({ ...publicUser(getUser(uid), req.user.id), role: getMember(id, uid).role }));
+    }
+    res.json({ group: dto });
+  })
+);
+
+api.post(
+  '/groups/:id/join',
+  wrap((req, res) => {
+    const g = getGroup(int(req.params.id));
+    if (!g || !PUBLIC_TYPES.includes(g.type)) throw notFound('Không tìm thấy nhóm công khai');
+    if (db.prepare('SELECT 1 FROM bans WHERE group_id=? AND user_id=?').get(g.id, req.user.id)) throw forbidden('Bạn đã bị mời ra khỏi nhóm này');
+    addMember(g.id, req.user.id); // vào ngay, không cần duyệt; không đổi vị trí home
+    res.json({ group: groupDto(g, req.user.id, getMember(g.id, req.user.id)) });
+  })
+);
+
+api.post(
+  '/groups/:id/leave',
+  wrap((req, res) => {
+    const { g, m } = requireMember(int(req.params.id), req.user.id);
+    if (g.type === 'dm') throw bad('Không thể rời cuộc trò chuyện 1-1');
+    if (g.type === 'private') return leavePrivate(g, req.user.id, res);
+    removeMember(g.id, req.user.id);
+    res.json({ ok: true });
+  })
+);
+
+api.post('/groups/:id/rules-ack', wrap((req, res) => {
+  requireMember(int(req.params.id), req.user.id);
+  db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(int(req.params.id), req.user.id);
+  res.json({ ok: true });
+}));
+
+api.post('/groups/:id/mute', wrap((req, res) => {
+  const { m } = requireMember(int(req.params.id), req.user.id);
+  const d = req.body.duration;
+  const until = d === '1h' ? now() + 3600_000 : d === '8h' ? now() + 8 * 3600_000 : d === 'forever' ? -1 : d === 'off' ? null : undefined;
+  if (until === undefined) throw bad('Thời gian không hợp lệ');
+  db.prepare('UPDATE members SET notif_muted_until = ? WHERE group_id = ? AND user_id = ?').run(until, int(req.params.id), req.user.id);
+  res.json({ mutedUntil: until, muted: until !== null });
+}));
+
+api.post('/groups/:id/read', wrap((req, res) => {
+  const gid = int(req.params.id);
+  requireMember(gid, req.user.id);
+  db.prepare('UPDATE members SET last_read_id = COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?),0) WHERE group_id = ? AND user_id = ?').run(gid, gid, req.user.id);
+  res.json({ ok: true });
+}));
+
+// ---- tin nhắn -----------------------------------------------------------------
+api.get(
+  '/groups/:id/messages',
+  wrap((req, res) => {
+    const gid = int(req.params.id);
+    const { g } = requireMember(gid, req.user.id);
+    if (g.type === 'dm' && isBlockedEither(req.user.id, memberIds(gid).find((x) => x !== req.user.id))) throw forbidden();
+    const limit = Math.min(Math.max(int(req.query.limit) || 40, 1), 100);
+    const before = int(req.query.before);
+    const rows = db
+      .prepare(`SELECT * FROM messages WHERE group_id = ? ${before ? 'AND id < ?' : ''} ORDER BY id DESC LIMIT ?`)
+      .all(...(before ? [gid, before, limit] : [gid, limit]));
+    res.json({ messages: rows.reverse().map((m) => messageDto(m, req.user.id)), hasMore: rows.length === limit });
+  })
+);
+
+api.post(
+  '/groups/:id/messages',
+  wrap((req, res) => {
+    rateLimit(`msg:${req.user.id}`, 20, 10_000);
+    const gid = int(req.params.id);
+    const { g, m } = requireMember(gid, req.user.id);
+    const body = str(req.body.body, 2000);
+    const imageUrl = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
+    if (!body && !imageUrl) throw bad('Tin nhắn trống');
+    if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
+    if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
+    if (g.type === 'dm') {
+      const peer = memberIds(gid).find((x) => x !== req.user.id);
+      if (!peer || !areFriends(req.user.id, peer) || isBlockedEither(req.user.id, peer)) throw forbidden('Không thể nhắn tin cho người này');
+    }
+    let replyTo = null;
+    if (req.body.replyTo) {
+      const r = db.prepare('SELECT id FROM messages WHERE id = ? AND group_id = ?').get(int(req.body.replyTo), gid);
+      replyTo = r?.id ?? null;
+    }
+    const r = db
+      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, reply_to, created_at) VALUES (?,?,?,?,?,?)')
+      .run(gid, req.user.id, body, imageUrl, replyTo, now());
+    const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), req.user.id);
+    db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
+    hub.sendMany(memberIds(gid), { type: 'message', message: dto });
+    res.status(201).json({ message: dto });
+  })
+);
+
+// Thả tim màu tím: bật/tắt, mỗi người 1 tim cho mỗi tin; không tự thả tim tin của mình
+api.post(
+  '/messages/:id/heart',
+  wrap((req, res) => {
+    rateLimit(`heart:${req.user.id}`, 60, 60_000);
+    const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
+    if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
+    requireMember(msg.group_id, req.user.id);
+    if (msg.user_id === req.user.id) throw bad('Bạn không thể thả tim tin nhắn của mình');
+    const had = db.prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ?').get(msg.id, req.user.id);
+    if (had) db.prepare('DELETE FROM reactions WHERE message_id = ? AND user_id = ?').run(msg.id, req.user.id);
+    else db.prepare('INSERT INTO reactions (message_id, user_id, created_at) VALUES (?,?,?)').run(msg.id, req.user.id, now());
+    const hearts = db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(msg.id).c;
+    hub.sendMany(memberIds(msg.group_id), { type: 'heart', groupId: msg.group_id, messageId: msg.id, hearts });
+    res.json({ hearts, hearted: !had });
+  })
+);
+
+// Chủ đề nóng: tin được nhiều tim nhất ở các group công khai trong 7 ngày gần đây
+const HOT_MIN_HEARTS = Number(process.env.HOT_MIN_HEARTS || 3);
+api.get(
+  '/hot',
+  wrap((req, res) => {
+    const rows = db
+      .prepare(
+        `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m
+         JOIN reactions r ON r.message_id = m.id JOIN groups g ON g.id = m.group_id
+         WHERE g.type IN ('country','region','province') AND m.deleted = 0 AND m.created_at > ?
+         GROUP BY m.id HAVING hc >= ? ORDER BY hc DESC, m.id DESC LIMIT 30`
+      )
+      .all(now() - 7 * DAY, HOT_MIN_HEARTS)
+      .filter((m) => !isBlockedEither(req.user.id, m.user_id));
+    res.json({
+      minHearts: HOT_MIN_HEARTS,
+      items: rows.map((m) => ({ ...messageDto(m, req.user.id), groupName: getGroup(m.group_id).name })),
+    });
+  })
+);
+
+// Xóa tin nhắn: admin hệ thống, mod (group công khai), admin (group riêng)
+function canModerate(g, uid) {
+  if (isSystemAdmin(uid)) return g.type !== 'private' && g.type !== 'dm';
+  const m = getMember(g.id, uid);
+  if (!m) return false;
+  return (g.type !== 'private' && g.type !== 'dm' && m.role === 'mod') || (g.type === 'private' && m.role === 'admin');
+}
+const canKickMute = canModerate;
+
+api.delete(
+  '/messages/:id',
+  wrap((req, res) => {
+    const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
+    if (!msg) throw notFound();
+    const g = getGroup(msg.group_id);
+    const own = msg.user_id === req.user.id;
+    if (!own && !canModerate(g, req.user.id)) throw forbidden();
+    db.prepare('UPDATE messages SET deleted = 1 WHERE id = ?').run(msg.id);
+    if (!own) {
+      const reason = str(req.body?.reason, 300) || 'Vi phạm quy tắc cộng đồng';
+      log(req.user.id, 'delete_message', { target: msg.user_id, group: g.id, message: msg.id, reason });
+      notify(msg.user_id, 'moderation', `Tin nhắn của bạn trong "${g.name}" đã bị xóa. Lý do: ${reason}`);
+    }
+    hub.sendMany(memberIds(g.id), { type: 'message_deleted', groupId: g.id, messageId: msg.id });
+    res.json({ ok: true });
+  })
+);
+
+api.post(
+  '/groups/:id/members/:uid/mute',
+  wrap((req, res) => {
+    const g = getGroup(int(req.params.id));
+    const uid = int(req.params.uid);
+    if (!g || !canKickMute(g, req.user.id)) throw forbidden();
+    if (uid === req.user.id || !getMember(g.id, uid)) throw bad('Thành viên không hợp lệ');
+    const minutes = Math.min(Math.max(int(req.body.minutes) || 60, 1), 60 * 24 * 30);
+    const reason = str(req.body.reason, 300) || 'Vi phạm quy tắc cộng đồng';
+    db.prepare('UPDATE members SET mod_muted_until = ? WHERE group_id = ? AND user_id = ?').run(now() + minutes * 60_000, g.id, uid);
+    log(req.user.id, 'mute', { target: uid, group: g.id, reason });
+    notify(uid, 'moderation', `Bạn bị tắt tiếng ${minutes} phút trong "${g.name}". Lý do: ${reason}`);
+    res.json({ ok: true });
+  })
+);
+
+api.post(
+  '/groups/:id/members/:uid/kick',
+  wrap((req, res) => {
+    const g = getGroup(int(req.params.id));
+    const uid = int(req.params.uid);
+    if (!g || !canKickMute(g, req.user.id)) throw forbidden();
+    if (uid === req.user.id || !getMember(g.id, uid)) throw bad('Thành viên không hợp lệ');
+    if (g.type === 'private' && getMember(g.id, uid).role === 'admin') throw forbidden('Hãy gỡ quyền admin trước khi xóa');
+    const reason = str(req.body.reason, 300) || 'Vi phạm quy tắc cộng đồng';
+    removeMember(g.id, uid);
+    if (g.type !== 'private') db.prepare('INSERT OR IGNORE INTO bans (group_id, user_id) VALUES (?,?)').run(g.id, uid);
+    log(req.user.id, 'kick', { target: uid, group: g.id, reason });
+    notify(uid, 'moderation', `Bạn đã bị xóa khỏi "${g.name}". Lý do: ${reason}`);
+    res.json({ ok: true });
+  })
+);
+
+// ============================================================================
+// Bạn bè, chặn, nhắn tin 1-1
+// ============================================================================
+api.get(
+  '/users/:id',
+  wrap((req, res) => {
+    const id = int(req.params.id);
+    const u = getUser(id);
+    if (!u || (id !== req.user.id && isBlockedEither(req.user.id, id))) throw notFound('Không tìm thấy người dùng');
+    const pending = db.prepare("SELECT * FROM friend_requests WHERE status='pending' AND ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?))").get(req.user.id, id, id, req.user.id);
+    res.json({
+      user: publicUser(u, req.user.id),
+      relation: id === req.user.id ? 'self' : areFriends(req.user.id, id) ? 'friend' : pending ? (pending.from_id === req.user.id ? 'sent' : 'received') : 'none',
+      requestId: pending?.id,
+    });
+  })
+);
+
+api.get(
+  '/friends',
+  wrap((req, res) => {
+    const me = req.user.id;
+    const friends = db.prepare('SELECT a, b FROM friends WHERE a = ? OR b = ?').all(me, me)
+      .map((r) => (r.a === me ? r.b : r.a))
+      .map((id) => publicUser(getUser(id), me))
+      .sort((x, y) => x.displayName.localeCompare(y.displayName, 'vi'));
+    const incoming = db.prepare("SELECT * FROM friend_requests WHERE to_id = ? AND status = 'pending' ORDER BY id DESC").all(me)
+      .map((r) => ({ id: r.id, user: publicUser(getUser(r.from_id)), createdAt: r.created_at }));
+    const outgoing = db.prepare("SELECT * FROM friend_requests WHERE from_id = ? AND status = 'pending' ORDER BY id DESC").all(me)
+      .map((r) => ({ id: r.id, user: publicUser(getUser(r.to_id)), createdAt: r.created_at }));
+    const blocked = db.prepare('SELECT blocked FROM blocks WHERE blocker = ?').all(me).map((r) => publicUser(getUser(r.blocked)));
+    res.json({ friends, incoming, outgoing, blocked });
+  })
+);
+
+api.post(
+  '/friends/request',
+  wrap((req, res) => {
+    rateLimit(`fr:${req.user.id}`, 30, 3600_000);
+    const me = req.user.id;
+    const to = int(req.body.userId);
+    const t = getUser(to);
+    const generic = () => new HttpError(400, 'Không thể gửi lời mời kết bạn cho người này');
+    if (!t || t.status !== 'active' || to === me || isBlockedEither(me, to)) throw generic();
+    if (areFriends(me, to)) throw bad('Hai bạn đã là bạn bè');
+    if (t.friend_policy === 'none') throw generic();
+    if (t.friend_policy === 'shared' && !shareGroup(me, to)) throw generic();
+    const dup = db.prepare("SELECT 1 FROM friend_requests WHERE status='pending' AND ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?))").get(me, to, to, me);
+    if (dup) throw bad('Đã có lời mời đang chờ');
+    db.prepare('INSERT INTO friend_requests (from_id, to_id, created_at) VALUES (?,?,?)').run(me, to, now());
+    notify(to, 'friend_request', `${req.user.display_name} muốn kết bạn với bạn`);
+    res.status(201).json({ ok: true });
+  })
+);
+
+function answerRequest(accept) {
+  return wrap((req, res) => {
+    const r = db.prepare("SELECT * FROM friend_requests WHERE id = ? AND to_id = ? AND status = 'pending'").get(int(req.params.id), req.user.id);
+    if (!r) throw notFound('Lời mời không còn tồn tại');
+    db.prepare('UPDATE friend_requests SET status = ? WHERE id = ?').run(accept ? 'accepted' : 'declined', r.id);
+    if (accept) {
+      if (isBlockedEither(r.from_id, r.to_id)) throw forbidden();
+      const [a, b] = pair(r.from_id, r.to_id);
+      db.prepare('INSERT OR IGNORE INTO friends (a, b, created_at) VALUES (?,?,?)').run(a, b, now());
+      notify(r.from_id, 'friend_accept', `${req.user.display_name} đã chấp nhận lời mời kết bạn`);
+    }
+    res.json({ ok: true });
+  });
+}
+api.post('/friends/requests/:id/accept', answerRequest(true));
+api.post('/friends/requests/:id/decline', answerRequest(false));
+api.delete('/friends/requests/:id', wrap((req, res) => { // hủy lời mời đã gửi
+  db.prepare("DELETE FROM friend_requests WHERE id = ? AND from_id = ? AND status = 'pending'").run(int(req.params.id), req.user.id);
+  res.json({ ok: true });
+}));
+
+api.delete('/friends/:uid', wrap((req, res) => {
+  const [a, b] = pair(req.user.id, int(req.params.uid));
+  db.prepare('DELETE FROM friends WHERE a = ? AND b = ?').run(a, b);
+  res.json({ ok: true });
+}));
+
+api.post('/blocks/:uid', wrap((req, res) => {
+  const me = req.user.id, uid = int(req.params.uid);
+  if (!getUser(uid) || uid === me) throw bad('Người dùng không hợp lệ');
+  tx(() => {
+    db.prepare('INSERT OR IGNORE INTO blocks (blocker, blocked) VALUES (?,?)').run(me, uid);
+    const [a, b] = pair(me, uid);
+    db.prepare('DELETE FROM friends WHERE a = ? AND b = ?').run(a, b);
+    db.prepare("DELETE FROM friend_requests WHERE status='pending' AND ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?))").run(me, uid, uid, me);
+  });
+  res.json({ ok: true }); // người bị chặn không được thông báo
+}));
+api.delete('/blocks/:uid', wrap((req, res) => {
+  db.prepare('DELETE FROM blocks WHERE blocker = ? AND blocked = ?').run(req.user.id, int(req.params.uid));
+  res.json({ ok: true });
+}));
+
+// Mở (hoặc tạo) cuộc trò chuyện 1-1 với bạn bè
+api.post('/dm/:uid', wrap((req, res) => {
+  const me = req.user.id, uid = int(req.params.uid);
+  if (!getUser(uid) || !areFriends(me, uid) || isBlockedEither(me, uid)) throw forbidden('Chỉ nhắn tin riêng được khi đã là bạn bè');
+  const [a, b] = pair(me, uid);
+  const key = `dm:${a}:${b}`;
+  let g = db.prepare('SELECT * FROM groups WHERE key = ?').get(key);
+  if (!g) {
+    tx(() => {
+      const r = db.prepare("INSERT INTO groups (type, key, name, created_at) VALUES ('dm',?,?,?)").run(key, 'DM', now());
+      addMember(Number(r.lastInsertRowid), me);
+      addMember(Number(r.lastInsertRowid), uid);
+      db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ?').run(Number(r.lastInsertRowid));
+    });
+    g = db.prepare('SELECT * FROM groups WHERE key = ?').get(key);
+  }
+  res.json({ group: groupDto(g, me, getMember(g.id, me)) });
+}));
+
+// ============================================================================
+// Group riêng tư
+// ============================================================================
+const isPrivAdmin = (gid, uid) => getMember(gid, uid)?.role === 'admin';
+function requirePrivAdmin(gid, uid) {
+  const g = getGroup(gid);
+  if (!g || g.type !== 'private') throw notFound('Không tìm thấy nhóm');
+  if (!isPrivAdmin(gid, uid)) throw forbidden('Chỉ admin của nhóm mới làm được');
+  return g;
+}
+const memberCount = (gid) => db.prepare('SELECT COUNT(*) c FROM members WHERE group_id = ?').get(gid).c;
+function assertRoom(g, extra) {
+  if (memberCount(g.id) + extra > (g.member_limit || PRIVATE_LIMIT_DEFAULT)) throw bad('Nhóm đã đầy, không thể thêm thành viên');
+}
+
+api.post('/private', wrap((req, res) => {
+  rateLimit(`pg:${req.user.id}`, 10, 3600_000);
+  const name = str(req.body.name, 50);
+  if (name.length < 2) throw bad('Tên nhóm cần ít nhất 2 ký tự');
+  const avatar = req.body.avatarUrl ? checkUploadUrl(req.body.avatarUrl) : null;
+  const ids = [...new Set((req.body.memberIds || []).map(int))].filter((id) => areFriends(req.user.id, id) && !isBlockedEither(req.user.id, id));
+  const gid = tx(() => {
+    const r = db.prepare("INSERT INTO groups (type, name, avatar_url, member_limit, created_by, created_at) VALUES ('private',?,?,?,?,?)").run(name, avatar, PRIVATE_LIMIT_DEFAULT, req.user.id, now());
+    const gid = Number(r.lastInsertRowid);
+    addMember(gid, req.user.id, 'admin'); // người tạo tự thành admin
+    for (const id of ids) addMember(gid, id);
+    db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ?').run(gid);
+    return gid;
+  });
+  for (const id of ids) notify(id, 'group_invite', `${req.user.display_name} đã thêm bạn vào nhóm "${name}"`);
+  res.status(201).json({ group: groupDto(getGroup(gid), req.user.id, getMember(gid, req.user.id)) });
+}));
+
+api.patch('/private/:id', wrap((req, res) => {
+  const g = requirePrivAdmin(int(req.params.id), req.user.id);
+  if (req.body.name !== undefined) {
+    const name = str(req.body.name, 50);
+    if (name.length < 2) throw bad('Tên nhóm cần ít nhất 2 ký tự');
+    db.prepare('UPDATE groups SET name = ? WHERE id = ?').run(name, g.id);
+  }
+  if (req.body.avatarUrl !== undefined) db.prepare('UPDATE groups SET avatar_url = ? WHERE id = ?').run(req.body.avatarUrl ? checkUploadUrl(req.body.avatarUrl) : null, g.id);
+  if (req.body.memberLimit !== undefined) {
+    const lim = int(req.body.memberLimit);
+    if (!(lim >= 2 && lim <= PRIVATE_LIMIT_MAX)) throw bad(`Giới hạn phải từ 2 đến ${PRIVATE_LIMIT_MAX}`);
+    if (lim < memberCount(g.id)) throw bad('Giới hạn nhỏ hơn số thành viên hiện tại');
+    db.prepare('UPDATE groups SET member_limit = ? WHERE id = ?').run(lim, g.id);
+  }
+  res.json({ group: groupDto(getGroup(g.id), req.user.id, getMember(g.id, req.user.id)) });
+}));
+
+// Mời bạn bè: chỉ mời được người là bạn
+api.post('/private/:id/invite', wrap((req, res) => {
+  const g = requirePrivAdmin(int(req.params.id), req.user.id);
+  const ids = [...new Set((req.body.userIds || []).map(int))].filter((id) => areFriends(req.user.id, id) && !isBlockedEither(req.user.id, id) && !getMember(g.id, id));
+  if (!ids.length) throw bad('Không có bạn bè hợp lệ để mời');
+  assertRoom(g, ids.length);
+  for (const id of ids) {
+    addMember(g.id, id);
+    db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(g.id, id);
+    notify(id, 'group_invite', `${req.user.display_name} đã thêm bạn vào nhóm "${g.name}"`);
+  }
+  res.json({ added: ids.length });
+}));
+
+api.get('/private/:id/links', wrap((req, res) => {
+  const g = requirePrivAdmin(int(req.params.id), req.user.id);
+  res.json({ links: db.prepare('SELECT code, expires_at, revoked FROM invites WHERE group_id = ? AND revoked = 0 AND expires_at > ? ORDER BY expires_at DESC').all(g.id, now()) });
+}));
+api.post('/private/:id/links', wrap((req, res) => {
+  const g = requirePrivAdmin(int(req.params.id), req.user.id);
+  const hours = Math.min(Math.max(int(req.body.hours) || 24, 1), 24 * 30);
+  const code = randomToken(9);
+  db.prepare('INSERT INTO invites (code, group_id, created_by, expires_at) VALUES (?,?,?,?)').run(code, g.id, req.user.id, now() + hours * 3600_000);
+  res.status(201).json({ code, expiresAt: now() + hours * 3600_000 });
+}));
+api.delete('/private/links/:code', wrap((req, res) => {
+  const inv = db.prepare('SELECT * FROM invites WHERE code = ?').get(str(req.params.code, 40));
+  if (!inv) throw notFound();
+  requirePrivAdmin(inv.group_id, req.user.id);
+  db.prepare('UPDATE invites SET revoked = 1 WHERE code = ?').run(inv.code);
+  res.json({ ok: true });
+}));
+
+function validInvite(code) {
+  const inv = db.prepare('SELECT * FROM invites WHERE code = ?').get(str(code, 40));
+  if (!inv || inv.revoked || inv.expires_at < now()) throw new HttpError(410, 'Liên kết mời đã hết hạn hoặc bị thu hồi');
+  const g = getGroup(inv.group_id);
+  if (!g) throw new HttpError(410, 'Nhóm không còn tồn tại');
+  return { inv, g };
+}
+api.get('/invite/:code', wrap((req, res) => {
+  const { g } = validInvite(req.params.code);
+  res.json({ group: { id: g.id, name: g.name, memberCount: memberCount(g.id), joined: !!getMember(g.id, req.user.id) } });
+}));
+// Vào bằng link: phải chờ admin duyệt
+api.post('/invite/:code/join', wrap((req, res) => {
+  const { g } = validInvite(req.params.code);
+  if (getMember(g.id, req.user.id)) throw bad('Bạn đã ở trong nhóm này');
+  if (db.prepare("SELECT 1 FROM join_requests WHERE group_id = ? AND user_id = ? AND status = 'pending'").get(g.id, req.user.id)) throw bad('Yêu cầu của bạn đang chờ duyệt');
+  db.prepare('INSERT INTO join_requests (group_id, user_id, created_at) VALUES (?,?,?)').run(g.id, req.user.id, now());
+  for (const r of db.prepare("SELECT user_id FROM members WHERE group_id = ? AND role = 'admin'").all(g.id))
+    notify(r.user_id, 'join_request', `${req.user.display_name} xin vào nhóm "${g.name}"`);
+  res.status(201).json({ pending: true });
+}));
+
+api.get('/private/requests', wrap((req, res) => {
+  const rows = db.prepare(
+    `SELECT jr.*, g.name AS gname FROM join_requests jr JOIN groups g ON g.id = jr.group_id
+     WHERE jr.status = 'pending' AND jr.group_id IN (SELECT group_id FROM members WHERE user_id = ? AND role = 'admin') ORDER BY jr.id DESC`
+  ).all(req.user.id);
+  res.json({ requests: rows.map((r) => ({ id: r.id, groupId: r.group_id, groupName: r.gname, user: publicUser(getUser(r.user_id)) })) });
+}));
+function answerJoin(approve) {
+  return wrap((req, res) => {
+    const r = db.prepare("SELECT * FROM join_requests WHERE id = ? AND status = 'pending'").get(int(req.params.id));
+    if (!r) throw notFound('Yêu cầu không còn tồn tại');
+    const g = requirePrivAdmin(r.group_id, req.user.id);
+    if (approve) {
+      assertRoom(g, 1);
+      addMember(g.id, r.user_id);
+      db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(g.id, r.user_id);
+      notify(r.user_id, 'join_approved', `Bạn đã được duyệt vào nhóm "${g.name}"`);
+    }
+    db.prepare('UPDATE join_requests SET status = ? WHERE id = ?').run(approve ? 'approved' : 'rejected', r.id);
+    res.json({ ok: true });
+  });
+}
+api.post('/private/requests/:id/approve', answerJoin(true));
+api.post('/private/requests/:id/reject', answerJoin(false));
+
+api.post('/private/:id/admins/:uid', wrap((req, res) => {
+  const g = requirePrivAdmin(int(req.params.id), req.user.id);
+  if (!getMember(g.id, int(req.params.uid))) throw bad('Người này không ở trong nhóm');
+  db.prepare("UPDATE members SET role='admin' WHERE group_id=? AND user_id=?").run(g.id, int(req.params.uid));
+  res.json({ ok: true });
+}));
+api.delete('/private/:id/admins/:uid', wrap((req, res) => {
+  const g = requirePrivAdmin(int(req.params.id), req.user.id);
+  const admins = db.prepare("SELECT COUNT(*) c FROM members WHERE group_id=? AND role='admin'").get(g.id).c;
+  if (admins <= 1) throw bad('Nhóm cần ít nhất 1 admin');
+  db.prepare("UPDATE members SET role='member' WHERE group_id=? AND user_id=?").run(g.id, int(req.params.uid));
+  res.json({ ok: true });
+}));
+
+function leavePrivate(g, uid, res) {
+  const m = getMember(g.id, uid);
+  const others = memberCount(g.id) - 1;
+  const otherAdmins = db.prepare("SELECT COUNT(*) c FROM members WHERE group_id=? AND role='admin' AND user_id != ?").get(g.id, uid).c;
+  if (m.role === 'admin' && others > 0 && otherAdmins === 0) throw bad('Bạn là admin cuối cùng. Hãy chuyển quyền admin cho người khác trước khi rời.');
+  removeMember(g.id, uid);
+  if (others === 0) db.prepare('DELETE FROM groups WHERE id = ?').run(g.id);
+  res.json({ ok: true });
+}
+api.delete('/private/:id', wrap((req, res) => {
+  const g = requirePrivAdmin(int(req.params.id), req.user.id);
+  const ids = memberIds(g.id);
+  db.prepare('DELETE FROM groups WHERE id = ?').run(g.id); // giải tán
+  for (const id of ids) if (id !== req.user.id) notify(id, 'group_dissolved', `Nhóm "${g.name}" đã được giải tán`);
+  res.json({ ok: true });
+}));
+
+// ============================================================================
+// Report & kiểm duyệt
+// ============================================================================
+api.post(
+  '/reports',
+  wrap((req, res) => {
+    rateLimit(`rep:${req.user.id}`, 20, 3600_000);
+    const reason = str(req.body.reason, 500);
+    if (reason.length < 3) throw bad('Vui lòng nêu lý do');
+    let targetId, g = null, snapshot = {}, msgId = null;
+    if (req.body.messageId) {
+      const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.body.messageId));
+      if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
+      g = getGroup(msg.group_id);
+      if (!getMember(g.id, req.user.id)) throw forbidden();
+      targetId = msg.user_id;
+      msgId = msg.id;
+      snapshot = { body: msg.body, image: msg.image_url };
+    } else {
+      targetId = int(req.body.userId);
+      if (!getUser(targetId)) throw notFound('Người dùng không tồn tại');
+      if (req.body.groupId) {
+        g = getGroup(int(req.body.groupId));
+        if (g && !getMember(g.id, req.user.id)) g = null;
+      }
+    }
+    if (targetId === req.user.id) throw bad('Bạn không thể tự báo cáo mình');
+    const r = db.prepare(
+      `INSERT INTO reports (reporter_id, target_user_id, message_id, group_id, group_type, snapshot_body, snapshot_image, reason, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(req.user.id, targetId, msgId, g?.id ?? null, g?.type ?? 'dm', snapshot.body ?? null, snapshot.image ?? null, reason, now());
+    // Người bị report không được biết ai report: không có thông báo cho họ.
+    // Admin/mod nhận thông báo realtime.
+    const handlers = new Set(db.prepare("SELECT id FROM users WHERE role='admin' AND status='active'").all().map((x) => x.id));
+    if (g && g.type !== 'dm') {
+      const role = g.type === 'private' ? 'admin' : 'mod';
+      for (const x of db.prepare('SELECT user_id FROM members WHERE group_id = ? AND role = ?').all(g.id, role)) handlers.add(x.user_id);
+    }
+    handlers.delete(req.user.id);
+    for (const h of handlers) hub.send(h, { type: 'report_new', id: Number(r.lastInsertRowid) });
+    res.status(201).json({ ok: true });
+  })
+);
+
+function reportDto(r, viewerIsAdmin) {
+  const target = getUser(r.target_user_id);
+  return {
+    id: r.id, groupId: r.group_id, groupType: r.group_type,
+    groupName: r.group_id ? getGroup(r.group_id)?.name : null,
+    messageId: r.message_id, snapshotBody: r.snapshot_body, snapshotImage: r.snapshot_image,
+    reason: r.reason, status: r.status, resolution: r.resolution, note: r.note, createdAt: r.created_at,
+    target: publicUser(target), targetStatus: target?.status,
+    reporter: viewerIsAdmin ? publicUser(getUser(r.reporter_id)) : undefined, // mod không thấy người báo cáo
+  };
+}
+
+// Hàng chờ: admin hệ thống thấy tất cả; mod/admin group chỉ thấy report trong group của mình
+api.get('/reports', wrap((req, res) => {
+  const admin = req.user.role === 'admin';
+  const status = req.query.status === 'resolved' ? 'resolved' : 'open';
+  const rows = admin
+    ? db.prepare('SELECT * FROM reports WHERE status = ? ORDER BY id DESC LIMIT 200').all(status)
+    : db.prepare(
+        `SELECT r.* FROM reports r JOIN members m ON m.group_id = r.group_id AND m.user_id = ?
+         WHERE r.status = ? AND ((r.group_type IN ('country','region','province') AND m.role='mod') OR (r.group_type='private' AND m.role='admin'))
+         ORDER BY r.id DESC LIMIT 200`
+      ).all(req.user.id, status);
+  res.json({ reports: rows.map((r) => reportDto(r, admin)) });
+}));
+
+const ACTIONS_GROUP = ['dismiss', 'delete_message', 'mute', 'kick'];
+const ACTIONS_ADMIN = [...ACTIONS_GROUP, 'warn', 'lock_temp', 'lock_perm'];
+
+api.post(
+  '/reports/:id/resolve',
+  wrap((req, res) => {
+    const r = db.prepare("SELECT * FROM reports WHERE id = ? AND status = 'open'").get(int(req.params.id));
+    if (!r) throw notFound('Report không còn tồn tại');
+    const g = r.group_id ? getGroup(r.group_id) : null;
+    const admin = req.user.role === 'admin';
+    const groupHandler = g && g.type !== 'dm' && (g.type === 'private' ? isPrivAdmin(g.id, req.user.id) : getMember(g.id, req.user.id)?.role === 'mod');
+    if (!admin && !groupHandler) throw forbidden();
+    const action = req.body.action;
+    if (!(admin ? ACTIONS_ADMIN : ACTIONS_GROUP).includes(action)) throw bad('Hành động không hợp lệ');
+    const note = str(req.body.note, 300) || 'Vi phạm quy tắc cộng đồng';
+    const target = r.target_user_id;
+
+    tx(() => {
+      if (action === 'delete_message' && r.message_id) {
+        db.prepare('UPDATE messages SET deleted = 1 WHERE id = ?').run(r.message_id);
+        hub.sendMany(memberIds(r.group_id), { type: 'message_deleted', groupId: r.group_id, messageId: r.message_id });
+        log(req.user.id, 'delete_message', { target, group: r.group_id, message: r.message_id, reason: note });
+        notify(target, 'moderation', `Tin nhắn của bạn đã bị xóa. Lý do: ${note}`);
+      }
+      if (action === 'mute' && g && getMember(g.id, target)) {
+        db.prepare('UPDATE members SET mod_muted_until = ? WHERE group_id = ? AND user_id = ?').run(now() + 24 * 3600_000, g.id, target);
+        log(req.user.id, 'mute', { target, group: g.id, reason: note });
+        notify(target, 'moderation', `Bạn bị tắt tiếng 24 giờ trong "${g.name}". Lý do: ${note}`);
+      }
+      if (action === 'kick' && g && getMember(g.id, target)) {
+        removeMember(g.id, target);
+        if (g.type !== 'private') db.prepare('INSERT OR IGNORE INTO bans (group_id, user_id) VALUES (?,?)').run(g.id, target);
+        log(req.user.id, 'kick', { target, group: g.id, reason: note });
+        notify(target, 'moderation', `Bạn đã bị xóa khỏi "${g.name}". Lý do: ${note}`);
+      }
+      if (action === 'warn') {
+        log(req.user.id, 'warn', { target, reason: note });
+        notify(target, 'moderation', `Cảnh cáo từ quản trị viên: ${note}`);
+      }
+      if (action === 'lock_temp' || action === 'lock_perm') lockUser(req.user.id, target, action === 'lock_temp' ? Math.min(int(req.body.days) || 7, 365) : null, note);
+      db.prepare("UPDATE reports SET status='resolved', resolution=?, note=?, handled_by=?, handled_at=? WHERE id=?").run(action, note, req.user.id, now(), r.id);
+    });
+    notify(r.reporter_id, 'report_done', 'Báo cáo của bạn đã được xử lý. Cảm ơn bạn đã giúp giữ cộng đồng lành mạnh.');
+    res.json({ ok: true });
+  })
+);
+
+function lockUser(actor, uid, days, reason) {
+  const t = getUser(uid);
+  if (!t || t.role === 'admin') throw forbidden('Không thể khóa tài khoản này');
+  db.prepare("UPDATE users SET status='locked', locked_until=? WHERE id=?").run(days ? now() + days * DAY : null, uid);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(uid);
+  hub.send(uid, { type: 'locked' });
+  log(actor, days ? 'lock_temp' : 'lock_perm', { target: uid, reason });
+}
+
+// ============================================================================
+// Thông báo
+// ============================================================================
+api.get('/notifications', wrap((req, res) => {
+  const rows = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 50').all(req.user.id);
+  res.json({
+    notifications: rows.map((n) => ({ id: n.id, type: n.type, text: n.text, read: !!n.read, createdAt: n.created_at })),
+    unread: db.prepare('SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read = 0').get(req.user.id).c,
+  });
+}));
+api.post('/notifications/read', wrap((req, res) => {
+  db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(req.user.id);
+  res.json({ ok: true });
+}));
+
+// ============================================================================
+// Bản tin
+// ============================================================================
+const newsDto = (n, uid) => ({
+  id: n.id, title: n.title, body: n.body, imageUrl: n.image_url, pinned: !!n.pinned, edited: !!n.edited,
+  createdAt: n.created_at, read: !!db.prepare('SELECT 1 FROM news_reads WHERE user_id=? AND news_id=?').get(uid, n.id),
+});
+
+api.get('/news', wrap((req, res) => {
+  const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
+  const items = rows.map((n) => newsDto(n, req.user.id));
+  res.json({ news: items, unread: items.filter((n) => !n.read).length });
+}));
+api.post('/news/read-all', wrap((req, res) => {
+  db.prepare('INSERT OR IGNORE INTO news_reads (user_id, news_id) SELECT ?, id FROM news').run(req.user.id);
+  res.json({ ok: true });
+}));
+api.post('/news/:id/read', wrap((req, res) => {
+  db.prepare('INSERT OR IGNORE INTO news_reads (user_id, news_id) VALUES (?,?)').run(req.user.id, int(req.params.id));
+  res.json({ ok: true });
+}));
+
+api.post('/admin/news', adminOnly, wrap((req, res) => {
+  const title = str(req.body.title, 150), body = str(req.body.body, 5000);
+  if (!title || !body) throw bad('Cần có tiêu đề và nội dung');
+  const img = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
+  const pinned = req.body.pinned ? 1 : 0;
+  const r = db.prepare('INSERT INTO news (title, body, image_url, pinned, author_id, created_at) VALUES (?,?,?,?,?,?)').run(title, body, img, pinned, req.user.id, now());
+  const n = db.prepare('SELECT * FROM news WHERE id = ?').get(r.lastInsertRowid);
+  const recipients = db.prepare("SELECT id FROM users WHERE status='active' AND news_push=1 AND verified=1").all();
+  for (const u of recipients) hub.send(u.id, { type: 'news', news: { id: n.id, title: n.title } });
+  hub.sendMany(db.prepare("SELECT id FROM users WHERE status='active' AND news_push=0").all().map((u) => u.id), { type: 'news_silent' });
+  res.status(201).json({ news: newsDto(n, req.user.id) });
+}));
+api.patch('/admin/news/:id', adminOnly, wrap((req, res) => {
+  const n = db.prepare('SELECT * FROM news WHERE id = ?').get(int(req.params.id));
+  if (!n) throw notFound();
+  const b = req.body;
+  const title = b.title !== undefined ? str(b.title, 150) : n.title;
+  const body = b.body !== undefined ? str(b.body, 5000) : n.body;
+  if (!title || !body) throw bad('Cần có tiêu đề và nội dung');
+  const contentChanged = title !== n.title || body !== n.body;
+  db.prepare('UPDATE news SET title=?, body=?, pinned=?, edited=? WHERE id=?').run(title, body, b.pinned !== undefined ? (b.pinned ? 1 : 0) : n.pinned, contentChanged ? 1 : n.edited, n.id);
+  res.json({ news: newsDto(db.prepare('SELECT * FROM news WHERE id = ?').get(n.id), req.user.id) });
+}));
+api.delete('/admin/news/:id', adminOnly, wrap((req, res) => {
+  db.prepare('DELETE FROM news WHERE id = ?').run(int(req.params.id));
+  db.prepare('DELETE FROM news_reads WHERE news_id = ?').run(int(req.params.id));
+  res.json({ ok: true });
+}));
+
+// ============================================================================
+// Admin hệ thống: người dùng, mod, log
+// ============================================================================
+api.get('/admin/users', adminOnly, wrap((req, res) => {
+  const q = `%${str(req.query.q, 60)}%`;
+  const rows = db.prepare("SELECT * FROM users WHERE status != 'deleted' AND (display_name LIKE ? OR email LIKE ?) ORDER BY id DESC LIMIT 50").all(q, q);
+  res.json({ users: rows.map((u) => ({ ...publicUser(u), email: u.email, status: u.status, lockedUntil: u.locked_until, role: u.role })) });
+}));
+api.post('/admin/users/:id/lock', adminOnly, wrap((req, res) => {
+  const days = req.body.permanent ? null : Math.min(int(req.body.days) || 7, 365);
+  lockUser(req.user.id, int(req.params.id), days, str(req.body.reason, 300) || 'Vi phạm quy tắc cộng đồng');
+  res.json({ ok: true });
+}));
+api.post('/admin/users/:id/unlock', adminOnly, wrap((req, res) => {
+  db.prepare("UPDATE users SET status='active', locked_until=NULL WHERE id=? AND status='locked'").run(int(req.params.id));
+  log(req.user.id, 'unlock', { target: int(req.params.id) });
+  res.json({ ok: true });
+}));
+
+// Trao / thu hồi quyền mod trong từng group công khai
+api.get('/admin/mods', adminOnly, wrap((_req, res) => {
+  const rows = db.prepare("SELECT m.group_id, m.user_id FROM members m JOIN groups g ON g.id=m.group_id WHERE m.role='mod' AND g.type IN ('country','region','province')").all();
+  res.json({ mods: rows.map((r) => ({ groupId: r.group_id, groupName: getGroup(r.group_id).name, user: publicUser(getUser(r.user_id)) })) });
+}));
+api.post('/admin/mods', adminOnly, wrap((req, res) => {
+  const g = getGroup(int(req.body.groupId));
+  const uid = int(req.body.userId);
+  if (!g || !PUBLIC_TYPES.includes(g.type)) throw bad('Chỉ trao quyền mod cho group công khai');
+  if (!getMember(g.id, uid)) throw bad('Người này chưa ở trong nhóm');
+  db.prepare("UPDATE members SET role='mod' WHERE group_id=? AND user_id=?").run(g.id, uid);
+  log(req.user.id, 'grant_mod', { target: uid, group: g.id });
+  notify(uid, 'mod', `Bạn được trao quyền mod của nhóm "${g.name}"`);
+  res.json({ ok: true });
+}));
+api.delete('/admin/mods/:groupId/:userId', adminOnly, wrap((req, res) => {
+  const gid = int(req.params.groupId), uid = int(req.params.userId);
+  db.prepare("UPDATE members SET role='member' WHERE group_id=? AND user_id=? AND role='mod'").run(gid, uid);
+  log(req.user.id, 'revoke_mod', { target: uid, group: gid });
+  notify(uid, 'mod', 'Quyền mod của bạn đã được thu hồi');
+  res.json({ ok: true });
+}));
+
+api.get('/admin/logs', adminOnly, wrap((_req, res) => {
+  const rows = db.prepare('SELECT * FROM mod_logs ORDER BY id DESC LIMIT 200').all();
+  res.json({
+    logs: rows.map((l) => ({
+      id: l.id, action: l.action, reason: l.reason, createdAt: l.created_at, messageId: l.message_id,
+      actor: publicUser(getUser(l.actor_id)).displayName,
+      target: l.target_user_id ? publicUser(getUser(l.target_user_id)).displayName : null,
+      group: l.group_id ? getGroup(l.group_id)?.name : null,
+    })),
+  });
+}));
+
+// ---- lỗi ---------------------------------------------------------------------
+api.use((_req, _res, next) => next(new HttpError(404, 'Không tìm thấy')));
+api.use((err, _req, res, _next) => {
+  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Dữ liệu quá lớn' });
+  if (err instanceof SyntaxError) return res.status(400).json({ error: 'Dữ liệu không hợp lệ' });
+  console.error(err);
+  res.status(500).json({ error: 'Lỗi máy chủ' });
+});
+
+export { isOnline };

@@ -1,0 +1,184 @@
+import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs';
+import path from 'node:path';
+import { COUNTRY, REGIONS, PROVINCES } from './geo.js';
+
+const dbFile = process.env.DB_FILE || path.join(process.cwd(), 'data', 'jkr.db');
+if (dbFile !== ':memory:') fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+
+export const db = new DatabaseSync(dbFile);
+db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000; PRAGMA cache_size = -65536; PRAGMA temp_store = MEMORY;');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  pass_hash TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  avatar_color INTEGER NOT NULL DEFAULT 0,
+  avatar_url TEXT,
+  language TEXT NOT NULL DEFAULT 'vi',
+  country TEXT NOT NULL DEFAULT 'VN',
+  province_id INTEGER NOT NULL,
+  home_changed_at INTEGER,
+  role TEXT NOT NULL DEFAULT 'user',            -- user | admin
+  status TEXT NOT NULL DEFAULT 'active',        -- active | locked | deleted
+  locked_until INTEGER,                         -- null + status=locked => vĩnh viễn
+  verified INTEGER NOT NULL DEFAULT 0,
+  verify_token TEXT,
+  friend_policy TEXT NOT NULL DEFAULT 'shared', -- everyone | shared | none
+  show_online INTEGER NOT NULL DEFAULT 1,
+  news_push INTEGER NOT NULL DEFAULT 1,
+  hide_suggestions INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,                -- country | region | province | private | dm
+  key TEXT UNIQUE,                   -- VN | VN:north | VN:p:12 | dm:1:2
+  name TEXT NOT NULL,
+  short TEXT,
+  lang TEXT NOT NULL DEFAULT 'vi',
+  avatar_url TEXT,
+  member_limit INTEGER,
+  created_by INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS members (
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member',  -- member | mod (công khai) | admin (riêng)
+  mod_muted_until INTEGER,              -- bị mod/admin mute
+  notif_muted_until INTEGER,            -- tự tắt thông báo (-1 = vô thời hạn)
+  rules_ack INTEGER NOT NULL DEFAULT 0,
+  last_read_id INTEGER NOT NULL DEFAULT 0,
+  joined_at INTEGER NOT NULL,
+  PRIMARY KEY (group_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_members_user ON members(user_id);
+CREATE TABLE IF NOT EXISTS bans (
+  group_id INTEGER NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (group_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  image_url TEXT,
+  reply_to INTEGER,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id, id);
+CREATE TABLE IF NOT EXISTS friend_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  from_id INTEGER NOT NULL, to_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', -- pending | accepted | declined
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS friends (
+  a INTEGER NOT NULL, b INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (a, b)   -- a < b
+);
+CREATE TABLE IF NOT EXISTS blocks (
+  blocker INTEGER NOT NULL, blocked INTEGER NOT NULL, PRIMARY KEY (blocker, blocked)
+);
+CREATE TABLE IF NOT EXISTS invites (
+  code TEXT PRIMARY KEY, group_id INTEGER NOT NULL, created_by INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS join_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  reporter_id INTEGER NOT NULL,
+  target_user_id INTEGER NOT NULL,
+  message_id INTEGER,
+  group_id INTEGER,
+  group_type TEXT,
+  snapshot_body TEXT, snapshot_image TEXT,   -- admin chỉ thấy nội dung bị report, không đọc cả cuộc trò chuyện
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',       -- open | resolved
+  resolution TEXT, note TEXT, handled_by INTEGER, handled_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS mod_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id INTEGER NOT NULL, action TEXT NOT NULL,
+  target_user_id INTEGER, group_id INTEGER, message_id INTEGER, reason TEXT, created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS reactions (
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (message_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS news (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL, body TEXT NOT NULL, image_url TEXT,
+  pinned INTEGER NOT NULL DEFAULT 0, edited INTEGER NOT NULL DEFAULT 0,
+  author_id INTEGER NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS news_reads (
+  user_id INTEGER NOT NULL, news_id INTEGER NOT NULL, PRIMARY KEY (user_id, news_id)
+);
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL, type TEXT NOT NULL, text TEXT NOT NULL,
+  read INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, id);
+`);
+
+export const now = () => Date.now();
+
+export function tx(fn) {
+  db.exec('BEGIN');
+  try {
+    const r = fn();
+    db.exec('COMMIT');
+    return r;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+// ---- Group công khai theo địa lý: tạo sẵn toàn bộ khi khởi động -------------
+export function ensureGroup(type, key, name, short) {
+  const row = db.prepare('SELECT id FROM groups WHERE key = ?').get(key);
+  if (row) return row.id;
+  const r = db
+    .prepare('INSERT INTO groups (type, key, name, short, created_at) VALUES (?,?,?,?,?)')
+    .run(type, key, name, short || null, now());
+  return Number(r.lastInsertRowid);
+}
+
+export function seedGeoGroups() {
+  ensureGroup('country', COUNTRY.code, COUNTRY.name, 'VN');
+  for (const r of REGIONS) ensureGroup('region', `${COUNTRY.code}:${r.code}`, r.name, r.short);
+  for (const p of PROVINCES) ensureGroup('province', `${COUNTRY.code}:p:${p.id}`, p.name, null);
+}
+seedGeoGroups();
+
+// 3 group (quốc gia, khu vực, tỉnh/thành) ứng với một tỉnh
+export function homeGroupIds(province) {
+  return [
+    ensureGroup('country', COUNTRY.code),
+    ensureGroup('region', `${COUNTRY.code}:${province.region}`),
+    ensureGroup('province', `${COUNTRY.code}:p:${province.id}`),
+  ];
+}
+
+// ---- Tên hiển thị duy nhất (không phân biệt hoa/thường, bỏ khoảng trắng thừa) ----
+export const nameKey = (s) => String(s).normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
+try { db.exec('ALTER TABLE users ADD COLUMN name_key TEXT'); } catch { /* đã có cột */ }
+for (const u of db.prepare("SELECT id, display_name FROM users WHERE name_key IS NULL AND status != 'deleted'").all()) {
+  try { db.prepare('UPDATE users SET name_key = ? WHERE id = ?').run(nameKey(u.display_name), u.id); } catch { /* trùng cũ: bỏ qua */ }
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_key ON users(name_key) WHERE name_key IS NOT NULL');

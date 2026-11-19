@@ -1,0 +1,314 @@
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName } from './core.js';
+
+// ===========================================================================
+// Đăng nhập / đăng ký (render vào #root, ngoài shell)
+// ===========================================================================
+export function renderLogin(root, query) {
+  const note = query.get('verify') === 'ok' ? '<div class="notice" role="status">Email đã được xác nhận. Hãy đăng nhập.</div>'
+    : query.get('verify') === 'fail' ? '<div class="error">Liên kết xác nhận không hợp lệ hoặc đã dùng rồi.</div>' : '';
+  root.innerHTML = `<div class="auth"><div class="auth-box">
+    <div class="brand" style="padding:0"><span class="logo">JK</span>JKR talks</div>
+    <div><h1>Đăng nhập</h1><p class="muted small" style="margin-top:8px">Kết nối và lan tỏa những điều tích cực về LingOrm.</p></div>
+    ${note}<div id="err"></div>
+    <form id="lf" class="col">
+      <div class="field"><label for="email">Email</label><input class="input" id="email" type="email" required autocomplete="email" placeholder="ban@email.com"></div>
+      <div class="field"><label for="pw">Mật khẩu</label><input class="input" id="pw" type="password" required autocomplete="current-password"></div>
+      <button class="btn primary block" style="min-height:52px;font-size:16px;border-radius:14px">Đăng nhập</button>
+    </form>
+    <p class="small muted">Chưa có tài khoản? <a href="#/register" style="color:var(--accent);font-weight:600">Tạo tài khoản</a></p></div></div>`;
+  $('#lf').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api('POST', '/auth/login', { email: $('#email').value, password: $('#pw').value });
+      setToken(r.token);
+      S.hooks.boot();
+    } catch (er) { $('#err').innerHTML = `<div class="error" role="alert">${esc(er.message)}</div>`; }
+  };
+}
+
+export async function renderRegister(root) {
+  if (!S.geo) S.geo = await api('GET', '/geo');
+  const { regions, provinces } = S.geo;
+  root.innerHTML = `<div class="auth"><div class="auth-box">
+    <div class="brand" style="padding:0"><span class="logo">JK</span>JKR talks</div>
+    <div><h1>Tạo tài khoản</h1><p class="muted small" style="margin-top:8px">Chọn nơi bạn ở để vào đúng các nhóm chat cùng khu vực.</p></div>
+    <div id="err"></div>
+    <form id="rf" class="col">
+      <div class="field"><label for="email">Email</label><input class="input" id="email" type="email" required autocomplete="email" placeholder="ban@email.com"></div>
+      <div class="field"><label for="dn">Tên hiển thị</label><input class="input" id="dn" required minlength="2" maxlength="30" autocomplete="nickname" placeholder="Tên mọi người sẽ thấy"></div>
+      <div class="field"><label for="pw">Mật khẩu</label><input class="input" id="pw" type="password" required minlength="8" autocomplete="new-password" placeholder="Ít nhất 8 ký tự"></div>
+      <div class="field"><label for="pw2">Xác nhận mật khẩu</label><input class="input" id="pw2" type="password" required minlength="8" autocomplete="new-password" placeholder="Nhập lại mật khẩu"></div>
+      <div class="geo-card">
+        <div style="font-weight:700">Bạn ở đâu tại Việt Nam?</div>
+        <div class="field"><label for="region">Vùng</label><select class="input" id="region">${regions.map((r) => `<option value="${r.code}">${esc(r.name)}</option>`).join('')}</select></div>
+        <div class="field"><label for="city">Tỉnh / Thành phố</label><select class="input" id="city"></select></div>
+        <div class="small muted" id="geohint"></div>
+      </div>
+      <label class="check" style="align-items:flex-start"><input type="checkbox" id="accept" required style="margin-top:2px"><span>JKR talks chỉ dành cho fan <b>Only LingOrm</b>, không chào đón multi, only toxic, anti, chỉ bàn luận về LingOrm ở các nhóm công khai</span></label>
+      <button class="btn primary block" id="regbtn" disabled style="min-height:52px;font-size:16px;border-radius:14px">Tạo tài khoản</button>
+    </form>
+    <p class="small muted">Đã có tài khoản? <a href="#/login" style="color:var(--accent);font-weight:600">Đăng nhập</a></p></div></div>`;
+  const fillCities = () => {
+    $('#city').innerHTML = provinces.filter((p) => p.region === $('#region').value).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    hint();
+  };
+  const hint = () => {
+    const r = regions.find((x) => x.code === $('#region').value);
+    const c = provinces.find((p) => p.id === Number($('#city').value));
+    $('#geohint').textContent = `Hiện app mới hỗ trợ Việt Nam. Bạn sẽ tự vào 3 nhóm: Việt Nam, ${r.name}, ${c?.name}. Có thể vào thêm nhóm vùng, tỉnh/thành khác sau.`;
+  };
+  $('#accept').onchange = (e) => { $('#regbtn').disabled = !e.target.checked; };
+  $('#region').onchange = fillCities;
+  $('#city').onchange = hint;
+  fillCities();
+  $('#rf').onsubmit = async (e) => {
+    e.preventDefault();
+    if ($('#pw').value !== $('#pw2').value) { $('#err').innerHTML = '<div class="error" role="alert">Mật khẩu xác nhận không khớp</div>'; $('#pw2').focus(); return; }
+    try {
+      const r = await api('POST', '/auth/register', { email: $('#email').value, displayName: $('#dn').value, password: $('#pw').value, passwordConfirm: $('#pw2').value, acceptCommunity: $('#accept').checked, provinceId: Number($('#city').value), country: 'VN' });
+      root.innerHTML = `<div class="auth"><div class="auth-box"><h1>Kiểm tra email của bạn</h1>
+        <p class="muted">${r.needVerify ? 'Chúng tôi đã gửi liên kết xác nhận tới email của bạn. Bấm vào liên kết để kích hoạt tài khoản.' : 'Tài khoản đã sẵn sàng.'}</p>
+        ${r.devVerifyUrl ? `<div class="notice">Chế độ phát triển (chưa cấu hình gửi email): <a href="${esc(r.devVerifyUrl)}">bấm vào đây để xác nhận</a></div>` : ''}
+        <a class="btn primary" href="#/login">Đến trang đăng nhập</a></div></div>`;
+    } catch (er) { $('#err').innerHTML = `<div class="error" role="alert">${esc(er.message)}</div>`; }
+  };
+}
+
+// ===========================================================================
+// Khám phá nhóm
+// ===========================================================================
+export async function renderDiscover(view) {
+  let type = 'region', q = '';
+  view.innerHTML = `<div class="page"><div class="page-inner">
+    <h1>Khám phá nhóm</h1>
+    <label class="sr-only" for="q">Tìm nhóm</label>
+    <input class="input" id="q" type="search" placeholder="Tìm vùng, tỉnh/thành">
+    <div class="pillnav" role="group" aria-label="Loại nhóm">
+      <button data-type="country" aria-pressed="false">Quốc gia</button><button data-type="region" aria-pressed="true">Vùng</button><button data-type="province" aria-pressed="false">Tỉnh / Thành</button></div>
+    <p class="small muted">Nhóm công khai tại Việt Nam: vào tự do, không cần duyệt. Tham gia nhóm khác không làm đổi vị trí của bạn.</p>
+    <div id="sugg"></div><div class="list" id="gl"></div></div></div>`;
+  const load = async () => {
+    const { groups } = await api('GET', `/groups/discover?type=${type}&q=${encodeURIComponent(q)}`);
+    $('#gl').innerHTML = groups.map((g) => `<div class="card">${groupAvatar(g)}<div class="grow"><div style="font-weight:600">${esc(g.name)}</div><div class="tiny muted">${g.memberCount} thành viên</div></div>
+      ${g.joined ? `<span class="pill ok" style="padding:6px 10px;font-size:13px">Đã vào</span><a class="btn sm" href="#/chat/${g.id}">Mở</a>` : `<button class="btn primary" data-act="join-from-discover" data-id="${g.id}">Tham gia</button>`}</div>`).join('') || '<p class="muted">Không tìm thấy nhóm phù hợp.</p>';
+  };
+  $$('.pillnav button', view).forEach((b) => (b.onclick = () => { type = b.dataset.type; $$('.pillnav button', view).forEach((x) => x.setAttribute('aria-pressed', x === b)); load().catch(fail); }));
+  let t;
+  $('#q').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { q = e.target.value; load().catch(fail); }, 200); };
+  await load();
+  if (!S.me.hideSuggestions) {
+    const s = await api('GET', '/groups/suggestions').catch(() => ({ groups: [] }));
+    if (s.groups.length) $('#sugg').innerHTML = `<div class="card col" style="background:var(--soft)"><div class="row between"><strong>Gợi ý cho bạn</strong><button class="link-btn" data-act="hide-sugg">Ẩn gợi ý</button></div>
+      ${s.groups.map((g) => `<div class="row"><div class="grow"><b>${esc(g.name)}</b> <span class="tiny muted">· ${esc(g.reason)}</span></div><button class="btn sm primary" data-act="join-from-discover" data-id="${g.id}">Tham gia</button></div>`).join('')}</div>`;
+  }
+}
+actions['join-from-discover'] = async (el) => {
+  try { await api('POST', `/groups/${el.dataset.id}/join`); await refreshGroups(); toast('Đã tham gia nhóm'); go(`#/chat/${el.dataset.id}`); } catch (e) { fail(e); }
+};
+actions['hide-sugg'] = async () => {
+  try { const r = await api('PATCH', '/me', { hideSuggestions: true }); S.me = r.user; $('#sugg').innerHTML = ''; } catch (e) { fail(e); }
+};
+
+// ===========================================================================
+// Bản tin
+// ===========================================================================
+export async function renderNews(view) {
+  const { news } = await api('GET', '/news');
+  const admin = S.me.role === 'admin';
+  view.innerHTML = `<div class="page"><div class="page-inner">
+    <div class="row between"><h1>Bản tin</h1>${admin ? '<button class="btn primary" data-act="news-new">Đăng bản tin</button>' : ''}</div>
+    <p class="small muted">Thông báo từ đội vận hành JKR talks. Bạn chỉ đọc, không trả lời trong bản tin.</p>
+    <div class="list">${news.map((n) => `<article class="card col" ${n.read ? '' : 'style="border-color:var(--accent)"'}>
+      <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}${n.read ? '' : '<span class="pill">Mới</span>'}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
+      <h2 style="font-size:18px">${esc(n.title)}</h2>
+      ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy">` : ''}
+      <p style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</p>
+      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
+    </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
+  if (S.unreadNews) { api('POST', '/news/read-all').then(() => { S.unreadNews = 0; S.hooks.renderSide(); }).catch(() => {}); }
+}
+const newsForm = (v = {}) => [
+  { name: 'title', label: 'Tiêu đề', value: v.title || '', required: true, max: 150 },
+  { name: 'body', label: 'Nội dung', type: 'textarea', value: v.body || '', required: true, max: 5000 },
+];
+actions['news-new'] = async () => {
+  const m = openModal(`<form id="nf" class="col"><h2>Đăng bản tin</h2>
+    <div class="field"><label for="nt">Tiêu đề</label><input class="input" id="nt" required maxlength="150"></div>
+    <div class="field"><label for="nb">Nội dung</label><textarea class="input" id="nb" required maxlength="5000"></textarea></div>
+    <div class="field"><label for="ni">Ảnh (không bắt buộc, tối đa 2MB)</label><input id="ni" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
+    <label class="check"><input type="checkbox" id="np"> Ghim lên đầu</label>
+    <p class="small muted">Bản tin hiện cho toàn bộ người dùng và gửi thông báo đẩy tới người bật thông báo bản tin.</p>
+    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Đăng</button></div></form>`);
+  $('[data-close]', m).onclick = closeModal;
+  $('#nf').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      let imageUrl;
+      const f = $('#ni').files[0];
+      if (f) {
+        if (f.size > 2 * 1024 * 1024) return toast('Ảnh quá lớn (tối đa 2MB)');
+        const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+        imageUrl = (await api('POST', '/upload', { dataUrl })).url;
+      }
+      await api('POST', '/admin/news', { title: $('#nt').value, body: $('#nb').value, imageUrl, pinned: $('#np').checked });
+      closeModal(); renderNews($('#view'));
+    } catch (er) { fail(er); }
+  };
+};
+actions['news-edit'] = async (el) => {
+  const v = await ask({ title: 'Sửa bản tin', fields: newsForm({ title: el.dataset.title, body: el.dataset.body }), ok: 'Lưu' });
+  if (!v) return;
+  try { await api('PATCH', `/admin/news/${el.dataset.id}`, v); renderNews($('#view')); } catch (e) { fail(e); }
+};
+actions['news-pin'] = async (el) => { try { await api('PATCH', `/admin/news/${el.dataset.id}`, { pinned: el.dataset.pinned !== '1' }); renderNews($('#view')); } catch (e) { fail(e); } };
+actions['news-del'] = async (el) => {
+  if (!(await confirmBox('Xóa bản tin?', 'Bản tin sẽ biến mất với mọi người.', 'Xóa', true))) return;
+  try { await api('DELETE', `/admin/news/${el.dataset.id}`); renderNews($('#view')); } catch (e) { fail(e); }
+};
+
+// ===========================================================================
+// Cài đặt
+// ===========================================================================
+export function renderSettings(view) {
+  const u = S.me;
+  const { regions, provinces } = S.geo;
+  const cooldown = u.homeChangedAt && Date.now() - u.homeChangedAt < 30 * 864e5;
+  view.innerHTML = `<div class="page"><div class="page-inner">
+    <h1>Cài đặt</h1>
+    <section class="card col"><div class="h2" style="margin:0">Hồ sơ</div>
+      <div class="row">${avatar(u, 'lg')}<div class="grow"><div class="small muted">${esc(u.email)}</div><div class="small muted">${esc(u.location.province)} · ${esc(u.location.region)}</div></div></div>
+      <form id="pf" class="col">
+        <div class="field"><label for="dn">Tên hiển thị</label><input class="input" id="dn" value="${esc(u.displayName)}" required minlength="2" maxlength="30"></div>
+        <div class="field"><label for="lang">Ngôn ngữ</label><select class="input" id="lang">${[['vi', 'Tiếng Việt'], ['en', 'English'], ['th', 'ภาษาไทย']].map(([c, n]) => `<option value="${c}" ${u.language === c ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+        <div class="field"><label for="av">Màu ảnh đại diện</label><div class="row">${[0, 1, 2, 3, 4, 5].map((i) => `<label style="cursor:pointer"><input type="radio" name="avc" value="${i}" class="sr-only" ${u.avatarColor === i ? 'checked' : ''}><span class="av c${i}" style="${u.avatarColor === i ? 'outline:3px solid var(--accent);outline-offset:2px' : ''}" data-avc>${esc([...u.displayName][0].toUpperCase())}</span></label>`).join('')}</div></div>
+        <div class="field"><label for="avf">Hoặc tải ảnh đại diện</label><input type="file" id="avf" accept="image/png,image/jpeg,image/gif,image/webp"></div>
+        <button class="btn primary">Lưu hồ sơ</button></form></section>
+    <section class="card col"><div class="h2" style="margin:0">Vị trí "home"</div>
+      <p class="small muted">Chỉ hiển thị tới cấp tỉnh/thành. Đổi được 1 lần / 30 ngày.${cooldown ? ' <b>Bạn vừa đổi gần đây nên tạm thời chưa đổi được.</b>' : ''}</p>
+      <form id="hf" class="col"><div class="field"><label for="hp">Tỉnh / Thành phố</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+      <button class="btn" ${cooldown ? 'disabled' : ''}>Đổi vị trí</button></form></section>
+    <section class="card col"><div class="h2" style="margin:0">Quyền riêng tư & thông báo</div>
+      <div class="field"><label for="fp">Ai được gửi lời mời kết bạn cho tôi</label><select class="input" id="fp">${[['shared', 'Chỉ người chung nhóm'], ['everyone', 'Mọi người'], ['none', 'Không ai']].map(([c, n]) => `<option value="${c}" ${u.friendPolicy === c ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <label class="check"><input type="checkbox" id="so" ${u.showOnline ? 'checked' : ''}> Hiển thị trạng thái online (tắt thì bạn cũng không thấy trạng thái của người khác)</label>
+      <label class="check"><input type="checkbox" id="np" ${u.newsPush ? 'checked' : ''}> Nhận thông báo khi có bản tin mới</label>
+      <label class="check"><input type="checkbox" id="hs" ${u.hideSuggestions ? 'checked' : ''}> Ẩn gợi ý nhóm</label>
+      <button class="btn" id="savepriv">Lưu cài đặt</button></section>
+    <section class="card col"><div class="h2" style="margin:0">Tài khoản</div>
+      <div class="row wrap"><button class="btn" data-act="logout">Đăng xuất</button><button class="btn danger" data-act="delete-account">Xóa tài khoản và dữ liệu</button></div></section>
+  </div></div>`;
+  let pendingAvatar;
+  $('#avf').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 2 * 1024 * 1024) return toast('Ảnh quá lớn (tối đa 2MB)');
+    const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+    try { pendingAvatar = (await api('POST', '/upload', { dataUrl })).url; toast('Đã chọn ảnh. Bấm "Lưu hồ sơ".'); } catch (er) { fail(er); }
+  };
+  const save = async (body) => { try { const r = await api('PATCH', '/me', body); S.me = r.user; toast('Đã lưu'); S.hooks.renderSide(); return true; } catch (e) { fail(e); } };
+  $('#pf').onsubmit = async (e) => {
+    e.preventDefault();
+    const body = { displayName: $('#dn').value, language: $('#lang').value, avatarColor: Number($('[name=avc]:checked')?.value ?? 0) };
+    if (pendingAvatar) body.avatarUrl = pendingAvatar;
+    if (await save(body)) renderSettings(view);
+  };
+  $('#savepriv').onclick = () => save({ friendPolicy: $('#fp').value, showOnline: $('#so').checked, newsPush: $('#np').checked, hideSuggestions: $('#hs').checked });
+  $('#hf').onsubmit = async (e) => {
+    e.preventDefault();
+    const pid = Number($('#hp').value);
+    if (pid === u.provinceId) return toast('Bạn đang chọn tỉnh/thành này rồi');
+    const v = await ask({ title: `Đổi vị trí sang ${provinceName(pid)}?`, text: 'Bạn sẽ vào các nhóm theo vị trí mới. Bạn chỉ đổi được 1 lần / 30 ngày.', fields: [{ name: 'leaveOld', type: 'checkbox', label: 'Rời các nhóm vùng và tỉnh/thành cũ', value: true }], ok: 'Đổi vị trí' });
+    if (!v) return;
+    try { const r = await api('POST', '/me/home', { provinceId: pid, leaveOld: v.leaveOld }); S.me = r.user; await refreshGroups(); toast('Đã đổi vị trí'); renderSettings(view); } catch (er) { fail(er); }
+  };
+};
+actions.logout = () => S.hooks.logout();
+actions['delete-account'] = async () => {
+  const v = await ask({ title: 'Xóa tài khoản?', text: 'Dữ liệu cá nhân của bạn sẽ bị xóa. Tin nhắn cũ trong group công khai sẽ hiển thị là "Người dùng đã xóa". Không thể hoàn tác.', fields: [{ name: 'password', label: 'Nhập mật khẩu để xác nhận', type: 'password', required: true }], ok: 'Xóa vĩnh viễn', danger: true });
+  if (!v) return;
+  try { await api('DELETE', '/me', { password: v.password }); toast('Tài khoản đã được xóa'); S.hooks.logout(true); } catch (e) { fail(e); }
+};
+
+// ===========================================================================
+// Quản trị: report (admin + mod + admin group riêng), người dùng, mod, nhật ký
+// ===========================================================================
+const ACTION_LABEL = { dismiss: 'Bỏ qua (không vi phạm)', delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng 24 giờ trong nhóm', kick: 'Xóa khỏi nhóm', warn: 'Cảnh cáo', lock_temp: 'Khóa tài khoản tạm thời', lock_perm: 'Khóa tài khoản vĩnh viễn' };
+const LOG_LABEL = { delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng', kick: 'Xóa khỏi nhóm', warn: 'Cảnh cáo', lock_temp: 'Khóa tạm', lock_perm: 'Khóa vĩnh viễn', unlock: 'Mở khóa', grant_mod: 'Trao quyền mod', revoke_mod: 'Thu hồi mod' };
+
+export async function renderAdmin(view, tab = 'reports') {
+  const admin = S.me.role === 'admin';
+  if (!admin) tab = 'reports';
+  const tabs = admin ? [['reports', 'Báo cáo'], ['users', 'Người dùng'], ['mods', 'Mod'], ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
+  view.innerHTML = `<div class="page"><div class="page-inner"><h1>${admin ? 'Quản trị' : 'Báo cáo trong nhóm của bạn'}</h1>
+    <div class="pillnav">${tabs.map(([k, n]) => `<button data-tab="${k}" aria-pressed="${k === tab}">${n}</button>`).join('')}</div><div id="tabbody"></div></div></div>`;
+  $$('[data-tab]', view).forEach((b) => (b.onclick = () => renderAdmin(view, b.dataset.tab)));
+  const body = $('#tabbody');
+  try {
+    if (tab === 'reports') await adminReports(body);
+    if (tab === 'users') await adminUsers(body);
+    if (tab === 'mods') await adminMods(body);
+    if (tab === 'logs') await adminLogs(body);
+  } catch (e) { body.innerHTML = `<div class="error">${esc(e.message)}</div>`; }
+}
+
+async function adminReports(body) {
+  const { reports } = await api('GET', '/reports');
+  const admin = S.me.role === 'admin';
+  const where = (r) => r.groupType === 'private' ? 'Nhóm riêng' : r.groupType === 'dm' ? 'Chat 1-1' : 'Nhóm công khai';
+  body.innerHTML = `<div class="list">${reports.map((r) => `<article class="card col">
+    <div class="row wrap"><span class="pill warn">${where(r)}</span>${r.groupName && r.groupType !== 'dm' ? `<span class="small">${esc(r.groupName)}</span>` : ''}<span class="tiny muted">${fmtDateTime(r.createdAt)}</span></div>
+    <div class="small">Người bị báo cáo: <b>${esc(r.target.displayName)}</b>${r.targetStatus === 'locked' ? ' <span class="pill">đã khóa</span>' : ''}${r.reporter ? ` · Người báo cáo: ${esc(r.reporter.displayName)}` : ''}</div>
+    <div class="small"><b>Lý do:</b> ${esc(r.reason)}</div>
+    ${r.snapshotBody || r.snapshotImage ? `<div class="quote" style="white-space:pre-wrap;max-width:none">${esc(r.snapshotBody || '')}${r.snapshotImage ? `<br><img src="${esc(r.snapshotImage)}" alt="Ảnh bị báo cáo" style="max-width:220px;border-radius:8px">` : ''}</div>` : ''}
+    <div><button class="btn primary sm" data-act="resolve" data-id="${r.id}" data-msg="${r.messageId || ''}" data-group="${r.groupId && r.groupType !== 'dm' ? 1 : ''}">Xử lý</button></div></article>`).join('') || '<p class="muted">Không có báo cáo nào đang chờ.</p>'}</div>`;
+}
+actions.resolve = async (el) => {
+  const admin = S.me.role === 'admin';
+  const opts = Object.keys(ACTION_LABEL).filter((a) =>
+    (admin || ['dismiss', 'delete_message', 'mute', 'kick'].includes(a)) &&
+    (a !== 'delete_message' || el.dataset.msg) && (!['mute', 'kick'].includes(a) || el.dataset.group));
+  const v = await ask({ title: 'Xử lý báo cáo', text: 'Người báo cáo sẽ được thông báo khi báo cáo được xử lý.', fields: [
+    { name: 'action', label: 'Hành động', type: 'select', options: opts.map((a) => ({ value: a, label: ACTION_LABEL[a] })) },
+    ...(admin ? [{ name: 'days', label: 'Số ngày khóa (nếu khóa tạm thời)', type: 'number', value: 7, min: 1, max: 365 }] : []),
+    { name: 'note', label: 'Ghi chú / lý do gửi cho người bị xử lý', type: 'textarea', max: 300 }], ok: 'Xác nhận' });
+  if (!v) return;
+  try { await api('POST', `/reports/${el.dataset.id}/resolve`, { action: v.action, days: Number(v.days), note: v.note }); toast('Đã xử lý báo cáo'); renderAdmin($('#view'), 'reports'); } catch (e) { fail(e); }
+};
+
+async function adminUsers(body) {
+  body.innerHTML = `<div class="col"><label class="sr-only" for="uq">Tìm người dùng</label><input class="input" id="uq" type="search" placeholder="Tìm theo tên hoặc email"><div class="list" id="ul"></div></div>`;
+  const load = async () => {
+    const { users } = await api('GET', `/admin/users?q=${encodeURIComponent($('#uq').value)}`);
+    $('#ul').innerHTML = users.map((u) => `<div class="card">${avatar(u)}<div class="grow"><b>${esc(u.displayName)}</b> ${u.role === 'admin' ? '<span class="pill">Admin</span>' : ''}${u.status === 'locked' ? '<span class="pill warn">Đã khóa</span>' : ''}<div class="tiny muted">${esc(u.email)} · ${esc(u.location?.province || '')}</div></div>
+      ${u.role === 'admin' ? '' : `<button class="btn sm" data-act="grant-mod" data-id="${u.id}" data-name="${esc(u.displayName)}">Trao quyền mod</button>
+      ${u.status === 'locked' ? `<button class="btn sm" data-act="unlock" data-id="${u.id}">Mở khóa</button>` : `<button class="btn sm danger" data-act="lock" data-id="${u.id}">Khóa</button>`}`}</div>`).join('') || '<p class="muted">Không tìm thấy.</p>';
+  };
+  let t; $('#uq').oninput = () => { clearTimeout(t); t = setTimeout(() => load().catch(fail), 250); };
+  await load();
+}
+actions.lock = async (el) => {
+  const v = await ask({ title: 'Khóa tài khoản', fields: [
+    { name: 'kind', label: 'Loại', type: 'select', options: [{ value: 'temp', label: 'Tạm thời' }, { value: 'perm', label: 'Vĩnh viễn' }] },
+    { name: 'days', label: 'Số ngày (nếu tạm thời)', type: 'number', value: 7, min: 1, max: 365 },
+    { name: 'reason', label: 'Lý do', type: 'textarea', required: true, max: 300 }], ok: 'Khóa', danger: true });
+  if (!v) return;
+  try { await api('POST', `/admin/users/${el.dataset.id}/lock`, { permanent: v.kind === 'perm', days: Number(v.days), reason: v.reason }); toast('Đã khóa tài khoản'); renderAdmin($('#view'), 'users'); } catch (e) { fail(e); }
+};
+actions.unlock = async (el) => { try { await api('POST', `/admin/users/${el.dataset.id}/unlock`); renderAdmin($('#view'), 'users'); } catch (e) { fail(e); } };
+actions['grant-mod'] = async (el) => {
+  const { groups } = await api('GET', '/groups/discover');
+  const v = await ask({ title: `Trao quyền mod cho ${el.dataset.name}`, text: 'Người này phải đang ở trong nhóm. Mod chỉ quản lý được nhóm được giao, không xem được nhóm riêng tư.', fields: [
+    { name: 'groupId', label: 'Nhóm công khai', type: 'select', options: groups.map((g) => ({ value: g.id, label: g.name })) }], ok: 'Trao quyền' });
+  if (!v) return;
+  try { await api('POST', '/admin/mods', { groupId: Number(v.groupId), userId: Number(el.dataset.id) }); toast('Đã trao quyền mod'); } catch (e) { fail(e); }
+};
+async function adminMods(body) {
+  const { mods } = await api('GET', '/admin/mods');
+  body.innerHTML = `<p class="small muted">Trao quyền mod ở tab "Người dùng". Mod là tùy chọn cho mỗi nhóm công khai.</p><div class="list">${mods.map((m) => `<div class="card">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b><div class="tiny muted">Mod của ${esc(m.groupName)}</div></div><button class="btn sm danger" data-act="revoke-mod" data-gid="${m.groupId}" data-id="${m.user.id}">Thu hồi</button></div>`).join('') || '<p class="muted">Chưa có mod nào.</p>'}</div>`;
+}
+actions['revoke-mod'] = async (el) => {
+  if (!(await confirmBox('Thu hồi quyền mod?', '', 'Thu hồi', true))) return;
+  try { await api('DELETE', `/admin/mods/${el.dataset.gid}/${el.dataset.id}`); renderAdmin($('#view'), 'mods'); } catch (e) { fail(e); }
+};
+async function adminLogs(body) {
+  const { logs } = await api('GET', '/admin/logs');
+  body.innerHTML = `<div class="list">${logs.map((l) => `<div class="card col" style="gap:2px"><div class="small"><b>${esc(LOG_LABEL[l.action] || l.action)}</b> · ${esc(l.actor)}${l.target ? ` → ${esc(l.target)}` : ''}${l.group ? ` · ${esc(l.group)}` : ''}</div>${l.reason ? `<div class="small muted">${esc(l.reason)}</div>` : ''}<div class="tiny muted">${fmtDateTime(l.createdAt)}</div></div>`).join('') || '<p class="muted">Chưa có hành động nào.</p>'}</div>`;
+}

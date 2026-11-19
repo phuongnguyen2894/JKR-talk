@@ -1,0 +1,210 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+
+process.env.DB_FILE = ':memory:';
+process.env.PORT = '3998';
+process.env.AUTO_VERIFY = '1';
+process.env.REGISTER_RATE_LIMIT = '1000';
+process.env.LOGIN_RATE_LIMIT = '1000';
+process.env.UPLOAD_DIR = path.join(os.tmpdir(), 'jkr-test-uploads');
+const BASE = 'http://localhost:3998/api';
+
+before(async () => {
+  await import('../server/index.js');
+});
+after(() => setTimeout(() => process.exit(0), 50));
+
+async function call(method, url, body, token) {
+  const r = await fetch(BASE + url, {
+    method,
+    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: r.status, data: await r.json().catch(() => ({})) };
+}
+async function signup(name, provinceId = 1) {
+  const email = `${name}@t.com`;
+  const r = await call('POST', '/auth/register', { email, password: 'password1', acceptCommunity: true, displayName: name, provinceId });
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  const l = await call('POST', '/auth/login', { email, password: 'password1' });
+  assert.equal(l.status, 200);
+  return { token: l.data.token, id: l.data.user.id };
+}
+
+let mai, khoa, linh, admin;
+test('đăng ký: email trùng bị từ chối, auto-join đúng 3 group', async () => {
+  mai = await signup('mai', 26); // TP.HCM = id 45? lấy theo tên bên dưới
+  const geo = await call('GET', '/geo');
+  const hcm = geo.data.provinces.find((p) => p.name === 'TP. Hồ Chí Minh');
+  await call('POST', '/me/home', { provinceId: hcm.id, leaveOld: true }, mai.token);
+  const dup = await call('POST', '/auth/register', { email: 'mai@t.com', password: 'password1', acceptCommunity: true, displayName: 'x2', provinceId: 1 });
+  assert.equal(dup.status, 400);
+  const g = await call('GET', '/groups/mine', null, mai.token);
+  assert.deepEqual(g.data.groups.map((x) => x.name), ['Việt Nam', 'Miền Nam', 'TP. Hồ Chí Minh']);
+});
+test('đăng ký: chọn Đà Nẵng -> Việt Nam, Miền Trung, Đà Nẵng', async () => {
+  const geo = await call('GET', '/geo');
+  linh = await signup('linh', geo.data.provinces.find((p) => p.name === 'Đà Nẵng').id);
+  const g = await call('GET', '/groups/mine', null, linh.token);
+  assert.deepEqual(g.data.groups.map((x) => x.name), ['Việt Nam', 'Miền Trung', 'Đà Nẵng']);
+});
+test('chat: phải xác nhận quy tắc rồi mới gửi được; tin hiện trong lịch sử', async () => {
+  const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups[0];
+  let r = await call('POST', `/groups/${vn.id}/messages`, { body: 'hi' }, mai.token);
+  assert.equal(r.status, 403);
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, mai.token);
+  r = await call('POST', `/groups/${vn.id}/messages`, { body: 'hi' }, mai.token);
+  assert.equal(r.status, 201);
+  const h = await call('GET', `/groups/${vn.id}/messages`, null, mai.token);
+  assert.equal(h.data.messages.at(-1).body, 'hi');
+});
+test('join group khác vùng không đổi home; rời rồi join lại được', async () => {
+  const hcmId = (await call('GET', '/me', null, mai.token)).data.user.provinceId;
+  const d = await call('GET', '/groups/discover?type=province&q=ha noi', null, mai.token);
+  const hn = d.data.groups.find((g) => g.name === 'Hà Nội');
+  assert.ok(hn);
+  assert.equal((await call('POST', `/groups/${hn.id}/join`, {}, mai.token)).status, 200);
+  assert.equal((await call('POST', `/groups/${hn.id}/leave`, {}, mai.token)).status, 200);
+  assert.equal((await call('POST', `/groups/${hn.id}/join`, {}, mai.token)).status, 200);
+  assert.equal((await call('GET', '/me', null, mai.token)).data.user.provinceId, hcmId);
+});
+test('kết bạn: policy none chặn; mặc định cho phép; không gửi trùng; DM chỉ khi là bạn', async () => {
+  khoa = await signup('khoa', 1);
+  assert.equal((await call('POST', `/dm/${khoa.id}`, {}, mai.token)).status, 403);
+  await call('PATCH', '/me', { friendPolicy: 'none' }, khoa.token);
+  assert.equal((await call('POST', '/friends/request', { userId: khoa.id }, mai.token)).status, 400);
+  await call('PATCH', '/me', { friendPolicy: 'shared' }, khoa.token);
+  assert.equal((await call('POST', '/friends/request', { userId: khoa.id }, mai.token)).status, 201);
+  assert.equal((await call('POST', '/friends/request', { userId: khoa.id }, mai.token)).status, 400);
+  const f = await call('GET', '/friends', null, khoa.token);
+  await call('POST', `/friends/requests/${f.data.incoming[0].id}/accept`, {}, khoa.token);
+  const dm = await call('POST', `/dm/${khoa.id}`, {}, mai.token);
+  assert.equal(dm.status, 200);
+  assert.equal((await call('POST', `/groups/${dm.data.group.id}/messages`, { body: 'alo' }, mai.token)).status, 201);
+});
+test('chặn: không thấy profile, không nhắn được', async () => {
+  await call('POST', `/blocks/${mai.id}`, {}, khoa.token);
+  assert.equal((await call('GET', `/users/${khoa.id}`, null, mai.token)).status, 404);
+  assert.equal((await call('POST', `/dm/${khoa.id}`, {}, mai.token)).status, 403);
+  assert.equal((await call('POST', '/friends/request', { userId: khoa.id }, mai.token)).status, 400);
+  await call('DELETE', `/blocks/${mai.id}`, null, khoa.token);
+});
+test('group riêng: link cần duyệt, admin cuối phải chuyển quyền, giới hạn thành viên', async () => {
+  await call('POST', '/friends/request', { userId: linh.id }, mai.token);
+  const f = await call('GET', '/friends', null, linh.token);
+  await call('POST', `/friends/requests/${f.data.incoming[0].id}/accept`, {}, linh.token);
+  const g = await call('POST', '/private', { name: 'Hội bạn thân', memberIds: [linh.id] }, mai.token);
+  assert.equal(g.status, 201);
+  const gid = g.data.group.id;
+  const link = await call('POST', `/private/${gid}/links`, { hours: 1 }, mai.token);
+  assert.equal((await call('POST', `/invite/${link.data.code}/join`, {}, khoa.token)).status, 201);
+  const reqs = await call('GET', '/private/requests', null, mai.token);
+  assert.equal(reqs.data.requests.length, 1);
+  await call('POST', `/private/requests/${reqs.data.requests[0].id}/approve`, {}, mai.token);
+  assert.ok((await call('GET', '/groups/mine', null, khoa.token)).data.groups.some((x) => x.id === gid));
+  assert.equal((await call('POST', `/groups/${gid}/leave`, {}, mai.token)).status, 400); // admin cuối
+  await call('POST', `/private/${gid}/admins/${linh.id}`, {}, mai.token);
+  assert.equal((await call('POST', `/groups/${gid}/leave`, {}, mai.token)).status, 200);
+  await call('DELETE', `/private/links/${link.data.code}`, null, linh.token);
+  assert.equal((await call('GET', `/invite/${link.data.code}`, null, mai.token)).status, 410);
+  assert.equal((await call('PATCH', `/private/${gid}`, { memberLimit: 1 }, linh.token)).status, 400);
+});
+test('đổi home: giới hạn 1 lần/30 ngày', async () => {
+  // mai vừa đổi home ở test đầu => lần đổi tiếp theo bị từ chối
+  assert.equal((await call('POST', '/me/home', { provinceId: 1, leaveOld: true }, mai.token)).status, 400);
+  // linh chưa từng đổi => đổi được và rời group cũ
+  assert.equal((await call('POST', '/me/home', { provinceId: 1, leaveOld: true }, linh.token)).status, 200);
+  const g = await call('GET', '/groups/mine', null, linh.token);
+  assert.ok(!g.data.groups.some((x) => x.name === 'Đà Nẵng'));
+});
+test('report -> admin xử lý, người báo nhận thông báo, người thường không thấy hàng chờ', async () => {
+  const l = await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' });
+  admin = { token: l.data.token, id: l.data.user.id };
+  const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups[0];
+  const msgs = (await call('GET', `/groups/${vn.id}/messages`, null, mai.token)).data.messages;
+  const rp = await call('POST', '/reports', { messageId: msgs.at(-1).id, reason: 'spam' }, linh.token);
+  assert.equal(rp.status, 201);
+  const q = await call('GET', '/reports', null, admin.token);
+  assert.equal(q.data.reports.length, 1);
+  assert.equal(q.data.reports[0].snapshotBody, 'hi');
+  assert.equal((await call('GET', '/reports', null, linh.token)).data.reports.length, 0);
+  const r = await call('POST', `/reports/${q.data.reports[0].id}/resolve`, { action: 'delete_message', note: 'spam' }, admin.token);
+  assert.equal(r.status, 200);
+  const n = await call('GET', '/notifications', null, linh.token);
+  assert.ok(n.data.notifications.some((x) => x.type === 'report_done'));
+  const n2 = await call('GET', '/notifications', null, mai.token);
+  assert.ok(n2.data.notifications.some((x) => x.type === 'moderation'));
+});
+test('mod: admin trao quyền; mod xóa tin/mute trong group được giao', async () => {
+  const vn = (await call('GET', '/groups/mine', null, khoa.token)).data.groups[0];
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, khoa.token);
+  assert.equal((await call('POST', '/admin/mods', { groupId: vn.id, userId: khoa.id }, mai.token)).status, 403);
+  assert.equal((await call('POST', '/admin/mods', { groupId: vn.id, userId: khoa.id }, admin.token)).status, 200);
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, linh.token);
+  const m2 = await call('POST', `/groups/${vn.id}/messages`, { body: 'bad' }, linh.token);
+  assert.equal(m2.status, 201);
+  assert.equal((await call('DELETE', `/messages/${m2.data.message.id}`, { reason: 'x' }, khoa.token)).status, 200);
+  assert.equal((await call('POST', `/groups/${vn.id}/members/${linh.id}/mute`, { minutes: 5 }, khoa.token)).status, 200);
+  assert.equal((await call('POST', `/groups/${vn.id}/messages`, { body: 'again' }, linh.token)).status, 403);
+});
+test('bản tin: chỉ admin đăng; ghim lên đầu; sửa có nhãn; huy hiệu chưa đọc', async () => {
+  assert.equal((await call('POST', '/admin/news', { title: 't', body: 'b' }, mai.token)).status, 403);
+  const a = await call('POST', '/admin/news', { title: 'A', body: 'a' }, admin.token);
+  await call('POST', '/admin/news', { title: 'B', body: 'b' }, admin.token);
+  await call('PATCH', `/admin/news/${a.data.news.id}`, { pinned: true, title: 'A2' }, admin.token);
+  const n = await call('GET', '/news', null, linh.token);
+  assert.equal(n.data.news[0].title, 'A2');
+  assert.equal(n.data.news[0].edited, true);
+  assert.equal(n.data.unread, 2);
+  await call('POST', '/news/read-all', {}, linh.token);
+  assert.equal((await call('GET', '/news', null, linh.token)).data.unread, 0);
+});
+test('khóa tài khoản & xóa tài khoản', async () => {
+  await call('POST', `/admin/users/${linh.id}/lock`, { permanent: true }, admin.token);
+  assert.equal((await call('GET', '/me', null, linh.token)).status, 401);
+  assert.equal((await call('POST', '/auth/login', { email: 'linh@t.com', password: 'password1' })).status, 403);
+  assert.equal((await call('DELETE', '/me', { password: 'sai' }, khoa.token)).status, 400);
+  assert.equal((await call('DELETE', '/me', { password: 'password1' }, khoa.token)).status, 200);
+});
+test('tên hiển thị phải duy nhất (không phân biệt hoa/thường), kể cả khi đổi tên', async () => {
+  const reg = (email, displayName) => call('POST', '/auth/register', { email, password: 'password1', acceptCommunity: true, displayName, provinceId: 1 });
+  assert.equal((await reg('u1@t.com', 'Hoa Mai')).status, 201);
+  assert.equal((await reg('u2@t.com', '  hoa   MAI ')).status, 400);
+  const r = await reg('u3@t.com', 'Hoa Lan');
+  assert.equal(r.status, 201);
+  const l = await call('POST', '/auth/login', { email: 'u3@t.com', password: 'password1' });
+  assert.equal((await call('PATCH', '/me', { displayName: 'HOA MAI' }, l.data.token)).status, 400);
+  assert.equal((await call('PATCH', '/me', { displayName: 'Hoa Lan' }, l.data.token)).status, 200); // giữ tên cũ vẫn được
+  assert.equal((await call('PATCH', '/me', { displayName: 'Hoa Sen' }, l.data.token)).status, 200);
+  assert.equal((await reg('u4@t.com', 'hoa lan')).status, 201); // tên cũ đã được nhả ra
+});
+test('thả tim: bật/tắt, không tự thả tim, vào Chủ đề nóng khi đủ tim', async () => {
+  const login = async (email) => (await call('POST', '/auth/login', { email, password: 'password1' })).data.token;
+  const ts = [];
+  for (const n of ['h1', 'h2', 'h3']) {
+    await call('POST', '/auth/register', { email: `${n}@t.com`, password: 'password1', acceptCommunity: true, displayName: `Tim ${n}`, provinceId: 1 });
+    ts.push(await login(`${n}@t.com`));
+  }
+  const vn = (await call('GET', '/groups/mine', null, ts[0])).data.groups[0];
+  for (const t of ts) await call('POST', `/groups/${vn.id}/rules-ack`, {}, t);
+  const m = (await call('POST', `/groups/${vn.id}/messages`, { body: 'Tin nóng' }, ts[0])).data.message;
+  assert.equal((await call('POST', `/messages/${m.id}/heart`, {}, ts[0])).status, 400); // tự thả tim
+  assert.equal((await call('GET', '/hot', null, ts[1])).data.items.length, 0);
+  const heart = (tok) => call('POST', `/messages/${m.id}/heart`, {}, tok);
+  const r1 = await heart(ts[1]);
+  assert.deepEqual([r1.data.hearts, r1.data.hearted], [1, true]);
+  const r2 = await heart(ts[1]); // bỏ tim
+  assert.deepEqual([r2.data.hearts, r2.data.hearted], [0, false]);
+  await heart(ts[1]);
+  await heart(ts[2]);
+  assert.equal((await call('GET', '/hot', null, ts[1])).data.items.length, 0); // mới 2 tim
+  await heart(admin.token);
+  const hot = (await call('GET', '/hot', null, ts[1])).data.items;
+  assert.equal(hot.length, 1);
+  assert.equal(hot[0].hearts, 3);
+  assert.equal(hot[0].hearted, true);
+  const hist = (await call('GET', `/groups/${vn.id}/messages`, null, ts[2])).data.messages.find((x) => x.id === m.id);
+  assert.deepEqual([hist.hearts, hist.hearted], [3, true]);
+});
