@@ -47,7 +47,7 @@ function renderSide() {
 
   const chatUnread = S.groups.reduce((n, g) => n + (g.unread || 0), 0);
   const tab = (hash, name, label, ic, badge) => `<a href="${hash}" ${r.name === name || (name === 'chat' && r.name === 'chat') ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
-  $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread) + tab('#/discover', 'discover', 'Khám phá', 'search') + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/friends', 'friends', 'Bạn bè', 'friends') + tab('#/settings', 'settings', 'Tôi', 'gear');
+  $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread) + tab('#/discover', 'discover', 'Khám phá', 'search') + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/hot', 'hot', 'Chủ đề nóng', 'flame') + tab('#/settings', 'settings', 'Tôi', 'gear');
   const total = chatUnread + S.unreadNews + S.unreadNotif;
   document.title = total ? `(${total}) JKR talks` : 'JKR talks';
 }
