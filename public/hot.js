@@ -3,14 +3,16 @@ import { $, $$, esc, S, api, icon, avatar, fmtDateTime } from './core.js';
 
 // Chủ đề nóng: 38 tin nhắn nhiều tim nhất ở các nhóm công khai trong 24 giờ qua
 const SCOPES = [['', 'Tất cả'], ['country', 'Quốc gia'], ['region', 'Khu vực'], ['province', 'Tỉnh thành']];
+const SHOW_FILTER = false; // tạm ẩn bộ lọc; đặt true để bật lại
 let scope = '';
 export async function renderHot(view, sc = scope) {
+  if (!SHOW_FILTER) sc = '';
   scope = sc;
   const { items } = await api('GET', '/hot' + (sc ? '?scope=' + sc : ''));
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>Chủ đề nóng</h1>
     <p class="small muted">38 tin nhắn nhận được nhiều tim nhất ở các nhóm công khai trong 24 giờ qua. Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
-    <div class="pillnav" role="group" aria-label="Lọc theo phạm vi">${SCOPES.map(([k, n]) => `<button data-sc="${k}" aria-pressed="${sc === k}">${n}</button>`).join('')}</div>
+    ${SHOW_FILTER ? `<div class="pillnav" role="group" aria-label="Lọc theo phạm vi">${SCOPES.map(([k, n]) => `<button data-sc="${k}" aria-pressed="${sc === k}">${n}</button>`).join('')}</div>` : ''}
     <div class="list">${items.map((m, i) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>
         <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
