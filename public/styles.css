@@ -275,3 +275,10 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
   .tabs-bar a svg { width: 20px; height: 20px; }
   .app.in-chat .composer { padding-bottom: 6px; }
 }
+
+/* nút ẩn/hiện khung chat + menu */
+.chat-col { position: relative; }
+.read-toggle { position: absolute; right: 10px; bottom: 10px; z-index: 6; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 6px rgba(0,0,0,.15); opacity: .85; }
+.app:not(.read-mode) .read-toggle { bottom: auto; top: 8px; }
+.app.in-chat.read-mode .chat-head, .app.in-chat.read-mode .composer, .app.in-chat.read-mode .tabs-bar { display: none; }
+.app.in-chat.read-mode .read-toggle { top: auto; bottom: calc(10px + env(safe-area-inset-bottom)); }

@@ -66,12 +66,14 @@ function drawChat(view) {
   </div>
   <div class="chat-body">
     <div class="chat-col">
+      <button class="read-toggle" id="readtoggle" data-act="toggle-read" aria-pressed="false" aria-label="Ẩn hoặc hiện thanh tiêu đề, ô nhập và menu"></button>
       <div class="msgs" id="msgs" aria-live="off"><div id="more" ${C.hasMore ? '' : 'hidden'} style="text-align:center"><button class="btn sm" data-act="load-more">Tải tin cũ hơn</button></div></div>
       <div class="composer" id="composer">${composerHtml()}</div>
     </div>
     <aside class="info wide" aria-label="Thông tin nhóm">${infoHtml()}</aside>
   </div>`;
   wireComposer();
+  syncReadMode();
 }
 
 function composerHtml() {
@@ -487,3 +489,24 @@ actions['pg-links'] = async () => {
   };
   draw().catch(fail);
 };
+
+// Chế độ đọc: ẩn/hiện tiêu đề nhóm, ô nhập tin và menu để có thêm chỗ đọc
+function applyRead(on) {
+  document.querySelector('.app')?.classList.toggle('read-mode', on);
+  const b = document.getElementById('readtoggle');
+  if (b) {
+    b.setAttribute('aria-pressed', String(on));
+    b.title = on ? 'Hiện khung chat và menu' : 'Ẩn khung chat và menu';
+    b.innerHTML = on
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  }
+}
+let readMode = false;
+try { readMode = localStorage.getItem('jkr_readmode') === '1'; } catch {}
+actions['toggle-read'] = () => {
+  readMode = !readMode;
+  try { localStorage.setItem('jkr_readmode', readMode ? '1' : '0'); } catch {}
+  applyRead(readMode);
+};
+export const syncReadMode = () => applyRead(readMode);

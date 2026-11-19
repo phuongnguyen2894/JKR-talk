@@ -1,5 +1,5 @@
 import { previewHtml } from './chat.js';
-import { $, $, esc, S, api, icon, avatar, fmtDateTime } from './core.js';
+import { $, $$, esc, S, api, icon, avatar, fmtDateTime } from './core.js';
 
 // Chủ đề nóng: 38 tin nhắn nhiều tim nhất ở các nhóm công khai trong 24 giờ qua
 const SCOPES = [['', 'Tất cả'], ['country', 'Quốc gia'], ['region', 'Khu vực'], ['province', 'Tỉnh thành']];
