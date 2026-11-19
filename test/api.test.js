@@ -225,3 +225,46 @@ test('đổi mật khẩu: cần mật khẩu cũ, kiểm tra mới, đăng xu�
   assert.equal((await call('POST', '/auth/login', { email, password: 'password1' })).status, 401);
   assert.equal((await call('POST', '/auth/login', { email, password: 'matkhaumoi1' })).status, 200);
 });
+
+test('báo lỗi: người dùng gửi; chỉ admin xem/giao cho agent qua webhook', async () => {
+  const http = await import('node:http');
+  const got = [];
+  const hook = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => (body += d));
+    req.on('end', () => { got.push({ auth: req.headers.authorization, body: JSON.parse(body) }); res.statusCode = got.length > 1 ? 500 : 200; res.end('ok'); });
+  });
+  await new Promise((r) => hook.listen(0, r));
+  const l = await call('POST', '/auth/login', { email: 'pw@t.com', password: 'matkhaumoi1' });
+  const user = l.data.token;
+  assert.equal((await call('POST', '/bugs', { title: 'a', description: 'quá ngắn' }, user)).status, 400);
+  const b = await call('POST', '/bugs', { title: 'Nút gửi bị lỗi', description: 'Bấm gửi tin nhắn không có phản hồi trên iPhone', page: '#/chat/1' }, user);
+  assert.equal(b.status, 201);
+  assert.equal((await call('GET', '/admin/bugs', null, user)).status, 403);
+  const list = await call('GET', '/admin/bugs', null, admin.token);
+  assert.equal(list.data.bugs[0].title, 'Nút gửi bị lỗi');
+  assert.equal(list.data.counts.new, 1);
+  const id = b.data.id;
+  const comp = await call('POST', '/admin/bugs/compose', { ids: [id], prompt: 'Sửa giúp' }, admin.token);
+  assert.ok(comp.data.text.includes('Sửa giúp') && comp.data.text.includes('Nút gửi bị lỗi') && comp.data.text.includes('#/chat/1'));
+  // chưa cấu hình webhook
+  delete process.env.AGENT_WEBHOOK_URL;
+  assert.equal((await call('POST', '/admin/bugs/send', { ids: [id], prompt: 'Sửa giúp' }, admin.token)).status, 400);
+  process.env.AGENT_WEBHOOK_URL = `http://127.0.0.1:${hook.address().port}/hook`;
+  process.env.AGENT_WEBHOOK_TOKEN = 'tok123';
+  assert.equal((await call('POST', '/admin/bugs/send', { ids: [id], prompt: 'Sửa giúp' }, user)).status, 403);
+  assert.equal((await call('POST', '/admin/bugs/send', { ids: [id], prompt: '' }, admin.token)).status, 400);
+  const ok = await call('POST', '/admin/bugs/send', { ids: [id], prompt: 'Sửa giúp' }, admin.token);
+  assert.equal(ok.status, 200);
+  assert.equal(got[0].auth, 'Bearer tok123');
+  assert.equal(got[0].body.bugs[0].id, id);
+  assert.ok(got[0].body.text.includes('Sửa giúp'));
+  assert.equal((await call('GET', '/admin/bugs?status=sent', null, admin.token)).data.bugs.length, 1);
+  // webhook lỗi -> 502 và trạng thái không đổi
+  await call('PATCH', `/admin/bugs/${id}`, { status: 'new' }, admin.token);
+  assert.equal((await call('POST', '/admin/bugs/send', { ids: [id], prompt: 'Sửa giúp' }, admin.token)).status, 502);
+  assert.equal((await call('GET', '/admin/bugs?status=new', null, admin.token)).data.bugs.length, 1);
+  assert.equal((await call('PATCH', `/admin/bugs/${id}`, { status: 'fixed' }, admin.token)).status, 200);
+  delete process.env.AGENT_WEBHOOK_URL;
+  hook.close();
+});

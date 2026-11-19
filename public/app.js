@@ -2,6 +2,7 @@ import { $, $$, esc, S, api, go, icon, avatar, fmtDateTime, toast, fail, openMod
 import { renderChat, onSocket } from './chat.js';
 import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
+import { renderBugs } from './bugs.js';
 import { renderLogin, renderRegister, renderDiscover, renderNews, renderSettings, renderAdmin } from './pages.js';
 
 const root = $('#root');
@@ -38,6 +39,8 @@ function renderSide() {
     ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame')}
     ${nav('#/news', 'news', 'Bản tin', 'news', S.unreadNews)}
     ${nav('#/friends', 'friends', 'Bạn bè', 'friends')}
+    <button class="nav-item" data-act="report-bug">${icon('bug')}<span class="name">Báo lỗi</span></button>
+    ${S.me.role === 'admin' ? nav('#/bugs', 'bugs', 'Danh sách lỗi', 'bug') : ''}
     ${isStaff() ? nav('#/admin', 'admin', S.me.role === 'admin' ? 'Quản trị' : 'Báo cáo', 'shield') : ''}
     <button class="nav-item" data-act="notifs">${icon('bell')}<span class="name">Thông báo</span>${S.unreadNotif ? `<span class="badge">${S.unreadNotif}</span>` : ''}</button>
     <div class="side-foot"><a class="nav-item" href="#/settings" style="min-height:48px" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${avatar(S.me)}<span class="name" style="font-weight:600">${esc(S.me.displayName)}</span>${icon('gear')}</a></div>`;
@@ -87,6 +90,7 @@ async function route() {
       case 'discover': return await renderDiscover(view);
       case 'friends': return await renderFriends(view);
       case 'hot': return await renderHot(view);
+      case 'bugs': return await renderBugs(view);
       case 'news': await refreshCounters().catch(() => {}); return await renderNews(view);
       case 'settings': return renderSettings(view);
       case 'admin': return await renderAdmin(view);
@@ -117,6 +121,7 @@ function connectWs() {
       if (ev.notification.type === 'friend_accept' && parseHash().name === 'friends') route();
     } else if (ev.type === 'news') { S.unreadNews++; renderSide(); toast(`Bản tin mới: ${ev.news.title}`, 7000); }
     else if (ev.type === 'news_silent') { S.unreadNews++; renderSide(); }
+    else if (ev.type === 'bug_new') { toast('Có báo lỗi mới'); if (parseHash().name === 'bugs') route(); }
     else if (ev.type === 'report_new') { toast('Có báo cáo mới cần xử lý'); if (parseHash().name === 'admin') route(); }
     else if (ev.type === 'locked') logout(true);
   };

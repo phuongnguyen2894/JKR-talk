@@ -201,7 +201,7 @@ export function renderSettings(view) {
       <label class="check"><input type="checkbox" id="hs" ${u.hideSuggestions ? 'checked' : ''}> Ẩn gợi ý nhóm</label>
       <button class="btn" id="savepriv">Lưu cài đặt</button></section>
     <section class="card col"><div class="h2" style="margin:0">Tài khoản</div>
-      <div class="row wrap"><button class="btn" data-act="logout">Đăng xuất</button><button class="btn danger" data-act="delete-account">Xóa tài khoản và dữ liệu</button></div></section>
+      <div class="row wrap"><button class="btn" data-act="report-bug">Báo lỗi</button><button class="btn" data-act="logout">Đăng xuất</button><button class="btn danger" data-act="delete-account">Xóa tài khoản và dữ liệu</button></div></section>
   </div></div>`;
   let pendingAvatar;
   $('#avf').onchange = async (e) => {

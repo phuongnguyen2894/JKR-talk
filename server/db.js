@@ -118,6 +118,19 @@ CREATE TABLE IF NOT EXISTS reactions (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (message_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS bug_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  reporter_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  page TEXT,                         -- trang đang mở khi báo lỗi
+  user_agent TEXT,
+  screenshot_url TEXT,
+  status TEXT NOT NULL DEFAULT 'new', -- new | sent | fixed | dismissed
+  sent_at INTEGER, sent_by INTEGER, agent_prompt TEXT, agent_result TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bugs_status ON bug_reports(status, id);
 CREATE TABLE IF NOT EXISTS news (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL, body TEXT NOT NULL, image_url TEXT,

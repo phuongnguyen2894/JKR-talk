@@ -500,8 +500,8 @@ api.post(
   })
 );
 
-// Chủ đề nóng: 20 tin nhắn nhận được nhiều tim nhất trong 24 giờ qua, ở các group công khai
-const HOT_LIMIT = 20;
+// Chủ đề nóng: 38 tin nhắn nhận được nhiều tim nhất trong 24 giờ qua, ở các group công khai
+const HOT_LIMIT = 38;
 api.get(
   '/hot',
   wrap((req, res) => {
@@ -1105,6 +1105,113 @@ api.get('/admin/logs', adminOnly, wrap((_req, res) => {
       group: l.group_id ? getGroup(l.group_id)?.name : null,
     })),
   });
+}));
+
+// ============================================================================
+// Báo lỗi: mọi người dùng gửi; admin xem danh sách và giao cho agent sửa
+// ============================================================================
+const BUG_STATUSES = ['new', 'sent', 'fixed', 'dismissed'];
+
+api.post(
+  '/bugs',
+  wrap((req, res) => {
+    rateLimit(`bug:${req.user.id}`, 10, 3600_000);
+    const title = str(req.body.title, 120);
+    const description = str(req.body.description, 4000);
+    if (title.length < 3) throw bad('Vui lòng nhập tiêu đề lỗi (ít nhất 3 ký tự)');
+    if (description.length < 10) throw bad('Vui lòng mô tả lỗi rõ hơn (ít nhất 10 ký tự)');
+    const shot = req.body.screenshotUrl ? checkUploadUrl(req.body.screenshotUrl) : null;
+    const r = db
+      .prepare('INSERT INTO bug_reports (reporter_id, title, description, page, user_agent, screenshot_url, created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(req.user.id, title, description, str(req.body.page, 300) || null, str(req.get('user-agent'), 300) || null, shot, now());
+    for (const a of db.prepare("SELECT id FROM users WHERE role='admin' AND status='active'").all())
+      if (a.id !== req.user.id) hub.send(a.id, { type: 'bug_new', id: Number(r.lastInsertRowid) });
+    res.status(201).json({ id: Number(r.lastInsertRowid) });
+  })
+);
+
+const publicOrigin = (req) => (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+const bugDto = (b, origin) => ({
+  id: b.id, title: b.title, description: b.description, page: b.page, userAgent: b.user_agent,
+  screenshotUrl: b.screenshot_url ? origin + b.screenshot_url : null, screenshotPath: b.screenshot_url,
+  status: b.status, createdAt: b.created_at, sentAt: b.sent_at, agentResult: b.agent_result,
+  reporter: publicUser(getUser(b.reporter_id)).displayName,
+});
+
+api.get('/admin/bugs', adminOnly, wrap((req, res) => {
+  const status = BUG_STATUSES.includes(req.query.status) ? req.query.status : null;
+  const rows = db.prepare(`SELECT * FROM bug_reports ${status ? 'WHERE status = ?' : ''} ORDER BY id DESC LIMIT 300`).all(...(status ? [status] : []));
+  const counts = Object.fromEntries(BUG_STATUSES.map((s) => [s, 0]));
+  for (const c of db.prepare('SELECT status, COUNT(*) c FROM bug_reports GROUP BY status').all()) counts[c.status] = c.c;
+  res.json({ bugs: rows.map((b) => bugDto(b, publicOrigin(req))), counts, webhookConfigured: !!process.env.AGENT_WEBHOOK_URL });
+}));
+
+api.patch('/admin/bugs/:id', adminOnly, wrap((req, res) => {
+  const b = db.prepare('SELECT id FROM bug_reports WHERE id = ?').get(int(req.params.id));
+  if (!b) throw notFound('Không tìm thấy lỗi');
+  if (!BUG_STATUSES.includes(req.body.status)) throw bad('Trạng thái không hợp lệ');
+  db.prepare('UPDATE bug_reports SET status = ? WHERE id = ?').run(req.body.status, b.id);
+  res.json({ ok: true });
+}));
+
+const DEFAULT_AGENT_PROMPT =
+  'Hãy điều tra và sửa các lỗi dưới đây trong dự án JKR talks. Tìm nguyên nhân gốc, sửa tối thiểu, chạy npm test, rồi tóm tắt thay đổi.';
+
+function pickBugs(ids) {
+  const list = [...new Set((Array.isArray(ids) ? ids : []).map(int))].filter((x) => x > 0).slice(0, 20);
+  if (!list.length) throw bad('Hãy chọn ít nhất một lỗi');
+  const rows = list.map((id) => db.prepare('SELECT * FROM bug_reports WHERE id = ?').get(id)).filter(Boolean);
+  if (!rows.length) throw notFound('Không tìm thấy lỗi đã chọn');
+  return rows;
+}
+function composeAgentText(userPrompt, bugs, origin) {
+  const parts = bugs.map((b) => [
+    `## Lỗi #${b.id}: ${b.title}`,
+    b.page ? `- Trang: ${b.page}` : null,
+    b.user_agent ? `- Thiết bị: ${b.user_agent}` : null,
+    `- Báo lúc: ${new Date(b.created_at).toISOString()}`,
+    b.screenshot_url ? `- Ảnh chụp: ${origin}${b.screenshot_url}` : null,
+    '', 'Mô tả của người dùng:', b.description,
+  ].filter((x) => x !== null).join('\n'));
+  return `${userPrompt}\n\n---\nDự án: JKR talks (${origin})\nSố lỗi: ${bugs.length}\n\n${parts.join('\n\n')}\n`;
+}
+
+// Ghép sẵn nội dung gửi agent (dùng để xem trước / sao chép)
+api.post('/admin/bugs/compose', adminOnly, wrap((req, res) => {
+  const bugs = pickBugs(req.body.ids);
+  const prompt = str(req.body.prompt, 4000) || DEFAULT_AGENT_PROMPT;
+  res.json({ text: composeAgentText(prompt, bugs, publicOrigin(req)), defaultPrompt: DEFAULT_AGENT_PROMPT });
+}));
+
+// Gửi các lỗi đã chọn + prompt tới agent qua webhook (AGENT_WEBHOOK_URL)
+api.post('/admin/bugs/send', adminOnly, wrap(async (req, res) => {
+  const url = process.env.AGENT_WEBHOOK_URL;
+  if (!url) throw bad('Chưa cấu hình AGENT_WEBHOOK_URL trên máy chủ. Hãy dùng nút "Sao chép prompt".');
+  const bugs = pickBugs(req.body.ids);
+  const prompt = str(req.body.prompt, 4000);
+  if (prompt.length < 5) throw bad('Vui lòng nhập prompt cho agent');
+  const origin = publicOrigin(req);
+  const text = composeAgentText(prompt, bugs, origin);
+  const headers = { 'content-type': 'application/json' };
+  if (process.env.AGENT_WEBHOOK_TOKEN) headers.authorization = `Bearer ${process.env.AGENT_WEBHOOK_TOKEN}`;
+  let status = 0, snippet = '';
+  try {
+    const r = await fetch(url, {
+      method: 'POST', headers, signal: AbortSignal.timeout(15_000),
+      body: JSON.stringify({
+        event: 'bug_fix_request', source: 'jkr-talks', text, prompt,
+        bugs: bugs.map((b) => bugDto(b, origin)).map(({ id, title, description, page, userAgent, screenshotUrl, createdAt }) => ({ id, title, description, page, userAgent, screenshotUrl, createdAt })),
+      }),
+    });
+    status = r.status;
+    snippet = (await r.text().catch(() => '')).slice(0, 500);
+  } catch (e) {
+    throw new HttpError(502, `Không gửi được tới agent: ${e.name === 'TimeoutError' ? 'quá thời gian chờ' : e.message}`);
+  }
+  if (status < 200 || status >= 300) throw new HttpError(502, `Agent trả về lỗi HTTP ${status}${snippet ? ': ' + snippet.slice(0, 120) : ''}`);
+  const mark = db.prepare("UPDATE bug_reports SET status='sent', sent_at=?, sent_by=?, agent_prompt=?, agent_result=? WHERE id=?");
+  for (const b of bugs) { mark.run(now(), req.user.id, prompt, `HTTP ${status}${snippet ? ' ' + snippet : ''}`, b.id); log(req.user.id, 'bug_send', { reason: `#${b.id} ${b.title}`.slice(0, 200) }); }
+  res.json({ ok: true, sent: bugs.length, status, response: snippet });
 }));
 
 // ---- lỗi ---------------------------------------------------------------------
