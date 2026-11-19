@@ -312,3 +312,37 @@ test('admin hệ thống trao mod cho bất kỳ user nào, kể cả chưa ở 
   assert.equal((await call('POST', '/admin/mods', { groupId: dn.id, userId: admin.id }, admin.token)).status, 400); // admin đã có toàn quyền
   assert.equal((await call('DELETE', `/admin/mods/${dn.id}/${u.id}`, null, admin.token)).status, 200);
 });
+
+test('lưu tin nhắn 38 ngày: xóa tin cũ hơn, giữ tin mới, xóa ảnh mồ côi, giữ ảnh còn dùng', async () => {
+  const fs = await import('node:fs');
+  const { db, now } = await import('../server/db.js');
+  const { purgeOldMessages } = await import('../server/retention.js');
+  const u = await signup('luutru', 1);
+  const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((x) => x.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  const mk = async (body) => (await call('POST', `/groups/${vn.id}/messages`, { body }, u.token)).data.message.id;
+  const oldId = await mk('tin 40 ngày trước');
+  const edgeId = await mk('tin 37 ngày trước');
+  const newId = await mk('tin mới');
+  const DAYMS = 24 * 3600 * 1000;
+  const dir = process.env.UPLOAD_DIR;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'oldpic.png'), 'x');
+  fs.writeFileSync(path.join(dir, 'sharedpic.png'), 'x');
+  db.prepare('UPDATE messages SET created_at = ?, image_url = ? WHERE id = ?').run(now() - 40 * DAYMS, '/uploads/oldpic.png', oldId);
+  db.prepare('UPDATE messages SET created_at = ?, image_url = ? WHERE id = ?').run(now() - 37 * DAYMS, '/uploads/sharedpic.png', edgeId);
+  db.prepare('UPDATE messages SET image_url = ? WHERE id = ?').run('/uploads/sharedpic.png', oldId); // cùng một ảnh với tin còn giữ
+  await call('POST', `/messages/${oldId}/heart`, {}, admin.token);
+  const r = purgeOldMessages(dir);
+  assert.ok(r.messages >= 1);
+  const ids = (await call('GET', `/groups/${vn.id}/messages`, null, u.token)).data.messages.map((m) => m.id);
+  assert.ok(!ids.includes(oldId));
+  assert.ok(ids.includes(edgeId) && ids.includes(newId));
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(oldId).c, 0);
+  assert.ok(fs.existsSync(path.join(dir, 'sharedpic.png'))); // vẫn còn tin dùng ảnh này
+  // ảnh chỉ thuộc tin cũ thì bị xóa
+  const old2 = await mk('tin cũ khác');
+  db.prepare('UPDATE messages SET created_at = ?, image_url = ? WHERE id = ?').run(now() - 50 * DAYMS, '/uploads/oldpic.png', old2);
+  purgeOldMessages(dir);
+  assert.ok(!fs.existsSync(path.join(dir, 'oldpic.png')));
+});

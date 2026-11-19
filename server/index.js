@@ -7,6 +7,7 @@ import { WebSocketServer } from 'ws';
 import { db, now, homeGroupIds, nameKey, trendGroupId } from './db.js';
 import { provinceById } from './geo.js';
 import { api, UPLOAD_DIR } from './routes.js';
+import { startRetention } from './retention.js';
 import { hub, hashPassword, getUser, addMember } from './lib.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -87,6 +88,7 @@ function backup() {
     console.log('[backup] ok', file);
   } catch (e) { console.error('[backup] lỗi', e.message); }
 }
+startRetention(UPLOAD_DIR);
 if (process.env.NODE_ENV === 'production') {
   setTimeout(backup, 60_000).unref();
   setInterval(backup, 24 * 3600_000).unref();

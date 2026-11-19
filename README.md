@@ -23,6 +23,7 @@ Lần chạy đầu tự tạo `data/jkr.db`, toàn bộ group địa lý (1 qu�
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Tạo admin hệ thống khi chưa có (bắt buộc ở production) |
 | `REQUIRE_VERIFY=1` | Bật lại bước xác nhận email (mặc định đang bỏ qua) |
 | `AGENT_WEBHOOK_URL`, `AGENT_WEBHOOK_TOKEN` | Webhook nhận lỗi từ trang "Danh sách lỗi" (admin chọn lỗi + prompt rồi gửi agent). App POST JSON `{text, prompt, bugs[]}`, token gửi kèm `Authorization: Bearer`. Chưa đặt thì dùng nút "Sao chép prompt" |
+| `RETENTION_DAYS` | Số ngày lưu tin nhắn (mặc định 38). Tin cũ hơn bị xóa hẳn (kèm tim và ảnh không còn dùng), kiểm tra lúc khởi động và mỗi 6 giờ |
 | `PUBLIC_URL` | Địa chỉ công khai để tạo link ảnh chụp lỗi gửi agent (mặc định tự suy ra) |
 | `DB_FILE`, `UPLOAD_DIR` | Vị trí SQLite và thư mục ảnh |
 | `TRUST_PROXY=1` | Bật khi chạy sau reverse proxy (rate limit theo IP đúng) |
