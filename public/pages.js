@@ -311,14 +311,14 @@ actions.lock = async (el) => {
 actions.unlock = async (el) => { try { await api('POST', `/admin/users/${el.dataset.id}/unlock`); renderAdmin($('#view'), 'users'); } catch (e) { fail(e); } };
 actions['grant-mod'] = async (el) => {
   const { groups } = await api('GET', '/groups/discover');
-  const v = await ask({ title: `Trao quyền mod cho ${el.dataset.name}`, text: 'Người này phải đang ở trong nhóm. Mod chỉ quản lý được nhóm được giao, không xem được nhóm riêng tư.', fields: [
+  const v = await ask({ title: `Trao quyền mod cho ${el.dataset.name}`, text: 'Bất kỳ người dùng nào cũng được trao quyền; nếu chưa ở trong nhóm sẽ tự được thêm vào. Mod chỉ quản lý được nhóm được giao, không xem được nhóm riêng tư.', fields: [
     { name: 'groupId', label: 'Nhóm công khai', type: 'select', options: groups.map((g) => ({ value: g.id, label: g.name })) }], ok: 'Trao quyền' });
   if (!v) return;
   try { await api('POST', '/admin/mods', { groupId: Number(v.groupId), userId: Number(el.dataset.id) }); toast('Đã trao quyền mod'); } catch (e) { fail(e); }
 };
 async function adminMods(body) {
   const { mods } = await api('GET', '/admin/mods');
-  body.innerHTML = `<p class="small muted">Trao quyền mod ở tab "Người dùng". Mod là tùy chọn cho mỗi nhóm công khai.</p><div class="list">${mods.map((m) => `<div class="card">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b><div class="tiny muted">Mod của ${esc(m.groupName)}</div></div><button class="btn sm danger" data-act="revoke-mod" data-gid="${m.groupId}" data-id="${m.user.id}">Thu hồi</button></div>`).join('') || '<p class="muted">Chưa có mod nào.</p>'}</div>`;
+  body.innerHTML = `<p class="small muted">Trao quyền mod cho bất kỳ ai ở tab "Người dùng" (tìm theo tên hoặc email). Mod là tùy chọn cho mỗi nhóm công khai.</p><div class="list">${mods.map((m) => `<div class="card">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b><div class="tiny muted">Mod của ${esc(m.groupName)}</div></div><button class="btn sm danger" data-act="revoke-mod" data-gid="${m.groupId}" data-id="${m.user.id}">Thu hồi</button></div>`).join('') || '<p class="muted">Chưa có mod nào.</p>'}</div>`;
 }
 actions['revoke-mod'] = async (el) => {
   if (!(await confirmBox('Thu hồi quyền mod?', '', 'Thu hồi', true))) return;

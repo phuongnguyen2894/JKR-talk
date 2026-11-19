@@ -298,3 +298,17 @@ test('Đẩy trend: ai cũng vào sẵn và đọc được, chỉ admin/mod đ�
   const moi = await signup('nguoimoi', 1);
   assert.equal((await call('GET', '/groups/mine', null, moi.token)).data.groups[0].type, 'trend');
 });
+
+test('admin hệ thống trao mod cho bất kỳ user nào, kể cả chưa ở trong nhóm', async () => {
+  const u = await signup('modbatky', 1);
+  const dn = (await call('GET', '/groups/discover?q=da nang', null, u.token)).data.groups.find((x) => x.type === 'province');
+  assert.equal(dn.joined, false);
+  assert.equal((await call('POST', '/admin/mods', { groupId: dn.id, userId: u.id }, u.token)).status, 403); // người thường không được
+  assert.equal((await call('POST', '/admin/mods', { groupId: dn.id, userId: u.id }, admin.token)).status, 200);
+  const g = (await call('GET', `/groups/${dn.id}`, null, u.token)).data.group;
+  assert.equal(g.role, 'mod');
+  const trend = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((x) => x.type === 'trend');
+  assert.equal(trend.canPost, true);
+  assert.equal((await call('POST', '/admin/mods', { groupId: dn.id, userId: admin.id }, admin.token)).status, 400); // admin đã có toàn quyền
+  assert.equal((await call('DELETE', `/admin/mods/${dn.id}/${u.id}`, null, admin.token)).status, 200);
+});

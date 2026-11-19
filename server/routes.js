@@ -341,7 +341,7 @@ api.get(
          FROM groups g WHERE g.type IN ('country','region','province') ${type ? 'AND g.type = ?' : ''}`
       )
       .all(...(type ? [req.user.id, type] : [req.user.id]));
-    const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').toLowerCase();
+    const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/đ/g, 'd');
     const groups = rows
       .filter((g) => !q || norm(g.name).includes(norm(q)))
       .map((g) => ({ id: g.id, type: g.type, name: g.name, short: g.short, lang: g.lang, memberCount: g.cnt, joined: !!g.joined }))
@@ -1106,7 +1106,12 @@ api.post('/admin/mods', adminOnly, wrap((req, res) => {
   const g = getGroup(int(req.body.groupId));
   const uid = int(req.body.userId);
   if (!g || !PUBLIC_TYPES.includes(g.type)) throw bad('Chỉ trao quyền mod cho group công khai');
-  if (!getMember(g.id, uid)) throw bad('Người này chưa ở trong nhóm');
+  const target = getUser(uid);
+  if (!target || target.status === 'deleted') throw bad('Không tìm thấy người dùng');
+  if (target.role === 'admin') throw bad('Admin hệ thống đã có toàn quyền');
+  // trao cho bất kỳ ai: chưa ở trong nhóm thì tự thêm vào (gỡ lệnh cấm nếu có)
+  db.prepare('DELETE FROM bans WHERE group_id = ? AND user_id = ?').run(g.id, uid);
+  if (!getMember(g.id, uid)) addMember(g.id, uid);
   db.prepare("UPDATE members SET role='mod' WHERE group_id=? AND user_id=?").run(g.id, uid);
   log(req.user.id, 'grant_mod', { target: uid, group: g.id });
   notify(uid, 'mod', `Bạn được trao quyền mod của nhóm "${g.name}"`);
