@@ -8,6 +8,7 @@ const RULES = [
   'Không spam, quảng cáo hay đăng liên kết lạ.',
   'Không đăng nội dung nhạy cảm hoặc vi phạm pháp luật.',
   'Gặp vi phạm hãy dùng nút Báo cáo thay vì tranh cãi.',
+  'Tin nhắn chỉ được lưu trong 38 ngày gần nhất; tin cũ hơn sẽ tự động bị xóa (kèm ảnh).',
 ];
 
 let C = null; // trạng thái cuộc trò chuyện đang mở
