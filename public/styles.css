@@ -226,3 +226,20 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
 .lp img { max-height: 300px; }
 .lp-s { font-size: 11px; }
 @media (max-width: 899px) { .msgs { padding: 12px; } }
+
+/* gọn hơn nữa */
+.msgs { padding: 10px 14px; gap: 7px; }
+.msg { gap: 8px; }
+.msg > .av, .msg > .av-btn .av { width: 26px; height: 26px; font-size: 11px; }
+.msg .meta { gap: 6px; }
+.msg .meta .who { font-size: 12.5px; }
+.msg .text { font-size: 13.5px; line-height: 1.35; margin-top: 1px; }
+.msg.own .bubble { font-size: 13.5px; line-height: 1.35; padding: 5px 10px; }
+.msg img.pic { max-width: min(210px, 100%); max-height: 210px; margin-top: 4px; }
+.lp { max-width: 290px; gap: 5px; padding: 6px 8px 6px 10px; margin-top: 4px; }
+.lp-t { font-size: 12.5px; gap: 2px; }
+.lp-d { -webkit-line-clamp: 4; }
+.lp img { max-height: 220px; }
+.lp-s { font-size: 10.5px; }
+.msg .actions { margin-top: 0; }
+@media (max-width: 899px) { .msgs { padding: 10px; } }
