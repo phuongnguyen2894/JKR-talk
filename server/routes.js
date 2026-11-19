@@ -175,6 +175,24 @@ api.patch(
   })
 );
 
+// Đổi mật khẩu: cần mật khẩu hiện tại; các phiên đăng nhập khác bị đăng xuất
+api.post(
+  '/me/password',
+  wrap((req, res) => {
+    rateLimit(`pw:${req.user.id}`, 10, 3600_000);
+    const cur = typeof req.body.currentPassword === 'string' ? req.body.currentPassword : '';
+    const next = typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
+    if (!checkPassword(cur, req.user.pass_hash)) throw bad('Mật khẩu hiện tại không đúng');
+    if (next.length < 8) throw bad('Mật khẩu mới cần ít nhất 8 ký tự');
+    if (next.length > 200) throw bad('Mật khẩu quá dài');
+    if (req.body.confirmPassword !== undefined && req.body.confirmPassword !== next) throw bad('Mật khẩu xác nhận không khớp');
+    if (next === cur) throw bad('Mật khẩu mới phải khác mật khẩu hiện tại');
+    db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?').run(hashPassword(next), req.user.id);
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, req.token);
+    res.json({ ok: true });
+  })
+);
+
 // Đổi vị trí home (giới hạn 1 lần / 30 ngày)
 api.post(
   '/me/home',
@@ -482,23 +500,24 @@ api.post(
   })
 );
 
-// Chủ đề nóng: tin được nhiều tim nhất ở các group công khai trong 7 ngày gần đây
-const HOT_MIN_HEARTS = Number(process.env.HOT_MIN_HEARTS || 3);
+// Chủ đề nóng: 20 tin nhắn nhận được nhiều tim nhất trong 24 giờ qua, ở các group công khai
+const HOT_LIMIT = 20;
 api.get(
   '/hot',
   wrap((req, res) => {
     const rows = db
       .prepare(
         `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m
-         JOIN reactions r ON r.message_id = m.id JOIN groups g ON g.id = m.group_id
-         WHERE g.type IN ('country','region','province') AND m.deleted = 0 AND m.created_at > ?
-         GROUP BY m.id HAVING hc >= ? ORDER BY hc DESC, m.id DESC LIMIT 30`
+         JOIN reactions r ON r.message_id = m.id AND r.created_at > ?
+         JOIN groups g ON g.id = m.group_id
+         WHERE g.type IN ('country','region','province') AND m.deleted = 0
+         GROUP BY m.id ORDER BY hc DESC, m.id DESC LIMIT ?`
       )
-      .all(now() - 7 * DAY, HOT_MIN_HEARTS)
-      .filter((m) => !isBlockedEither(req.user.id, m.user_id));
+      .all(now() - DAY, HOT_LIMIT * 2) // lấy dư để còn lọc tin của người bị chặn
+      .filter((m) => !isBlockedEither(req.user.id, m.user_id))
+      .slice(0, HOT_LIMIT);
     res.json({
-      minHearts: HOT_MIN_HEARTS,
-      items: rows.map((m) => ({ ...messageDto(m, req.user.id), groupName: getGroup(m.group_id).name })),
+      items: rows.map((m) => ({ ...messageDto(m, req.user.id), hearts: m.hc, groupName: getGroup(m.group_id).name })),
     });
   })
 );

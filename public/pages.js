@@ -8,7 +8,7 @@ export function renderLogin(root, query) {
     : query.get('verify') === 'fail' ? '<div class="error">Liên kết xác nhận không hợp lệ hoặc đã dùng rồi.</div>' : '';
   root.innerHTML = `<div class="auth"><div class="auth-box">
     <div class="brand" style="padding:0"><span class="logo">JK</span>JKR talks</div>
-    <div><h1>Đăng nhập</h1><p class="muted small" style="margin-top:8px">Kết nối và lan tỏa những điều tích cực về LingOrm.</p></div>
+    <div><h1>Đăng nhập</h1><p class="muted small" style="margin-top:8px">Kết nối và lan tỏa những điều tích cực về LingOrm.</p><p class="muted small" style="margin-top:4px">Tập trung vào LingOrm. <b>Only LingOrm</b></p></div>
     ${note}<div id="err"></div>
     <form id="lf" class="col">
       <div class="field"><label for="email">Email</label><input class="input" id="email" type="email" required autocomplete="email" placeholder="ban@email.com"></div>
@@ -121,8 +121,8 @@ export async function renderNews(view) {
     <div class="list">${news.map((n) => `<article class="card col" ${n.read ? '' : 'style="border-color:var(--accent)"'}>
       <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}${n.read ? '' : '<span class="pill">Mới</span>'}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
       <h2 style="font-size:18px">${esc(n.title)}</h2>
-      ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy">` : ''}
       <p style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</p>
+      ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy">` : ''}
       ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
   if (S.unreadNews) { api('POST', '/news/read-all').then(() => { S.unreadNews = 0; S.hooks.renderSide(); }).catch(() => {}); }
@@ -183,6 +183,13 @@ export function renderSettings(view) {
         <div class="field"><label for="av">Màu ảnh đại diện</label><div class="row">${[0, 1, 2, 3, 4, 5].map((i) => `<label style="cursor:pointer"><input type="radio" name="avc" value="${i}" class="sr-only" ${u.avatarColor === i ? 'checked' : ''}><span class="av c${i}" style="${u.avatarColor === i ? 'outline:3px solid var(--accent);outline-offset:2px' : ''}" data-avc>${esc([...u.displayName][0].toUpperCase())}</span></label>`).join('')}</div></div>
         <div class="field"><label for="avf">Hoặc tải ảnh đại diện</label><input type="file" id="avf" accept="image/png,image/jpeg,image/gif,image/webp"></div>
         <button class="btn primary">Lưu hồ sơ</button></form></section>
+    <section class="card col"><div class="h2" style="margin:0">Đổi mật khẩu</div>
+      <form id="pwf" class="col" autocomplete="off">
+        <div class="field"><label for="pw0">Mật khẩu hiện tại</label><input class="input" id="pw0" type="password" required autocomplete="current-password"></div>
+        <div class="field"><label for="pw1">Mật khẩu mới</label><input class="input" id="pw1" type="password" required minlength="8" autocomplete="new-password" placeholder="Ít nhất 8 ký tự"></div>
+        <div class="field"><label for="pw2">Xác nhận mật khẩu mới</label><input class="input" id="pw2" type="password" required minlength="8" autocomplete="new-password"></div>
+        <p class="small muted">Sau khi đổi, các thiết bị khác đang đăng nhập sẽ bị đăng xuất.</p>
+        <button class="btn">Đổi mật khẩu</button></form></section>
     <section class="card col"><div class="h2" style="margin:0">Vị trí "home"</div>
       <p class="small muted">Chỉ hiển thị tới cấp tỉnh/thành. Đổi được 1 lần / 30 ngày.${cooldown ? ' <b>Bạn vừa đổi gần đây nên tạm thời chưa đổi được.</b>' : ''}</p>
       <form id="hf" class="col"><div class="field"><label for="hp">Tỉnh / Thành phố</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
@@ -209,6 +216,15 @@ export function renderSettings(view) {
     const body = { displayName: $('#dn').value, language: $('#lang').value, avatarColor: Number($('[name=avc]:checked')?.value ?? 0) };
     if (pendingAvatar) body.avatarUrl = pendingAvatar;
     if (await save(body)) renderSettings(view);
+  };
+  $('#pwf').onsubmit = async (e) => {
+    e.preventDefault();
+    if ($('#pw1').value !== $('#pw2').value) return toast('Mật khẩu xác nhận không khớp');
+    try {
+      await api('POST', '/me/password', { currentPassword: $('#pw0').value, newPassword: $('#pw1').value, confirmPassword: $('#pw2').value });
+      e.target.reset();
+      toast('Đã đổi mật khẩu');
+    } catch (er) { fail(er); }
   };
   $('#savepriv').onclick = () => save({ friendPolicy: $('#fp').value, showOnline: $('#so').checked, newsPush: $('#np').checked, hideSuggestions: $('#hs').checked });
   $('#hf').onsubmit = async (e) => {

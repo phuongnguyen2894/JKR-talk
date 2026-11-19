@@ -199,7 +199,7 @@ test('thả tim: bật/tắt, không tự thả tim, vào Chủ đề nóng khi 
   assert.deepEqual([r2.data.hearts, r2.data.hearted], [0, false]);
   await heart(ts[1]);
   await heart(ts[2]);
-  assert.equal((await call('GET', '/hot', null, ts[1])).data.items.length, 0); // mới 2 tim
+  assert.equal((await call('GET', '/hot', null, ts[1])).data.items[0].hearts, 2); // có tim là lên Chủ đề nóng, không cần ngưỡng
   await heart(admin.token);
   const hot = (await call('GET', '/hot', null, ts[1])).data.items;
   assert.equal(hot.length, 1);
@@ -207,4 +207,21 @@ test('thả tim: bật/tắt, không tự thả tim, vào Chủ đề nóng khi 
   assert.equal(hot[0].hearted, true);
   const hist = (await call('GET', `/groups/${vn.id}/messages`, null, ts[2])).data.messages.find((x) => x.id === m.id);
   assert.deepEqual([hist.hearts, hist.hearted], [3, true]);
+});
+
+test('đổi mật khẩu: cần mật khẩu cũ, kiểm tra mới, đăng xuất phiên khác', async () => {
+  const email = 'pw@t.com';
+  await call('POST', '/auth/register', { email, password: 'password1', acceptCommunity: true, displayName: 'Doi Mat Khau', provinceId: 1 });
+  const a = (await call('POST', '/auth/login', { email, password: 'password1' })).data.token;
+  const b = (await call('POST', '/auth/login', { email, password: 'password1' })).data.token;
+  const chg = (cur, next, confirm = next) => call('POST', '/me/password', { currentPassword: cur, newPassword: next, confirmPassword: confirm }, a);
+  assert.equal((await chg('sai-mat-khau', 'matkhaumoi1')).status, 400);
+  assert.equal((await chg('password1', 'ngan')).status, 400);
+  assert.equal((await chg('password1', 'matkhaumoi1', 'khac-nhau')).status, 400);
+  assert.equal((await chg('password1', 'password1')).status, 400);
+  assert.equal((await chg('password1', 'matkhaumoi1')).status, 200);
+  assert.equal((await call('GET', '/me', null, a)).status, 200); // phiên hiện tại còn
+  assert.equal((await call('GET', '/me', null, b)).status, 401); // phiên khác bị đăng xuất
+  assert.equal((await call('POST', '/auth/login', { email, password: 'password1' })).status, 401);
+  assert.equal((await call('POST', '/auth/login', { email, password: 'matkhaumoi1' })).status, 200);
 });

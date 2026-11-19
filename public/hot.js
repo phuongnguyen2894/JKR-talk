@@ -1,11 +1,11 @@
 import { $, esc, S, api, icon, avatar, fmtDateTime } from './core.js';
 
-// Chủ đề nóng: tin nhắn nhiều tim nhất ở các nhóm công khai trong 7 ngày gần đây
+// Chủ đề nóng: 20 tin nhắn nhiều tim nhất ở các nhóm công khai trong 24 giờ qua
 export async function renderHot(view) {
-  const { items, minHearts } = await api('GET', '/hot');
+  const { items } = await api('GET', '/hot');
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>Chủ đề nóng</h1>
-    <p class="small muted">Những tin nhắn được thả nhiều tim nhất ở các nhóm công khai trong 7 ngày qua (từ ${minHearts} tim trở lên). Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
+    <p class="small muted">20 tin nhắn nhận được nhiều tim nhất ở các nhóm công khai trong 24 giờ qua. Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
     <div class="list">${items.map((m, i) => `<a class="card col" href="#/chat/${m.groupId}" style="gap:6px">
       <div class="row wrap"><span class="pill">#${i + 1}</span><span class="pill warn">${esc(m.groupName)}</span>
         <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
