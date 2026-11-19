@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow } from './core.js';
 
 const PUBLIC = ['country', 'region', 'province'];
 const EMOJI = ['😀','😂','🥹','😍','🥰','😭','😘','🤣','👍','🙏','👏','🔥','💜','💚','💙','💖','✨','🎉','😎','🤗','😅','🥺','😢','😡','🤔','🙌','💪','🌸','⭐','🎬','📺','🍿'];
@@ -143,8 +143,9 @@ const safeHref = (u) => (/^https?:\/\//i.test(u) ? u : '#');
 function previewHtml(p) {
   if (!p) return '';
   return `<a class="lp" href="${esc(safeHref(p.url))}" target="_blank" rel="noopener noreferrer nofollow">
+    <span class="lp-t"><b>${esc(p.title)}</b>${p.description ? `<span class="lp-d">${esc(p.description)}</span>` : ''}</span>
     ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : ''}
-    <span class="lp-t"><span class="lp-s">${esc(p.site)}</span><b>${esc(p.title)}</b>${p.description ? `<span class="lp-d">${esc(p.description)}</span>` : ''}</span></a>`;
+    <span class="lp-s">${esc(p.site)}${p.time ? ` · ${fmtDateTime(p.time)}` : ''}</span></a>`;
 }
 
 function msgHtml(m) {

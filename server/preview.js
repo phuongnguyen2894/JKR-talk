@@ -117,8 +117,8 @@ async function xPreview(u) {
     const r = await get(`https://api.fxtwitter.com/${m[1]}/status/${m[2]}`, { maxBytes: MAX_HTML, accept: 'application/json' });
     const t = JSON.parse(r.buf.toString('utf8')).tweet;
     if (!t) return null;
-    const photo = t.media?.photos?.[0]?.url || t.media?.videos?.[0]?.thumbnail_url || t.media?.all?.[0]?.thumbnail_url || '';
-    return { title: `${t.author?.name || m[1]} (@${t.author?.screen_name || m[1]})`, description: t.text || '', image: photo, site: 'X' };
+    const photo = t.media?.mosaic?.formats?.jpeg || t.media?.photos?.[0]?.url || t.media?.videos?.[0]?.thumbnail_url || t.media?.all?.[0]?.thumbnail_url || '';
+    return { title: `${t.author?.name || m[1]} (@${t.author?.screen_name || m[1]})`, description: t.text || '', image: photo, site: 'X', time: t.created_timestamp ? t.created_timestamp * 1000 : 0 };
   } catch { return null; }
 }
 
@@ -144,7 +144,8 @@ export async function buildPreview(url, uploadDir) {
     url,
     site: (meta.site || u.hostname.replace(/^www\./, '')).slice(0, 80),
     title: meta.title.slice(0, 160),
-    description: meta.description.slice(0, 280),
+    description: meta.description.slice(0, 500),
+    time: meta.time || 0,
     image,
   };
 }
