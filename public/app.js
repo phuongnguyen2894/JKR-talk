@@ -25,16 +25,18 @@ function renderSide() {
   const item = (g) => `<a class="nav-item" href="#/chat/${g.id}" ${g.id === activeId ? 'aria-current="page"' : ''}>
     ${g.type === 'dm' ? avatar(g.peer, '" style="width:20px;height:20px;font-size:11px') : icon(GROUP_ICON[g.type])}
     <span class="name">${esc(g.name)}${g.muted ? ' <span class="tiny muted">(tắt)</span>' : ''}</span>${g.unread ? `<span class="badge" aria-label="${g.unread} tin chưa đọc">${g.unread}</span>` : ''}</a>`;
+  const tg = S.groups.find((g) => g.type === 'trend');
   const sec = (title, type) => {
     const list = S.groups.filter((g) => g.type === type);
     return list.length ? `<div class="sec">${title}</div>${list.map(item).join('')}` : '';
   };
   const nav = (hash, name, label, ic, badge) => `<a class="nav-item" href="${hash}" ${r.name === name ? 'aria-current="page"' : ''}>${icon(ic)}<span class="name">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
   side.innerHTML = `<div class="brand"><span class="logo">JK</span>JKR talks</div><h1 class="mob-title">Nhóm của bạn</h1>
-    ${sec('Đẩy trend', 'trend')}${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}${sec('Nhóm riêng', 'private')}
+    ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}${sec('Nhóm riêng', 'private')}
     <button class="nav-item accent" data-act="create-private">${icon('plus')}<span class="name">Tạo nhóm riêng</span></button>
     ${sec('Tin nhắn riêng', 'dm')}
     <div class="sec">Khác</div>
+    ${tg ? `<a class="nav-item" href="#/chat/${tg.id}" ${tg.id === activeId ? 'aria-current="page"' : ''}>${icon('trend')}<span class="name">Đẩy trend</span>${tg.unread ? `<span class="badge">${tg.unread}</span>` : ''}</a>` : ''}
     ${nav('#/discover', 'discover', 'Khám phá nhóm khác', 'search')}
     ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame')}
     ${nav('#/news', 'news', 'Bản tin', 'news', S.unreadNews)}
@@ -45,9 +47,10 @@ function renderSide() {
     <button class="nav-item" data-act="notifs">${icon('bell')}<span class="name">Thông báo</span>${S.unreadNotif ? `<span class="badge">${S.unreadNotif}</span>` : ''}</button>
     <div class="side-foot"><a class="nav-item" href="#/settings" style="min-height:48px" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${avatar(S.me)}<span class="name" style="font-weight:600">${esc(S.me.displayName)}</span>${icon('gear')}</a></div>`;
 
-  const chatUnread = S.groups.reduce((n, g) => n + (g.unread || 0), 0);
-  const tab = (hash, name, label, ic, badge) => `<a href="${hash}" ${r.name === name || (name === 'chat' && r.name === 'chat') ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
-  $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread) + tab('#/discover', 'discover', 'Khám phá', 'search') + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/hot', 'hot', 'Chủ đề nóng', 'flame') + tab('#/settings', 'settings', 'Tôi', 'gear');
+  const chatUnread = S.groups.reduce((n, g) => n + (g.type === 'trend' ? 0 : g.unread || 0), 0);
+  const trendTab = tg ? `<a href="#/chat/${tg.id}" ${tg.id === activeId ? 'aria-current="page"' : ''}>${icon('trend', 22)}Đẩy trend${tg.unread ? `<span class="badge">${tg.unread}</span>` : ''}</a>` : '';
+  const tab = (hash, name, label, ic, badge) => `<a href="${hash}" ${(r.name === name && !(name === 'chat' && tg && activeId === tg.id)) ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
+  $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread) + trendTab + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/hot', 'hot', 'Chủ đề nóng', 'flame') + tab('#/settings', 'settings', 'Tôi', 'gear');
   const total = chatUnread + S.unreadNews + S.unreadNotif;
   document.title = total ? `(${total}) JKR talks` : 'JKR talks';
 }
