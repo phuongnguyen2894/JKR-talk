@@ -359,3 +359,9 @@ test('không lộ vị trí của người khác; chính chủ và admin vẫn t
   const users = (await call('GET', '/admin/users?q=vitri2', null, admin.token)).data.users;
   assert.ok(users[0].location.province);
 });
+
+test('không kết bạn được với admin hệ thống (cả hai chiều)', async () => {
+  const u = await signup('kbadmin', 1);
+  assert.equal((await call('POST', '/friends/request', { userId: admin.id }, u.token)).status, 400);
+  assert.equal((await call('POST', '/friends/request', { userId: u.id }, admin.token)).status, 400);
+});

@@ -375,7 +375,7 @@ export async function openProfile(uid, gid = C?.gid) {
   try { r = await api('GET', `/users/${uid}`); } catch (e) { return fail(e); }
   const u = r.user;
   const g = gid ? S.groups.find((x) => x.id === gid) : null;
-  const rel = { none: `<button class="btn primary" data-act="friend-add" data-id="${u.id}">Kết bạn</button>`,
+  const rel = u.isAdmin ? '' : { none: `<button class="btn primary" data-act="friend-add" data-id="${u.id}">Kết bạn</button>`,
     sent: `<button class="btn" disabled>Đã gửi lời mời</button>`,
     received: `<button class="btn primary" data-act="fr-accept" data-id="${r.requestId}">Chấp nhận lời mời</button>`,
     friend: `<button class="btn primary" data-act="dm" data-id="${u.id}">Nhắn tin</button>` }[r.relation] || '';

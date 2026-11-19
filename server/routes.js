@@ -652,6 +652,7 @@ api.post(
     const t = getUser(to);
     const generic = () => new HttpError(400, 'Không thể gửi lời mời kết bạn cho người này');
     if (!t || t.status !== 'active' || to === me || isBlockedEither(me, to)) throw generic();
+    if (t.role === 'admin' || req.user.role === 'admin') throw bad('Không thể kết bạn với admin hệ thống');
     if (areFriends(me, to)) throw bad('Hai bạn đã là bạn bè');
     if (t.friend_policy === 'none') throw generic();
     if (t.friend_policy === 'shared' && !shareGroup(me, to)) throw generic();
