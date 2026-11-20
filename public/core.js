@@ -205,7 +205,18 @@ export async function imageToDataUrl(file, maxSide = 1600) {
 }
 
 // Văn bản → HTML đã escape, liên kết http(s) thành thẻ <a> hiển thị rút gọn
-export function linkify(text) {
+// Đoạn văn thường: escape + tô sáng các @tên đã được tag
+function plainHtml(seg, mentions) {
+  const h = esc(seg);
+  if (!mentions?.length) return h;
+  const by = new Map(mentions.map((u) => ['@' + u.displayName.toLowerCase(), u]));
+  const tags = [...by.keys()].sort((a, b) => b.length - a.length).map((t) => esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return h.replace(new RegExp(tags.join('|'), 'gi'), (t) => {
+    const u = by.get(t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").toLowerCase());
+    return '<span class="mention' + (u && S.me?.id === u.id ? ' me' : '') + '">' + t + '</span>';
+  });
+}
+export function linkify(text, mentions) {
   const t = String(text ?? '');
   const re = /https?:\/\/[^\s<>"]+/gi;
   const out = [];
@@ -219,11 +230,11 @@ export function linkify(text) {
     const q = short.search(/[?#]/);
     if (q > -1) short = short.slice(0, q) + '…';
     if (short.length > 34) short = short.slice(0, 33) + '…';
-    out.push(esc(t.slice(last, m.index)));
+    out.push(plainHtml(t.slice(last, m.index), mentions));
     out.push('<a class="ext-link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer nofollow" title="' + esc(url) + '">' + esc(short) + '</a>');
     last = m.index + url.length;
     re.lastIndex = last;
   }
-  out.push(esc(t.slice(last)));
+  out.push(plainHtml(t.slice(last), mentions));
   return out.join('');
 }

@@ -107,10 +107,11 @@ api.post(
       const bot = db.prepare('SELECT id FROM users WHERE is_super = 1 ORDER BY id LIMIT 1').get();
       const home = homeGroupIds(province).map((gid) => getGroup(gid)).find((x) => x?.type === 'country');
       if (bot && home) {
-        const body = `🎉 Chào mừng ${displayName} đã tham gia JKR talks! Bạn bắt đầu đu LingOrm từ bao giờ vậy? Kể cho mọi người nghe nhé 💜`;
-        const mr = db.prepare('INSERT INTO messages (group_id, user_id, body, created_at) VALUES (?,?,?,?)').run(home.id, bot.id, body, now());
+        const body = `🎉 Chào mừng @${displayName} đã tham gia JKR talks! Bạn bắt đầu đu LingOrm từ bao giờ vậy? Kể cho mọi người nghe nhé 💜`;
+        const mr = db.prepare('INSERT INTO messages (group_id, user_id, body, mentions, created_at) VALUES (?,?,?,?,?)').run(home.id, bot.id, body, JSON.stringify([id]), now());
         const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(mr.lastInsertRowid), bot.id);
         hub.sendMany(memberIds(home.id), { type: 'message', message: dto });
+        notify(id, 'mention', `${getUser(bot.id).display_name} đã nhắc đến bạn trong "${home.name}"`);
       }
     } catch (e) { console.error('[welcome]', e.message); }
     // không cần xác nhận email: đăng nhập luôn sau khi đăng ký
@@ -461,6 +462,36 @@ api.post(
   })
 );
 
+// ---- tag người dùng (@tên) ----------------------------------------------------
+// Chỉ nhận người ở trong nhóm, không phải chính mình, không phải Admin hệ thống, không chặn nhau,
+// và tên của họ có thật trong nội dung tin.
+function validMentions(gid, authorId, body, ids) {
+  if (!Array.isArray(ids)) return [];
+  const out = [];
+  for (const raw of ids.slice(0, 10)) {
+    const id = Number(raw);
+    if (!Number.isInteger(id) || id === authorId || out.includes(id)) continue;
+    const u = getUser(id);
+    if (!u || u.status !== 'active' || u.is_super || !getMember(gid, id) || isBlockedEither(authorId, id)) continue;
+    if (!body.toLowerCase().includes('@' + u.display_name.toLowerCase())) continue;
+    out.push(id);
+  }
+  return out;
+}
+function notifyMentions(g, author, ids) {
+  const where = g.type === 'dm' ? 'tin nhắn riêng' : `"${g.name}"`;
+  for (const id of ids) notify(id, 'mention', `${author.display_name} đã nhắc đến bạn trong ${where}`);
+}
+api.get('/groups/:id/mention-search', wrap((req, res) => {
+  const { g } = requireMember(int(req.params.id), req.user.id);
+  const q = nameKey(str(req.query.q, 30)).replace(/[%_\\]/g, '');
+  const rows = db.prepare(`SELECT u.id FROM members m JOIN users u ON u.id = m.user_id
+      WHERE m.group_id = ? AND u.id != ? AND u.is_super = 0 AND u.status = 'active' AND u.name_key LIKE ?
+      ORDER BY (u.name_key LIKE ?) DESC, u.display_name LIMIT 20`).all(g.id, req.user.id, '%' + q + '%', q + '%');
+  const users = rows.filter((r) => !isBlockedEither(req.user.id, r.id)).slice(0, 8).map((r) => { const p = publicUser(getUser(r.id)); return { id: p.id, displayName: p.displayName, avatarColor: p.avatarColor, avatarUrl: p.avatarUrl }; });
+  res.json({ users });
+}));
+
 api.post('/groups/:id/rules-ack', wrap((req, res) => {
   requireMember(int(req.params.id), req.user.id);
   db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(int(req.params.id), req.user.id);
@@ -522,13 +553,15 @@ api.post(
       const r = db.prepare('SELECT id FROM messages WHERE id = ? AND group_id = ?').get(int(req.body.replyTo), gid);
       replyTo = r?.id ?? null;
     }
+    const mentionIds = validMentions(gid, req.user.id, body, req.body.mentions);
     const r = db
-      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, reply_to, created_at) VALUES (?,?,?,?,?,?)')
-      .run(gid, req.user.id, body, imageUrl, replyTo, now());
+      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, reply_to, mentions, created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(gid, req.user.id, body, imageUrl, replyTo, mentionIds.length ? JSON.stringify(mentionIds) : null, now());
     const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), req.user.id);
     db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
     hub.sendMany(memberIds(gid), { type: 'message', message: dto });
     res.status(201).json({ message: dto });
+    notifyMentions(g, req.user, mentionIds);
     // xem trước liên kết: lấy nền, xong thì báo cho các thành viên
     const link = firstUrl(body);
     if (link) {

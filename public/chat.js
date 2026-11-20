@@ -124,7 +124,10 @@ function wireComposer() {
     if (!body && !C.image) return;
     input.disabled = true;
     try {
-      const { message } = await api('POST', `/groups/${C.gid}/messages`, { body, imageUrl: C.image, replyTo: C.replyTo?.id });
+      const low = body.toLowerCase();
+      const mentions = Object.entries(C.mentionMap || {}).filter(([n]) => low.includes('@' + n)).map(([, id]) => id);
+      const { message } = await api('POST', `/groups/${C.gid}/messages`, { body, imageUrl: C.image, replyTo: C.replyTo?.id, mentions });
+      C.mentionMap = {};
       C.replyTo = null; C.image = null; C.emoji = false;
       appendMsg(message);
       scrollBottom(true);
@@ -135,6 +138,7 @@ function wireComposer() {
       fail(err);
     }
   };
+  wireMention();
   $('#file').onchange = async (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -144,6 +148,60 @@ function wireComposer() {
       redrawComposer();
     } catch (err) { fail(err); }
   };
+}
+
+// ---- gợi ý @tag khi gõ -------------------------------------------------------
+function wireMention() {
+  const input = $('#msg');
+  if (!input || C.group.type === 'trend') return;
+  let timer, items = [], active = 0, seq = 0;
+  const pop = () => $('#mention-pop');
+  const close = () => { pop()?.remove(); items = []; };
+  const token = () => {
+    const before = input.value.slice(0, input.selectionStart ?? input.value.length);
+    const m = before.match(/(?:^|\s)@([^\s@]{0,30})$/);
+    return m ? { q: m[1], start: before.length - m[1].length - 1 } : null;
+  };
+  const draw = () => {
+    pop()?.remove();
+    if (!items.length) return;
+    const el = document.createElement('div');
+    el.id = 'mention-pop'; el.className = 'mention-pop'; el.setAttribute('role', 'listbox');
+    el.innerHTML = items.map((u, i) => `<button type="button" role="option" class="mention-item" data-i="${i}" aria-selected="${i === active}">${avatar(u, '" style="width:24px;height:24px;font-size:12px')}<span>${esc(u.displayName)}</span></button>`).join('');
+    $('#composer').appendChild(el);
+    el.onmousedown = (e) => { e.preventDefault(); const b = e.target.closest('[data-i]'); if (b) pick(items[Number(b.dataset.i)]); };
+  };
+  const pick = (u) => {
+    const t = token();
+    if (!t) return close();
+    const after = input.value.slice(input.selectionStart ?? input.value.length);
+    const ins = '@' + u.displayName + ' ';
+    input.value = input.value.slice(0, t.start) + ins + after;
+    const pos = t.start + ins.length;
+    input.setSelectionRange(pos, pos);
+    (C.mentionMap ||= {})[u.displayName.toLowerCase()] = u.id;
+    close(); input.focus();
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const t = token();
+    if (!t) return close();
+    timer = setTimeout(async () => {
+      const mine = ++seq;
+      try {
+        const r = await api('GET', `/groups/${C.gid}/mention-search?q=${encodeURIComponent(t.q)}`);
+        if (mine !== seq || !token()) return;
+        items = r.users; active = 0; draw();
+      } catch { close(); }
+    }, 180);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (!items.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); active = (active + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; draw(); }
+    else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(items[active]); }
+    else if (e.key === 'Escape') close();
+  });
+  input.addEventListener('blur', () => setTimeout(close, 150));
 }
 
 // ---- hiển thị tin nhắn ---------------------------------------------------------
@@ -164,7 +222,7 @@ function msgHtml(m) {
   const quote = m.reply && !m.reply.deleted ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
   const text = m.deleted
     ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
-    : `${m.body ? (own ? `<div class="bubble">${linkify(m.body)}</div>` : `<div class="text">${linkify(m.body)}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}`;
+    : `${m.body ? (own ? `<div class="bubble">${linkify(m.body, m.mentions)}</div>` : `<div class="text">${linkify(m.body, m.mentions)}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}`;
   const role = m.modRole ? `<span class="pill">${m.modRole === 'mod' ? 'Mod' : 'Admin'}</span>` : '';
   const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !C.joined ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
   const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';

@@ -502,3 +502,26 @@ test('khách chưa đăng ký: chỉ đọc nhóm công khai, Đẩy trend, Ch�
   const w = await fetch(BASE + `/groups/${vn.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: 'x' }) });
   assert.equal(w.status, 401);
 });
+
+test('tag @tên: người được tag nhận thông báo; không tag được Admin hệ thống, người ngoài nhóm, chính mình; tin chào mừng tag người mới', async () => {
+  const a = await signup('tagger1', 1), b = await signup('tagged1', 1);
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, a.token);
+  // tin chào mừng đã tag người mới và báo cho họ
+  const hist = (await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages;
+  const wel = hist.find((m) => m.body.includes('@tagged1'));
+  assert.ok(wel && wel.mentions.some((u) => u.id === b.id));
+  assert.ok((await call('GET', '/notifications', null, b.token)).data.notifications.some((n) => n.type === 'mention'));
+  // tag người trong nhóm
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  let r = await call('POST', `/groups/${vn.id}/messages`, { body: 'chào @tagged1 và @Admin JKR và @tagger1', mentions: [b.id, adm.user.id, a.id] }, a.token);
+  assert.equal(r.status, 201);
+  assert.deepEqual(r.data.message.mentions.map((u) => u.id), [b.id]); // Admin hệ thống + chính mình bị bỏ
+  const ns = (await call('GET', '/notifications', null, b.token)).data.notifications.filter((n) => n.type === 'mention');
+  assert.equal(ns.length, 2);
+  assert.equal((await call('GET', '/notifications', null, adm.token)).data.notifications.some((n) => n.type === 'mention'), false);
+  // tìm gợi ý: không có Admin hệ thống, không có chính mình
+  const s = await call('GET', `/groups/${vn.id}/mention-search?q=ta`, null, a.token);
+  const names = s.data.users.map((u) => u.displayName);
+  assert.ok(names.includes('tagged1') && !names.includes('tagger1') && !names.some((n) => /admin/i.test(n)));
+});

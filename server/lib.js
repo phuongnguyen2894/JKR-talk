@@ -229,6 +229,7 @@ export function messageDto(m, viewerId) {
     preview: m.deleted || !m.preview || m.preview === '0' ? null : JSON.parse(m.preview),
     deleted: !!m.deleted,
     fwd: m.fwd ? JSON.parse(m.fwd) : null,
+    mentions: m.deleted || !m.mentions ? [] : JSON.parse(m.mentions).map((id) => publicUser(getUser(id))).filter((u) => !u.deleted).map((u) => ({ id: u.id, displayName: u.displayName })),
     reply,
     createdAt: m.created_at,
   };

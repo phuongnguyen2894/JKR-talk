@@ -314,3 +314,11 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 @media (max-width:640px){.card:has(>.user-acts){flex-wrap:wrap}.card>.user-acts{flex:1 0 100%;justify-content:flex-start}}
 
 .ext-link{color:var(--accent);text-decoration:underline;overflow-wrap:anywhere;word-break:break-all}
+
+.composer{position:relative}
+.mention{color:var(--accent);font-weight:600}
+.mention.me{background:color-mix(in srgb,var(--accent) 16%,transparent);border-radius:4px;padding:0 3px}
+.bubble .mention{color:inherit;text-decoration:underline}
+.mention-pop{position:absolute;left:8px;right:8px;bottom:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.15);max-height:260px;overflow:auto;z-index:20;padding:4px}
+.mention-item{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:6px 10px;border:0;background:none;border-radius:8px;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.mention-item[aria-selected="true"],.mention-item:hover{background:color-mix(in srgb,var(--accent) 12%,transparent)}
