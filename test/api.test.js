@@ -59,6 +59,12 @@ test('chat: phải xác nhận quy tắc rồi mới gửi được; tin hiện 
   assert.equal(r.status, 201);
   const h = await call('GET', `/groups/${vn.id}/messages`, null, mai.token);
   assert.equal(h.data.messages.at(-1).body, 'hi');
+  // xác nhận quy tắc lần đầu ở nhóm quốc gia → tự gửi tin chào đầu tiên (và chỉ một lần)
+  const welcome = h.data.messages.filter((x) => x.body.includes('bắt đầu đu LingOrm'));
+  assert.equal(welcome.length, 1);
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, mai.token);
+  const h2 = await call('GET', `/groups/${vn.id}/messages`, null, mai.token);
+  assert.equal(h2.data.messages.filter((x) => x.body.includes('bắt đầu đu LingOrm') && x.user.id === mai.id).length, 1);
 });
 test('join group khác vùng không đổi home; rời rồi join lại được', async () => {
   const hcmId = (await call('GET', '/me', null, mai.token)).data.user.provinceId;
