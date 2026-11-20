@@ -17,7 +17,6 @@ export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'up
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const PROD = process.env.NODE_ENV === 'production';
-const AUTO_VERIFY = process.env.REQUIRE_VERIFY !== '1'; // mặc định bỏ qua xác nhận email; đặt REQUIRE_VERIFY=1 để bật lại
 const PRIVATE_LIMIT_DEFAULT = 100;
 const PRIVATE_LIMIT_MAX = 200;
 const HOME_CHANGE_COOLDOWN = 30 * 24 * 3600 * 1000;
@@ -91,33 +90,22 @@ api.post(
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw bad('Email này đã được dùng');
     if (db.prepare('SELECT 1 FROM users WHERE name_key = ?').get(nameKey(displayName))) throw bad('Tên hiển thị này đã có người dùng, hãy chọn tên khác');
 
-    const token = randomToken(24);
     const id = tx(() => {
       const r = db
         .prepare(
-          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, verify_token, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?)`
+          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, created_at)
+           VALUES (?,?,?,?,?,?,1,?)`
         )
-        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), province.id, AUTO_VERIFY ? 1 : 0, token, now());
+        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), province.id, now());
       const uid = Number(r.lastInsertRowid);
       for (const gid of homeGroupIds(province)) addMember(gid, uid); // auto-join đủ 3 group
       addMember(trendGroupId(), uid); // và nhóm Đẩy trend
       return uid;
     });
-    const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${token}`;
-    console.log(`[verify] ${email} -> ${verifyUrl}`); // TODO: gửi email thật khi có SMTP
-    res.status(201).json({ id, needVerify: !AUTO_VERIFY, devVerifyUrl: PROD ? undefined : verifyUrl });
-  })
-);
-
-api.get(
-  '/auth/verify',
-  wrap((req, res) => {
-    const token = str(req.query.token, 100);
-    const u = token && db.prepare('SELECT id FROM users WHERE verify_token = ?').get(token);
-    if (!u) return res.redirect('/#/login?verify=fail');
-    db.prepare('UPDATE users SET verified = 1, verify_token = NULL WHERE id = ?').run(u.id);
-    res.redirect('/#/login?verify=ok');
+    // không cần xác nhận email: đăng nhập luôn sau khi đăng ký
+    const token = randomToken();
+    db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, id, now());
+    res.status(201).json({ id, token, user: selfUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)) });
   })
 );
 
@@ -128,7 +116,6 @@ api.post(
     const email = str(req.body.email, 200).toLowerCase();
     const u = db.prepare("SELECT * FROM users WHERE email = ? AND status != 'deleted'").get(email);
     if (!u || !checkPassword(String(req.body.password || ''), u.pass_hash)) throw new HttpError(401, 'Email hoặc mật khẩu không đúng');
-    if (!u.verified && !AUTO_VERIFY) throw new HttpError(403, 'Email chưa được xác nhận. Hãy bấm vào liên kết xác nhận.');
     if (u.status === 'locked' && !(u.locked_until && u.locked_until < now()))
       throw new HttpError(403, u.locked_until ? 'Tài khoản đang bị khóa tạm thời' : 'Tài khoản đã bị khóa');
     if (u.status === 'locked') db.prepare("UPDATE users SET status='active', locked_until=NULL WHERE id=?").run(u.id);

@@ -4,8 +4,7 @@ import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fm
 // Đăng nhập / đăng ký (render vào #root, ngoài shell)
 // ===========================================================================
 export function renderLogin(root, query) {
-  const note = query.get('verify') === 'ok' ? '<div class="notice" role="status">Email đã được xác nhận. Hãy đăng nhập.</div>'
-    : query.get('verify') === 'fail' ? '<div class="error">Liên kết xác nhận không hợp lệ hoặc đã dùng rồi.</div>' : '';
+  const note = '';
   root.innerHTML = `<div class="auth"><div class="auth-box">
     <div class="brand" style="padding:0"><span class="logo">JK</span>JKR talks</div>
     <div><h1>Đăng nhập</h1><p class="muted small" style="margin-top:8px">Kết nối và lan tỏa những điều tích cực về LingOrm.</p><p class="muted small" style="margin-top:4px">Tập trung vào LingOrm. <b>Only LingOrm</b></p></div>
@@ -67,10 +66,8 @@ export async function renderRegister(root) {
     if ($('#pw').value !== $('#pw2').value) { $('#err').innerHTML = '<div class="error" role="alert">Mật khẩu xác nhận không khớp</div>'; $('#pw2').focus(); return; }
     try {
       const r = await api('POST', '/auth/register', { email: $('#email').value, displayName: $('#dn').value, password: $('#pw').value, passwordConfirm: $('#pw2').value, acceptCommunity: $('#accept').checked, provinceId: Number($('#city').value), country: 'VN' });
-      root.innerHTML = `<div class="auth"><div class="auth-box"><h1>Kiểm tra email của bạn</h1>
-        <p class="muted">${r.needVerify ? 'Chúng tôi đã gửi liên kết xác nhận tới email của bạn. Bấm vào liên kết để kích hoạt tài khoản.' : 'Tài khoản đã sẵn sàng.'}</p>
-        ${r.devVerifyUrl ? `<div class="notice">Chế độ phát triển (chưa cấu hình gửi email): <a href="${esc(r.devVerifyUrl)}">bấm vào đây để xác nhận</a></div>` : ''}
-        <a class="btn primary" href="#/login">Đến trang đăng nhập</a></div></div>`;
+      setToken(r.token);
+      S.hooks.boot();
     } catch (er) { $('#err').innerHTML = `<div class="error" role="alert">${esc(er.message)}</div>`; }
   };
 }
