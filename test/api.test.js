@@ -628,3 +628,31 @@ test('chủ đề nóng: chỉ hiện tin đạt đủ số tim tối thiểu (m
     assert.equal(await inHot(voters[0].token), false);
   } finally { process.env.HOT_MIN_HEARTS = prev; }
 });
+
+test('Chủ đề nóng: Admin đăng bài lên đầu trang; người thường không đăng được; mọi người thả tim; khách xem được', async () => {
+  const u = await signup('hotpinU', 1), v = await signup('hotpinV', 1);
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  assert.equal((await call('POST', '/hot/posts', { body: 'bài của user' }, u.token)).status, 403);
+  assert.equal((await call('POST', '/hot/posts', { body: '  ' }, adm.token)).status, 400);
+  const r = await call('POST', '/hot/posts', { body: 'Bài ghim từ quản trị' }, adm.token);
+  assert.equal(r.status, 201);
+  const id = r.data.post.id;
+  // hiện ở đầu trang Chủ đề nóng của người dùng và khách, dù chưa đủ tim
+  const hot = (await call('GET', '/hot', null, u.token)).data;
+  assert.ok(hot.pinned.some((m) => m.id === id && m.body === 'Bài ghim từ quản trị'));
+  assert.equal(hot.items.some((m) => m.id === id), false);
+  assert.ok((await (await fetch(BASE + '/public/hot')).json()).pinned.some((m) => m.id === id));
+  // nhóm ẩn không lọt vào danh sách nhóm / không đọc được như một nhóm chat
+  assert.equal((await call('GET', '/groups/mine', null, u.token)).data.groups.some((g) => g.name === 'Chủ đề hot'), false);
+  assert.equal((await fetch(BASE + `/groups/${r.data.post.groupId}/messages`, { headers: { authorization: `Bearer ${u.token}` } })).status, 403);
+  // người dùng không phải thành viên vẫn thả tim được, tác giả thì không
+  const h = await call('POST', `/messages/${id}/heart`, {}, u.token);
+  assert.equal(h.status, 200);
+  assert.equal(h.data.hearts, 1);
+  assert.equal((await call('POST', `/messages/${id}/heart`, {}, adm.token)).status, 400);
+  assert.equal((await call('GET', '/hot', null, v.token)).data.pinned.find((m) => m.id === id).hearts, 1);
+  // người thường không xóa được, Admin xóa được
+  assert.equal((await call('DELETE', `/messages/${id}`, {}, u.token)).status, 403);
+  assert.equal((await call('DELETE', `/messages/${id}`, {}, adm.token)).status, 200);
+  assert.equal((await call('GET', '/hot', null, u.token)).data.pinned.some((m) => m.id === id), false);
+});

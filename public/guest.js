@@ -94,11 +94,18 @@ async function renderGuestGroup(view, gid) {
 }
 
 async function renderGuestHot(view) {
-  const { items } = await api('GET', '/public/hot');
+  const { items, pinned = [] } = await api('GET', '/public/hot');
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>Chủ đề nóng</h1>
     <p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua.</p>
     ${cta()}
+    ${pinned.length ? `<h2 class="h2" style="margin:8px 0 0">Từ quản trị</h2><div class="list">${pinned.map((m) => `<div class="card col" style="gap:6px">
+      <div class="row wrap"><span class="pill warn">Từ quản trị</span><span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div>
+      ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, [])}</div>` : ''}
+      ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong bài đăng" style="max-width:100%;border-radius:10px" loading="lazy" decoding="async">` : ''}
+      ${previewHtml(m.preview)}
+      <div class="row" style="gap:4px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
+    </div>`).join('')}</div>` : ''}
     <div class="list">${items.map((m, i) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
         <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>

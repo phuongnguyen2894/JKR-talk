@@ -180,6 +180,8 @@ export function seedGeoGroups() {
 seedGeoGroups();
 
 // Nhóm "Đẩy trend": ai cũng đọc/thả tim, chỉ admin và mod được đăng
+// Nhóm ẩn chứa các bài do Admin đăng thẳng lên trang Chủ đề nóng (không ai là thành viên, không hiện ở danh sách nhóm)
+export const hotGroupId = () => ensureGroup('hot', 'HOT', 'Chủ đề hot', '🌟');
 export const trendGroupId = () => ensureGroup('trend', 'TREND', 'Đẩy trend', '🔥');
 db.prepare("INSERT OR IGNORE INTO members (group_id, user_id, role, joined_at) SELECT ?, id, 'member', ? FROM users WHERE status != 'deleted'").run(trendGroupId(), now());
 

@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { db, now, tx, homeGroupIds, nameKey, trendGroupId } from './db.js';
+import { db, now, tx, homeGroupIds, nameKey, trendGroupId, hotGroupId } from './db.js';
 import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
@@ -219,7 +219,8 @@ api.get('/public/groups/:id', guestLimit, wrap((req, res) => {
 }));
 api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
   const rows = await hotRows(null, null, false); // khách không kích hoạt tải xem trước từ trang ngoài
-  res.json({ items: rows.map((m) => guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name })) });
+  const pinned = hotPosts().map((m) => guestMsg(m, { hearts: messageDto(m, null).hearts, groupName: 'Chủ đề nóng' }));
+  res.json({ pinned, items: rows.map((m) => guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name })) });
 }));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
@@ -688,7 +689,7 @@ api.post(
     const src = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
     if (!src || src.deleted) throw notFound('Tin nhắn không tồn tại');
     const sg = getGroup(src.group_id);
-    const srcPublic = PUBLIC_TYPES.includes(sg.type) || sg.type === 'trend';
+    const srcPublic = PUBLIC_TYPES.includes(sg.type) || sg.type === 'trend' || sg.type === 'hot';
     if (!srcPublic && !getMember(sg.id, req.user.id)) throw forbidden('Không thể chuyển tiếp tin từ nhóm riêng bạn chưa tham gia');
     if (sg.type === 'dm' && isBlockedEither(req.user.id, src.user_id)) throw forbidden();
     if (isBlockedEither(req.user.id, src.user_id)) throw forbidden();
@@ -720,7 +721,7 @@ api.post(
     rateLimit(`heart:${req.user.id}`, 60, 60_000);
     const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
     if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
-    requireMember(msg.group_id, req.user.id);
+    if (getGroup(msg.group_id)?.type !== 'hot') requireMember(msg.group_id, req.user.id);
     // tin chuyển tiếp: thả tim vào tin gốc
     const root = msg.fwd_id ? db.prepare('SELECT * FROM messages WHERE id = ?').get(msg.fwd_id) : msg;
     if (!root || root.deleted) throw notFound('Tin nhắn gốc không còn');
@@ -756,6 +757,21 @@ function dedupeHot() {
   const seen = new Set();
   return (m) => { const k = hotKey(m); if (seen.has(k)) return false; seen.add(k); return true; };
 }
+// Bài do Admin đăng thẳng lên Chủ đề nóng (giống Đẩy trend: chỉ admin đăng, mọi người đọc và thả tim)
+const HOT_POSTS_SHOWN = 10;
+const hotPosts = () => db.prepare('SELECT * FROM messages WHERE group_id = ? AND deleted = 0 ORDER BY id DESC LIMIT ?').all(hotGroupId(), HOT_POSTS_SHOWN);
+api.post('/hot/posts', adminOnly, wrap((req, res) => {
+  rateLimit(`hotpost:${req.user.id}`, 20, 60_000);
+  const body = str(req.body.body, 2000);
+  const imageUrl = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
+  if (!body && !imageUrl) throw bad('Bài đăng trống');
+  const r = db.prepare('INSERT INTO messages (group_id, user_id, body, image_url, created_at) VALUES (?,?,?,?,?)').run(hotGroupId(), req.user.id, body, imageUrl, now());
+  const m = db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid);
+  res.status(201).json({ post: { ...messageDto(m, req.user.id), groupName: 'Chủ đề nóng' } });
+  const link = firstUrl(body);
+  if (link) buildPreview(link, UPLOAD_DIR).then((p) => { if (p) db.prepare('UPDATE messages SET preview = ? WHERE id = ?').run(JSON.stringify(p), m.id); }).catch(() => {});
+}));
+
 async function hotRows(viewerId, scope, backfill = true) {
     const types = scope ? [scope] : ['trend', 'country', 'region', 'province'];
     const rows = db
@@ -786,6 +802,7 @@ api.get(
     const scope = ['country', 'region', 'province'].includes(req.query.scope) ? req.query.scope : null;
     const rows = await hotRows(req.user.id, scope);
     res.json({
+      pinned: hotPosts().map((m) => ({ ...messageDto(m, req.user.id), groupName: 'Chủ đề nóng' })),
       items: rows.map((m) => ({ ...messageDto(m, req.user.id), hearts: m.hc, groupName: getGroup(m.group_id).name })),
     });
   })
