@@ -6,8 +6,9 @@ import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR
 // Chủ đề nóng gồm 3 tab:
 //  - Mới: chủ đề thảo luận mới được duyệt, mới nhất trước
 //  - Nổi bật: chủ đề Admin đặt nổi bật hoặc có nhiều thảo luận trong 24 giờ qua
+//  - Từ quản trị: bài do Admin đăng
 //  - Tin nhiều tim: tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua (tối đa 38 tin)
-export const HOT_TABS = [['hot', 'Nổi bật'], ['new', 'Mới'], ['hearts', 'Tin nhiều tim']];
+export const HOT_TABS = [['hot', 'Nổi bật'], ['new', 'Mới'], ['admin', 'Từ quản trị'], ['hearts', 'Tin nhiều tim']];
 let htab = 'hot';
 
 // Thẻ chủ đề trong tab Mới / Nổi bật (dùng chung cho khách: href trỏ tới #/g/ thay vì #/chat/)
@@ -26,22 +27,24 @@ export function boardCard(t, tab, guest = false) {
 export async function renderHot(view, tab = htab) {
   htab = tab;
   const isAdmin = S.me.role === 'admin';
+  const isTopics = tab === 'hot' || tab === 'new';
   const [{ items, pinned = [] }, board] = await Promise.all([
-    api('GET', '/hot'),
-    tab === 'hearts' ? Promise.resolve(null) : api('GET', '/topic-board?tab=' + tab),
+    isTopics ? Promise.resolve({}) : api('GET', '/hot'),
+    isTopics ? api('GET', '/topic-board?tab=' + tab) : Promise.resolve(null),
   ]);
   const needsApproval = board ? board.needsApproval : S.me.role !== 'admin';
   view.innerHTML = `<div class="page" id="hot-page"><div class="page-inner">
     <div class="row between wrap"><h1>Chủ đề nóng</h1>${createTopicHtml(needsApproval)}</div>
     ${board ? pendingMineHtml(board.mine) : ''}
-    ${isAdmin ? `<form class="card col" id="hotpost" aria-label="Đăng bài lên Chủ đề nóng">
+    ${tab === 'admin' && isAdmin ? `<form class="card col" id="hotpost" aria-label="Đăng bài lên Chủ đề nóng">
       <label for="hotbody"><b>Đăng bài lên Chủ đề nóng</b> <span class="tiny muted">(chỉ Admin; hiện đầu trang cho mọi người)</span></label>
       <textarea class="input" id="hotbody" maxlength="2000" rows="3" placeholder="Viết nội dung hoặc dán liên kết cần mọi người chú ý…"></textarea>
       <div class="row wrap"><input type="file" id="hotimg" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Ảnh đính kèm"><span class="grow"></span><button class="btn primary">Đăng</button></div></form>` : ''}
-    ${pinned.length ? `<h2 class="h2" style="margin:8px 0 0">Từ quản trị</h2><div class="list">${pinned.map((m) => pinnedCard(m, isAdmin)).join('')}</div>` : ''}
     <div class="pillnav" role="group" aria-label="Chọn mục">${HOT_TABS.map(([k, n]) => `<button data-htab="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
     ${board ? `<p class="small muted">${tab === 'new' ? 'Chủ đề mới được duyệt, mới nhất ở trên cùng.' : 'Chủ đề được Admin đặt nổi bật, hoặc đang có nhiều thảo luận trong 24 giờ qua.'}</p>
       <div class="list">${board.topics.map((t) => boardCard(t, tab)).join('') || `<p class="muted">${tab === 'new' ? 'Chưa có chủ đề nào.' : 'Chưa có chủ đề nổi bật. Hãy vào bàn luận để chủ đề lên đây!'}</p>`}</div>`
+    : tab === 'admin' ? `<p class="small muted">Thông báo và bài đăng từ đội quản trị.</p>
+      <div class="list">${pinned.map((m) => pinnedCard(m, isAdmin)).join('') || '<p class="muted">Chưa có bài nào từ quản trị.</p>'}</div>`
     : `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua. Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
     <div class="list">${items.map((m, i) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>
