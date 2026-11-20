@@ -112,7 +112,7 @@ async function renderGuestHot(view, tab = gtab) {
       <div class="row" style="gap:4px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
     </div>`;
   const heartCard = (m, i) => `<div class="card col" style="gap:6px">
-      <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
+      <div class="row wrap"><span class="pill">#${i + 1}</span><span class="pill warn">${m.interactions} tương tác</span><a class="pill warn" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
         <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
       <div class="row">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
       ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body)}</div>` : ''}
@@ -135,7 +135,7 @@ async function renderGuestHot(view, tab = gtab) {
       ${!board.topics.length && !pinned.length && !others.length ? '<p class="muted">Chưa có gì nổi bật.</p>' : ''}`;
   } else if (tab === 'admin') body = `<div class="list">${pinned.map(adminCard).join('') || '<p class="muted">Chưa có bài nào từ quản trị.</p>'}</div>`;
   else if (board) body = `<div class="list">${board.topics.map((t) => boardCard(t, tab, true)).join('') || '<p class="muted">Chưa có chủ đề nào.</p>'}</div>`;
-  else body = `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua.</p><div class="list">${items.map(heartCard).join('') || '<p class="muted">Chưa có chủ đề nóng nào.</p>'}</div>`;
+  else body = `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tương tác (tim, bình luận, trả lời) ở các nhóm công khai trong 24 giờ qua.</p><div class="list">${items.map(heartCard).join('') || '<p class="muted">Chưa có chủ đề nóng nào.</p>'}</div>`;
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>Chủ đề nóng</h1>
     ${cta()}

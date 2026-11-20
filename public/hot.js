@@ -7,8 +7,8 @@ import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR
 //  - Mới: chủ đề thảo luận mới được duyệt, mới nhất trước
 //  - Nổi bật: chủ đề Admin đặt nổi bật hoặc có nhiều thảo luận trong 24 giờ qua
 //  - Từ quản trị: bài do Admin đăng
-//  - Tin nhiều tim: tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua (tối đa 38 tin)
-export const HOT_TABS = [['all', 'Tổng hợp'], ['hot', 'Nổi bật'], ['new', 'Mới'], ['admin', 'Từ quản trị'], ['hearts', 'Tin nhiều tim']];
+//  - Tin nhiều tương tác: tin nhắn đạt ít nhất 38 tương tác (tim + bình luận + trả lời) ở các nhóm công khai trong 24 giờ qua (tối đa 38 tin)
+export const HOT_TABS = [['all', 'Tổng hợp'], ['hot', 'Nổi bật'], ['new', 'Mới'], ['admin', 'Từ quản trị'], ['hearts', 'Tin nhiều tương tác']];
 export const ALL_TOPICS = 3, ALL_ADMIN = 3; // tab Tổng hợp: 3 chủ đề nổi bật, 3 bài quản trị mới nhất, rồi tin khác (mới + nhiều tương tác)
 let htab = 'all';
 
@@ -39,7 +39,7 @@ const otherCard = (m) => `<div class="card col" style="gap:6px">
   ${commentBlock('msg', m.id, m.commentCount)}
 </div>`;
 const heartCard = (m, i) => `<div class="card col" style="gap:6px">
-  <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>
+  <div class="row wrap"><span class="pill">#${i + 1}</span><span class="pill warn">${m.interactions} tương tác</span><a class="pill warn" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>
     <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
   <div class="row">${avatarR(m.user, roleOf(m.user, m.modRole))}<div class="grow"><b class="${roleClass(roleOf(m.user, m.modRole)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user, m.modRole))}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
   ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, m.mentions)}</div>` : ''}
@@ -70,7 +70,7 @@ export async function renderHot(view, tab = htab) {
     body = `<p class="small muted">Thông báo và bài đăng từ đội quản trị.</p>
       <div class="list">${pinned.map((m) => pinnedCard(m, isAdmin)).join('') || '<p class="muted">Chưa có bài nào từ quản trị.</p>'}</div>`;
   } else {
-    body = `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua. Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
+    body = `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tương tác (tim, bình luận, trả lời) ở các nhóm công khai trong 24 giờ qua. Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
       <div class="list">${items.map(heartCard).join('') || '<p class="muted">Chưa có tin nào đạt ngưỡng. Hãy thả tim cho những tin nhắn bạn thích!</p>'}</div>`;
   }
   view.innerHTML = `<div class="page" id="hot-page"><div class="page-inner">

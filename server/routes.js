@@ -223,7 +223,7 @@ api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
   const rows = await hotRows(null, null, false); // khách không kích hoạt tải xem trước từ trang ngoài
   const pinned = hotPosts().map((m) => guestMsg(m, { hearts: messageDto(m, null).hearts, groupName: 'Chủ đề nóng' }));
   const others = otherRows(null).map(({ m, kind }) => ({ ...guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name }), interactions: m.score, kind }));
-  res.json({ pinned, items: rows.map((m) => guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name })), others });
+  res.json({ pinned, items: rows.map((m) => ({ ...guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name }), interactions: m.score })), others });
 }));
 api.get('/public/topic-board', guestLimit, wrap((req, res) => res.json({ topics: topicBoard(boardTab(req)).map(({ joined, creatorName, ...t }) => t) })));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
@@ -1037,20 +1037,29 @@ api.post('/hot/posts', adminOnly, wrap((req, res) => {
   if (link) buildPreview(link, UPLOAD_DIR).then((p) => { if (p) db.prepare('UPDATE messages SET preview = ? WHERE id = ?').run(JSON.stringify(p), m.id); }).catch(() => {});
 }));
 
+// Tương tác trong 24 giờ qua = tim + bình luận + trả lời; cần ít nhất ngưỡng (mặc định 38) mới vào Chủ đề nóng / Tổng hợp
+function hotCore(viewerId, scope) {
+  const types = scope ? [scope] : ['trend', 'country', 'region', 'province', 'topic'];
+  const since = now() - DAY;
+  return db
+    .prepare(
+      `SELECT * FROM (
+         SELECT m.*,
+           (SELECT COUNT(*) FROM reactions r WHERE r.message_id = m.id AND r.created_at > @since) AS hc,
+           (SELECT COUNT(*) FROM comments c WHERE c.kind = 'msg' AND c.target_id = m.id AND c.created_at > @since) AS cc,
+           (SELECT COUNT(*) FROM messages x WHERE x.reply_to = m.id AND x.deleted = 0 AND x.created_at > @since) AS rc
+         FROM messages m JOIN groups g ON g.id = m.group_id
+         WHERE g.type IN (${types.map((t) => `'${t}'`).join(',')}) AND m.deleted = 0 AND m.fwd_id IS NULL AND m.fwd IS NULL
+       ) WHERE hc + cc + rc >= @min ORDER BY hc + cc + rc DESC, id DESC LIMIT @lim`
+    )
+    .all({ since, min: hotMinHearts(), lim: HOT_LIMIT * 4 }) // lấy dư để còn lọc tin của người bị chặn và tin trùng
+    .map((m) => ({ ...m, score: m.hc + m.cc + m.rc }))
+    .filter((m) => !viewerId || !isBlockedEither(viewerId, m.user_id))
+    .filter(dedupeHot())
+    .slice(0, HOT_LIMIT);
+}
 async function hotRows(viewerId, scope, backfill = true) {
-    const types = scope ? [scope] : ['trend', 'country', 'region', 'province', 'topic'];
-    const rows = db
-      .prepare(
-        `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m
-         JOIN reactions r ON r.message_id = m.id AND r.created_at > ?
-         JOIN groups g ON g.id = m.group_id
-         WHERE g.type IN (${types.map(() => '?').join(',')}) AND m.deleted = 0 AND m.fwd_id IS NULL AND m.fwd IS NULL
-         GROUP BY m.id HAVING hc >= ? ORDER BY hc DESC, m.id DESC LIMIT ?`
-      )
-      .all(now() - DAY, ...types, hotMinHearts(), HOT_LIMIT * 4) // lấy dư để còn lọc tin của người bị chặn và tin trùng
-      .filter((m) => !viewerId || !isBlockedEither(viewerId, m.user_id))
-      .filter(dedupeHot())
-      .slice(0, HOT_LIMIT);
+    const rows = hotCore(viewerId, scope);
     // tin cũ chưa có xem trước: lấy bù một lần (lưu '0' nếu không có để khỏi thử lại)
     if (backfill) await Promise.all(
       rows.filter((m) => m.preview == null && firstUrl(m.body)).slice(0, 10).map(async (m) => {
@@ -1061,25 +1070,21 @@ async function hotRows(viewerId, scope, backfill = true) {
     );
     return rows;
 }
-// "Tin khác" ở tab Tổng hợp: tin nhiều tương tác (tim + bình luận + trả lời) và tin mới nhất trong 48 giờ qua, ở các nhóm công khai
-const OTHER_TOP = 5, OTHER_NEW = 5, OTHER_MIN_SCORE = 2;
+// "Tin khác" ở tab Tổng hợp: tin nhiều tương tác (đủ ngưỡng như tab Tin nhiều tương tác, mặc định 38) rồi tin mới nhất trong 48 giờ qua
+const OTHER_TOP = 5, OTHER_NEW = 5;
 function otherRows(viewerId) {
-  const rows = db.prepare(
-    `SELECT m.*,
-       (SELECT COUNT(*) FROM reactions r WHERE r.message_id = m.id) AS hc,
-       (SELECT COUNT(*) FROM comments c WHERE c.kind = 'msg' AND c.target_id = m.id) AS cc,
-       (SELECT COUNT(*) FROM messages x WHERE x.reply_to = m.id AND x.deleted = 0) AS rc
-     FROM messages m JOIN groups g ON g.id = m.group_id
+  const top = hotCore(viewerId, null).slice(0, OTHER_TOP);
+  const used = new Set(top.map((m) => m.id));
+  const fresh = db.prepare(
+    `SELECT m.* FROM messages m JOIN groups g ON g.id = m.group_id
      WHERE g.type IN ('trend','country','region','province','topic') AND m.deleted = 0 AND m.fwd_id IS NULL AND m.fwd IS NULL
        AND (m.body != '' OR m.image_url IS NOT NULL) AND m.created_at > ?
-     ORDER BY m.id DESC LIMIT 300`
+     ORDER BY m.id DESC LIMIT 100`
   ).all(now() - 2 * DAY)
-    .filter((m) => !viewerId || !isBlockedEither(viewerId, m.user_id))
-    .filter(dedupeHot());
-  for (const m of rows) m.score = m.hc + m.cc + m.rc;
-  const top = rows.filter((m) => m.score >= OTHER_MIN_SCORE).sort((a, b) => b.score - a.score || b.id - a.id).slice(0, OTHER_TOP);
-  const used = new Set(top.map((m) => m.id));
-  const fresh = rows.filter((m) => !used.has(m.id)).slice(0, OTHER_NEW); // rows đã xếp mới nhất trước
+    .filter((m) => !used.has(m.id) && (!viewerId || !isBlockedEither(viewerId, m.user_id)))
+    .filter(dedupeHot())
+    .slice(0, OTHER_NEW)
+    .map((m) => ({ ...m, hc: db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(m.id).c, score: 0 }));
   return [...top.map((m) => ({ m, kind: 'top' })), ...fresh.map((m) => ({ m, kind: 'new' }))];
 }
 api.get(
@@ -1089,7 +1094,7 @@ api.get(
     const rows = await hotRows(req.user.id, scope);
     res.json({
       pinned: hotPosts().map((m) => ({ ...messageDto(m, req.user.id), groupName: 'Chủ đề nóng' })),
-      items: rows.map((m) => ({ ...messageDto(m, req.user.id), hearts: m.hc, groupName: getGroup(m.group_id).name })),
+      items: rows.map((m) => ({ ...messageDto(m, req.user.id), hearts: m.hc, interactions: m.score, groupName: getGroup(m.group_id).name })),
       others: otherRows(req.user.id).map(({ m, kind }) => ({ ...messageDto(m, req.user.id), hearts: m.hc, interactions: m.score, kind, groupName: getGroup(m.group_id).name })),
     });
   })
