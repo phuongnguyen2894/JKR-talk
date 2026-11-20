@@ -429,3 +429,16 @@ test('tim ở tin chuyển tiếp được tính cho tin gốc', async () => {
   assert.equal((await call('POST', `/messages/${fw.id}/heart`, {}, b.token)).status, 400);
   assert.equal((await call('POST', `/messages/${fw.id}/heart`, {}, a.token)).status, 400);
 });
+
+test('chủ đề nóng không trùng lặp: cùng liên kết/nội dung chỉ hiện một lần', async () => {
+  const a = await signup('trung1', 1), b = await signup('trung2', 1), c = await signup('trung3', 1);
+  let vn;
+  for (const u of [a, b, c]) { vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((x) => x.type === 'country'); await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token); }
+  const m1 = (await call('POST', `/groups/${vn.id}/messages`, { body: 'xem nè https://example.com/bai-viet-trung?s=1' }, a.token)).data.message;
+  const m2 = (await call('POST', `/groups/${vn.id}/messages`, { body: 'link đây https://www.example.com/bai-viet-trung/?s=2' }, b.token)).data.message;
+  await call('POST', `/messages/${m1.id}/heart`, {}, b.token); await call('POST', `/messages/${m1.id}/heart`, {}, c.token);
+  await call('POST', `/messages/${m2.id}/heart`, {}, c.token);
+  const items = (await call('GET', '/hot', null, c.token)).data.items.filter((i) => /bai-viet-trung/.test(i.body));
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, m1.id); // giữ tin nhiều tim hơn
+});

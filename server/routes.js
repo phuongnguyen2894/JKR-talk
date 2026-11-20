@@ -559,6 +559,19 @@ api.post(
 
 // Chủ đề nóng: 38 tin nhắn nhận được nhiều tim nhất trong 24 giờ qua, ở các group công khai
 const HOT_LIMIT = 38;
+// Chống trùng: cùng một liên kết (bỏ phần query/#) hoặc cùng nội dung chữ thì chỉ giữ tin nhiều tim nhất (đã xếp trước)
+function hotKey(m) {
+  const u = firstUrl(m.body || '');
+  if (u) { try { const x = new URL(u); return 'u:' + x.hostname.replace(/^(www|m|mobile)\./, '').toLowerCase() + x.pathname.replace(/\/+$/, '').toLowerCase(); } catch { /* bỏ qua */ } }
+  const t = (m.body || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (t.length >= 8) return 't:' + t;
+  if (m.image_url) return 'i:' + m.image_url;
+  return 'm:' + m.id;
+}
+function dedupeHot() {
+  const seen = new Set();
+  return (m) => { const k = hotKey(m); if (seen.has(k)) return false; seen.add(k); return true; };
+}
 api.get(
   '/hot',
   wrap(async (req, res) => {
@@ -569,11 +582,12 @@ api.get(
         `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m
          JOIN reactions r ON r.message_id = m.id AND r.created_at > ?
          JOIN groups g ON g.id = m.group_id
-         WHERE g.type IN (${types.map(() => '?').join(',')}) AND m.deleted = 0 AND m.fwd_id IS NULL
+         WHERE g.type IN (${types.map(() => '?').join(',')}) AND m.deleted = 0 AND m.fwd_id IS NULL AND m.fwd IS NULL
          GROUP BY m.id ORDER BY hc DESC, m.id DESC LIMIT ?`
       )
-      .all(now() - DAY, ...types, HOT_LIMIT * 2) // lấy dư để còn lọc tin của người bị chặn
+      .all(now() - DAY, ...types, HOT_LIMIT * 4) // lấy dư để còn lọc tin của người bị chặn và tin trùng
       .filter((m) => !isBlockedEither(req.user.id, m.user_id))
+      .filter(dedupeHot())
       .slice(0, HOT_LIMIT);
     // tin cũ chưa có xem trước: lấy bù một lần (lưu '0' nếu không có để khỏi thử lại)
     await Promise.all(
