@@ -7,11 +7,12 @@ import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
-  isSystemAdmin, isSuper, canPostTrend, locationOf, log, hub, isOnline, notify, messageDto, areFriends, isBlockedEither, shareGroup, pair,
+  isSystemAdmin, isSuper, canPostTrend, locationOf, log, hub, isOnline, notify, pushOnly, messageDto, areFriends, isBlockedEither, shareGroup, pair,
   AVATAR_COUNT,
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
+import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
 
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -84,7 +85,7 @@ function welcomeUser(uid, displayName, g) {
     const mr = db.prepare('INSERT INTO messages (group_id, user_id, body, mentions, created_at) VALUES (?,?,?,?,?)').run(g.id, bot.id, body, tag, now());
     const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(mr.lastInsertRowid), bot.id);
     hub.sendMany(memberIds(g.id), { type: 'message', message: dto });
-    if (g.type === 'country') notify(uid, 'mention', `${getUser(bot.id).display_name} đã nhắc đến bạn trong "${g.name}"`); // chỉ báo ở nhóm quốc gia, các nhóm khác chỉ tag trong tin
+    if (g.type === 'country') notify(uid, 'mention', `${getUser(bot.id).display_name} đã nhắc đến bạn trong "${g.name}"`, { url: `/#/chat/${g.id}` }); // chỉ báo ở nhóm quốc gia, các nhóm khác chỉ tag trong tin
   } catch (e) { console.error('[welcome]', e.message); }
 }
 
@@ -488,7 +489,7 @@ function validMentions(gid, authorId, body, ids) {
 }
 function notifyMentions(g, author, ids) {
   const where = g.type === 'dm' ? 'tin nhắn riêng' : `"${g.name}"`;
-  for (const id of ids) notify(id, 'mention', `${author.display_name} đã nhắc đến bạn trong ${where}`);
+  for (const id of ids) notify(id, 'mention', `${author.display_name} đã nhắc đến bạn trong ${where}`, { url: `/#/chat/${g.id}`, tag: `mention-${g.id}` });
 }
 api.get('/groups/:id/mention-search', wrap((req, res) => {
   const { g } = requireMember(int(req.params.id), req.user.id);
@@ -570,6 +571,19 @@ api.post(
     hub.sendMany(memberIds(gid), { type: 'message', message: dto });
     res.status(201).json({ message: dto });
     notifyMentions(g, req.user, mentionIds);
+    // báo cho người được trả lời (nếu chưa được báo vì tag)
+    if (replyTo && g.type !== 'dm') {
+      const orig = db.prepare('SELECT user_id FROM messages WHERE id = ?').get(replyTo);
+      if (orig && orig.user_id !== req.user.id && !mentionIds.includes(orig.user_id) && getMember(gid, orig.user_id) && !isBlockedEither(req.user.id, orig.user_id)) {
+        notify(orig.user_id, 'reply', `${req.user.display_name} đã trả lời tin của bạn trong "${g.name}"`, { url: `/#/chat/${gid}`, tag: `reply-${gid}` });
+      }
+    }
+    // tin nhắn riêng: chỉ đẩy thông báo ngoài app (không thêm vào danh sách thông báo)
+    if (g.type === 'dm') {
+      const peer = memberIds(gid).find((x) => x !== req.user.id);
+      const pm = peer && getMember(gid, peer);
+      if (pm && !isMuted(pm)) pushOnly(peer, 'dm', { body: `${req.user.display_name} đã nhắn tin cho bạn`, url: `/#/chat/${gid}`, tag: `dm-${gid}` });
+    }
     // xem trước liên kết: lấy nền, xong thì báo cho các thành viên
     const link = firstUrl(body);
     if (link) {
@@ -634,6 +648,9 @@ api.post(
     // báo cho mọi nhóm đang hiển thị tin gốc hoặc bản chuyển tiếp của nó
     for (const t of db.prepare('SELECT id, group_id FROM messages WHERE (id = ? OR fwd_id = ?) AND deleted = 0').all(root.id, root.id)) {
       hub.sendMany(memberIds(t.group_id), { type: 'heart', groupId: t.group_id, messageId: t.id, hearts });
+    }
+    if (!had && [1, 5, 10, 25, 50, 100].includes(hearts)) {
+      notify(root.user_id, 'heart', hearts === 1 ? `${req.user.display_name} đã thả tim tin nhắn của bạn` : `Tin nhắn của bạn đã nhận được ${hearts} tim`, { url: `/#/chat/${root.group_id}`, tag: `heart-${root.id}` });
     }
     res.json({ hearts, hearted: !had });
   })
@@ -1180,6 +1197,23 @@ const newsDto = (n, uid) => ({
   createdAt: n.created_at, read: !!db.prepare('SELECT 1 FROM news_reads WHERE user_id=? AND news_id=?').get(uid, n.id),
 });
 
+// ---- thông báo đẩy ngoài app ----------------------------------------------------
+api.get('/push/config', wrap((req, res) => {
+  res.json({ publicKey: vapidPublicKey, subscribed: hasSubscription(req.user.id), prefs: getPrefs(req.user.id) });
+}));
+api.post('/push/subscribe', wrap((req, res) => {
+  rateLimit(`push:${req.user.id}`, 20, 60_000);
+  if (!saveSubscription(req.user.id, req.body.subscription, req.get('user-agent'))) throw bad('Đăng ký thông báo không hợp lệ');
+  res.json({ ok: true, prefs: getPrefs(req.user.id) });
+}));
+api.post('/push/unsubscribe', wrap((req, res) => {
+  removeSubscription(req.user.id, req.body.endpoint);
+  res.json({ ok: true, subscribed: hasSubscription(req.user.id) });
+}));
+api.patch('/push/prefs', wrap((req, res) => {
+  res.json({ prefs: setPrefs(req.user.id, req.body) });
+}));
+
 api.get('/news', wrap((req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
   const items = rows.map((n) => newsDto(n, req.user.id));
@@ -1202,7 +1236,10 @@ api.post('/admin/news', adminOnly, wrap((req, res) => {
   const r = db.prepare('INSERT INTO news (title, body, image_url, pinned, author_id, created_at) VALUES (?,?,?,?,?,?)').run(title, body, img, pinned, req.user.id, now());
   const n = db.prepare('SELECT * FROM news WHERE id = ?').get(r.lastInsertRowid);
   const recipients = db.prepare("SELECT id FROM users WHERE status='active' AND news_push=1 AND verified=1").all();
-  for (const u of recipients) hub.send(u.id, { type: 'news', news: { id: n.id, title: n.title } });
+  for (const u of recipients) {
+    hub.send(u.id, { type: 'news', news: { id: n.id, title: n.title } });
+    if (u.id !== req.user.id) pushOnly(u.id, 'news', { body: `Bản tin mới: ${n.title}`, url: '/#/news', tag: `news-${n.id}` });
+  }
   hub.sendMany(db.prepare("SELECT id FROM users WHERE status='active' AND news_push=0").all().map((u) => u.id), { type: 'news_silent' });
   res.status(201).json({ news: newsDto(n, req.user.id) });
 }));

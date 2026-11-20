@@ -9,9 +9,12 @@
     "dev": "node --watch server/index.js",
     "test": "node --test \"test/*.test.js\""
   },
-  "engines": { "node": ">=22.5" },
+  "engines": {
+    "node": ">=22.5"
+  },
   "dependencies": {
     "express": "^4.21.2",
+    "web-push": "^4.0.0",
     "ws": "^8.18.0"
   }
 }

@@ -3,6 +3,7 @@ import { renderChat, onSocket } from './chat.js';
 import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
 import { routeGuest } from './guest.js';
+import { registerSW, syncPush, unsubscribeThisDevice } from './push.js';
 import { renderBugs } from './bugs.js';
 import { renderLogin, renderRegister, renderDiscover, renderNews, renderSettings, renderAdmin } from './pages.js';
 
@@ -147,6 +148,7 @@ async function boot() {
     S.me = (await api('GET', '/me')).user;
     await Promise.all([refreshGroups(), refreshCounters()]);
     connectWs();
+    syncPush();
     if (!parseHash().name || ['login', 'register'].includes(parseHash().name)) history.replaceState(null, '', '#/chat');
     root.innerHTML = '';
     route();
@@ -156,6 +158,7 @@ async function boot() {
   }
 }
 async function logout(silent) {
+  if (!silent) await unsubscribeThisDevice().catch(() => {}); // thiết bị này thôi nhận thông báo của tài khoản cũ
   if (!silent) await api('POST', '/auth/logout').catch(() => {});
   setToken(null);
   S.me = null; S.groups = []; S.unreadNews = 0; S.unreadNotif = 0;
@@ -188,4 +191,5 @@ document.addEventListener('click', (e) => {
   if (fn) { e.preventDefault(); Promise.resolve(fn(el, e)).catch(fail); }
 });
 
+registerSW();
 boot();

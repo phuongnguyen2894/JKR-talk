@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { pushToUser, PUSH_TYPE_MAP } from './push.js';
 import { db, now } from './db.js';
 import { provinceById, regionByCode } from './geo.js';
 
@@ -184,7 +185,7 @@ export const hub = {
 export const isOnline = (uid) => sockets.has(uid);
 
 // Thông báo trong app (đẩy realtime nếu đang online)
-export function notify(uid, type, text) {
+export function notify(uid, type, text, opts = {}) {
   const r = db
     .prepare('INSERT INTO notifications (user_id, type, text, created_at) VALUES (?,?,?,?)')
     .run(uid, type, text, now());
@@ -192,6 +193,12 @@ export function notify(uid, type, text) {
     type: 'notification',
     notification: { id: Number(r.lastInsertRowid), type, text, read: false, createdAt: now() },
   });
+  const kind = PUSH_TYPE_MAP[type];
+  if (kind && !isOnline(uid)) pushToUser(uid, kind, { body: text, url: opts.url || '/', tag: opts.tag });
+}
+// Chỉ gửi thông báo đẩy (không lưu vào danh sách thông báo), bỏ qua nếu người dùng đang mở app
+export function pushOnly(uid, kind, payload) {
+  if (!isOnline(uid)) pushToUser(uid, kind, payload);
 }
 
 // ---- tin nhắn ---------------------------------------------------------------

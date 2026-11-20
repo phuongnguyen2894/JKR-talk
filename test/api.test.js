@@ -6,6 +6,7 @@ import path from 'node:path';
 process.env.DB_FILE = ':memory:';
 process.env.PORT = '3998';
 process.env.AUTO_VERIFY = '1';
+process.env.PUSH_DRY_RUN = '1';
 process.env.REGISTER_RATE_LIMIT = '1000';
 process.env.LOGIN_RATE_LIMIT = '1000';
 process.env.UPLOAD_DIR = path.join(os.tmpdir(), 'jkr-test-uploads');
@@ -527,4 +528,46 @@ test('tag @tên: người được tag nhận thông báo; không tag được A
   const s = await call('GET', `/groups/${vn.id}/mention-search?q=ta`, null, a.token);
   const names = s.data.users.map((u) => u.displayName);
   assert.ok(names.includes('tagged1') && !names.includes('tagger1') && !names.some((n) => /admin/i.test(n)));
+});
+
+test('thông báo: trả lời và tim báo cho tác giả; đẩy ngoài app theo thiết bị đã đăng ký và cài đặt loại thông báo', async () => {
+  const { pushLog } = await import('../server/push.js');
+  const a = await signup('pushA', 1), b = await signup('pushB', 1);
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.type === 'country');
+  for (const u of [a, b]) await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  // đăng ký nhận thông báo đẩy cho B (thiết bị giả)
+  assert.equal((await call('POST', '/push/subscribe', { subscription: { endpoint: 'http://insecure.example/x', keys: { p256dh: 'k', auth: 'a' } } }, b.token)).status, 400);
+  const sub = { endpoint: 'https://push.example/dev-b', keys: { p256dh: 'pk', auth: 'ak' } };
+  assert.equal((await call('POST', '/push/subscribe', { subscription: sub }, b.token)).status, 200);
+  const cfg = await call('GET', '/push/config', null, b.token);
+  assert.equal(cfg.data.subscribed, true);
+  assert.ok(cfg.data.publicKey.length > 40);
+  const mb = (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin của B' }, b.token)).data.message;
+  // A trả lời tin của B -> thông báo trong app + đẩy
+  pushLog.length = 0;
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'trả lời nè', replyTo: mb.id }, a.token);
+  assert.ok((await call('GET', '/notifications', null, b.token)).data.notifications.some((n) => n.type === 'reply'));
+  assert.equal(pushLog.filter((p) => p.kind === 'reply' && p.payload.url === `/#/chat/${vn.id}`).length, 1);
+  // tắt loại "reply" -> vẫn có thông báo trong app nhưng không đẩy
+  assert.equal((await call('PATCH', '/push/prefs', { reply: false }, b.token)).data.prefs.reply, false);
+  pushLog.length = 0;
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'trả lời lần nữa', replyTo: mb.id }, a.token);
+  assert.equal(pushLog.length, 0);
+  // tim đầu tiên -> thông báo + đẩy
+  pushLog.length = 0;
+  assert.equal((await call('POST', `/messages/${mb.id}/heart`, {}, a.token)).status, 200);
+  assert.ok((await call('GET', '/notifications', null, b.token)).data.notifications.some((n) => n.type === 'heart'));
+  assert.equal(pushLog.filter((p) => p.kind === 'heart').length, 1);
+  // người tự trả lời tin của mình không tự nhận thông báo
+  const before = (await call('GET', '/notifications', null, a.token)).data.notifications.length;
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'tự trả lời', replyTo: (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin của A' }, a.token)).data.message.id }, a.token);
+  assert.equal((await call('GET', '/notifications', null, a.token)).data.notifications.length, before);
+  // hủy đăng ký -> không đẩy nữa
+  await call('POST', '/push/unsubscribe', { endpoint: sub.endpoint }, b.token);
+  pushLog.length = 0;
+  await call('PATCH', '/push/prefs', { reply: true }, b.token);
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'lại trả lời', replyTo: mb.id }, a.token);
+  assert.equal(pushLog.length, 0);
+  assert.equal((await call('GET', '/push/config', null, b.token)).data.subscribed, false);
+  assert.equal((await call('GET', '/push/config')).status, 401);
 });

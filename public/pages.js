@@ -1,3 +1,4 @@
+import { pushSectionHtml } from './push.js';
 import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify } from './core.js';
 
 // ===========================================================================
@@ -210,6 +211,7 @@ export function renderSettings(view) {
       <p class="small muted">Chỉ hiển thị tới cấp tỉnh/thành. Đổi được 1 lần / 30 ngày.${cooldown ? ' <b>Bạn vừa đổi gần đây nên tạm thời chưa đổi được.</b>' : ''}</p>
       <form id="hf" class="col"><div class="field"><label for="hp">Tỉnh / Thành phố</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
       <button class="btn" ${cooldown ? 'disabled' : ''}>Đổi vị trí</button></form></section>
+    <div id="pushslot"></div>
     <section class="card col"><div class="h2" style="margin:0">Quyền riêng tư & thông báo</div>
       <div class="field"><label for="fp">Ai được gửi lời mời kết bạn cho tôi</label><select class="input" id="fp">${[['shared', 'Chỉ người chung nhóm'], ['everyone', 'Mọi người'], ['none', 'Không ai']].map(([c, n]) => `<option value="${c}" ${u.friendPolicy === c ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
       <label class="check"><input type="checkbox" id="so" ${u.showOnline ? 'checked' : ''}> Hiển thị trạng thái online (tắt thì bạn cũng không thấy trạng thái của người khác)</label>
@@ -219,6 +221,7 @@ export function renderSettings(view) {
     <section class="card col"><div class="h2" style="margin:0">Tài khoản</div>
       <div class="row wrap">${S.me.role === 'admin' ? '' : '<button class="btn" data-act="report-bug">Báo lỗi</button>'}<button class="btn" data-act="logout">Đăng xuất</button><button class="btn danger" data-act="delete-account">Xóa tài khoản và dữ liệu</button></div></section>
   </div></div>`;
+  pushSectionHtml().then((html) => { const slot = $('#pushslot'); if (slot) slot.outerHTML = html; }).catch(() => {});
   let pendingAvatar;
   $('#avf').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
