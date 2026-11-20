@@ -68,7 +68,7 @@ function drawChat(view) {
     <div class="grow"><h1>${esc(g.name)}</h1><div class="small muted sub">${subtitle(g)}</div></div>
     <button class="icon-btn info-btn" data-act="info" aria-label="Thông tin nhóm">${icon('info', 20)}</button>
     ${g.type !== 'dm' && C.joined ? `<button class="icon-btn" data-act="mute-dialog" aria-label="Thông báo" title="${g.muted ? 'Đang tắt thông báo' : 'Tắt thông báo'}">${icon('bell', 20)}${g.muted ? '<span class="sr-only">đang tắt</span>' : ''}</button>
-    ${g.type !== 'trend' ? `<button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">Rời nhóm</button>` : ''}` : ''}
+    ${g.type !== 'trend' && g.type !== 'country' ? `<button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">Rời nhóm</button>` : ''}` : ''}
   </div>
   <div class="chat-body">
     <div class="chat-col">
@@ -460,7 +460,7 @@ function infoHtml() {
       <button class="btn sm danger" data-act="pg-dissolve">Giải tán nhóm</button></section>`;
   }
   if (!C.joined) h += `<section><button class="btn primary block" data-act="join" data-id="${g.id}">Tham gia nhóm</button></section>`;
-  else if (g.type !== 'dm' && g.type !== 'trend') h += `<section><button class="btn danger block" data-act="leave" data-id="${g.id}">Rời nhóm</button></section>`;
+  else if (g.type !== 'dm' && g.type !== 'trend' && g.type !== 'country') h += `<section><button class="btn danger block" data-act="leave" data-id="${g.id}">Rời nhóm</button></section>`;
   if (g.type !== 'dm') h += `<section><div class="h2">Gặp vấn đề?</div><button class="btn block" data-act="report-help">Báo cáo người dùng cho ${g.type === 'private' ? 'admin nhóm' : 'admin/mod'}</button></section>`;
   else h += `<section><div class="h2">Gặp vấn đề?</div><button class="btn block" data-act="report-user" data-id="${g.peer.id}" data-gid="${g.id}">Báo cáo người này</button></section>`;
   return h;

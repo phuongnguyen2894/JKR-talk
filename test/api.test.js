@@ -406,3 +406,9 @@ test('chuyển tiếp tin từ nhóm công khai chưa tham gia vào nhóm mình;
     assert.equal((await call('POST', `/messages/${pm.data.message.id}/forward`, { groupId: vn.id }, w.token)).status, 403);
   }
 });
+
+test('không thể rời nhóm quốc gia', async () => {
+  const u = await signup('khongroi', 1);
+  const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((x) => x.type === 'country');
+  assert.equal((await call('POST', `/groups/${vn.id}/leave`, {}, u.token)).status, 400);
+});

@@ -413,6 +413,7 @@ api.post(
     const { g, m } = requireMember(int(req.params.id), req.user.id);
     if (g.type === 'dm') throw bad('Không thể rời cuộc trò chuyện 1-1');
     if (g.type === 'trend') throw bad('Không thể rời nhóm Đẩy trend');
+    if (g.type === 'country') throw bad('Không thể rời nhóm quốc gia');
     if (g.type === 'private') return leavePrivate(g, req.user.id, res);
     removeMember(g.id, req.user.id);
     res.json({ ok: true });
