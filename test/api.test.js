@@ -629,31 +629,26 @@ test('chủ đề nóng: chỉ hiện tin đạt đủ số tim tối thiểu (m
   } finally { process.env.HOT_MIN_HEARTS = prev; }
 });
 
-test('tin nhiều tương tác = tim + bình luận + trả lời, cùng một ngưỡng cho tab Tin nhiều tương tác và khối Tin khác ở Tổng hợp', async () => {
+test('tin nhiều tương tác = tim + bình luận + trả lời (cùng ngưỡng cho tab Tin nhiều tương tác và khối ở Tổng hợp)', async () => {
   const author = await signup('hotIntAuthor', 1), v1 = await signup('hotIntV1', 1), v2 = await signup('hotIntV2', 1);
   const vn = (await call('GET', '/groups/mine', null, author.token)).data.groups.find((x) => x.type === 'country');
   for (const u of [author, v1, v2]) await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
   const m = (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin tương tác ' + Date.now() }, author.token)).data.message;
   const inItems = async () => (await call('GET', '/hot', null, v1.token)).data.items.find((x) => x.id === m.id);
-  const inTop = async () => (await call('GET', '/hot', null, v1.token)).data.others.find((x) => x.id === m.id && x.kind === 'top');
   const prev = process.env.HOT_MIN_HEARTS;
   try {
     process.env.HOT_MIN_HEARTS = '3';
     await call('POST', `/messages/${m.id}/heart`, {}, v1.token); // 1 tương tác
     await call('POST', '/comments/msg/' + m.id, { body: 'bình luận' }, v2.token); // 2
     assert.equal(await inItems(), undefined);
-    assert.equal(await inTop(), undefined);
     await call('POST', `/groups/${vn.id}/messages`, { body: 'trả lời tin', replyTo: m.id }, v2.token); // 3 → đủ ngưỡng
     const it = await inItems();
     assert.equal(it?.interactions, 3);
     assert.equal(it.hearts, 1);
-    assert.equal((await inTop())?.interactions, 3);
-    assert.equal(((await (await fetch(BASE + '/public/hot')).json()).others).some((x) => x.id === m.id && x.kind === 'top'), true);
+    assert.equal(((await (await fetch(BASE + '/public/hot')).json()).items).find((x) => x.id === m.id)?.interactions, 3);
     delete process.env.HOT_MIN_HEARTS; // mặc định 38 → không đủ
     assert.equal(await inItems(), undefined);
-    assert.equal(await inTop(), undefined);
-    // tin vẫn hiện ở nhóm "Mới" của Tin khác
-    assert.ok((await call('GET', '/hot', null, v1.token)).data.others.some((x) => x.id === m.id && x.kind === 'new'));
+    assert.equal((await call('GET', '/hot', null, v1.token)).data.others, undefined); // không còn khối tin mới
   } finally { process.env.HOT_MIN_HEARTS = prev; }
 });
 

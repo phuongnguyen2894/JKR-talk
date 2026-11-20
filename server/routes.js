@@ -222,8 +222,7 @@ api.get('/public/groups/:id', guestLimit, wrap((req, res) => {
 api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
   const rows = await hotRows(null, null, false); // khách không kích hoạt tải xem trước từ trang ngoài
   const pinned = hotPosts().map((m) => guestMsg(m, { hearts: messageDto(m, null).hearts, groupName: 'Chủ đề nóng' }));
-  const others = otherRows(null).map(({ m, kind }) => ({ ...guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name }), interactions: m.score, kind }));
-  res.json({ pinned, items: rows.map((m) => ({ ...guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name }), interactions: m.score })), others });
+  res.json({ pinned, items: rows.map((m) => ({ ...guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name }), interactions: m.score })) });
 }));
 api.get('/public/topic-board', guestLimit, wrap((req, res) => res.json({ topics: topicBoard(boardTab(req)).map(({ joined, creatorName, ...t }) => t) })));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
@@ -1070,23 +1069,6 @@ async function hotRows(viewerId, scope, backfill = true) {
     );
     return rows;
 }
-// "Tin khác" ở tab Tổng hợp: tin nhiều tương tác (đủ ngưỡng như tab Tin nhiều tương tác, mặc định 38) rồi tin mới nhất trong 48 giờ qua
-const OTHER_TOP = 5, OTHER_NEW = 5;
-function otherRows(viewerId) {
-  const top = hotCore(viewerId, null).slice(0, OTHER_TOP);
-  const used = new Set(top.map((m) => m.id));
-  const fresh = db.prepare(
-    `SELECT m.* FROM messages m JOIN groups g ON g.id = m.group_id
-     WHERE g.type IN ('trend','country','region','province','topic') AND m.deleted = 0 AND m.fwd_id IS NULL AND m.fwd IS NULL
-       AND (m.body != '' OR m.image_url IS NOT NULL) AND m.created_at > ?
-     ORDER BY m.id DESC LIMIT 100`
-  ).all(now() - 2 * DAY)
-    .filter((m) => !used.has(m.id) && (!viewerId || !isBlockedEither(viewerId, m.user_id)))
-    .filter(dedupeHot())
-    .slice(0, OTHER_NEW)
-    .map((m) => ({ ...m, hc: db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(m.id).c, score: 0 }));
-  return [...top.map((m) => ({ m, kind: 'top' })), ...fresh.map((m) => ({ m, kind: 'new' }))];
-}
 api.get(
   '/hot',
   wrap(async (req, res) => {
@@ -1095,7 +1077,6 @@ api.get(
     res.json({
       pinned: hotPosts().map((m) => ({ ...messageDto(m, req.user.id), groupName: 'Chủ đề nóng' })),
       items: rows.map((m) => ({ ...messageDto(m, req.user.id), hearts: m.hc, interactions: m.score, groupName: getGroup(m.group_id).name })),
-      others: otherRows(req.user.id).map(({ m, kind }) => ({ ...messageDto(m, req.user.id), hearts: m.hc, interactions: m.score, kind, groupName: getGroup(m.group_id).name })),
     });
   })
 );

@@ -9,7 +9,7 @@ import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR
 //  - Từ quản trị: bài do Admin đăng
 //  - Tin nhiều tương tác: tin nhắn đạt ít nhất 38 tương tác (tim + bình luận + trả lời) ở các nhóm công khai trong 24 giờ qua (tối đa 38 tin)
 export const HOT_TABS = [['all', 'Tổng hợp'], ['hot', 'Nổi bật'], ['new', 'Mới'], ['admin', 'Từ quản trị'], ['hearts', 'Tin nhiều tương tác']];
-export const ALL_TOPICS = 3, ALL_ADMIN = 3; // tab Tổng hợp: 3 chủ đề nổi bật, 3 bài quản trị mới nhất, rồi tin khác (mới + nhiều tương tác)
+export const ALL_N = 5; // tab Tổng hợp: 5 chủ đề nổi bật > 5 bài từ quản trị > 5 tin nhiều tương tác > 5 chủ đề mới được duyệt
 let htab = 'all';
 
 // Tiêu đề từng khối trong tab Tổng hợp, kèm nút "Xem tất cả" sang tab tương ứng
@@ -28,16 +28,6 @@ export function boardCard(t, tab, guest = false) {
     </a></article>`;
 }
 
-// Tin ở khối "Tin khác": nhãn Mới / số tương tác
-const otherCard = (m) => `<div class="card col" style="gap:6px">
-  <div class="row wrap">${m.kind === 'top' ? `<span class="pill warn">${m.interactions} tương tác</span>` : '<span class="pill">Mới</span>'}<a class="pill" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>
-    <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
-  <div class="row">${avatarR(m.user, roleOf(m.user, m.modRole))}<div class="grow"><b class="${roleClass(roleOf(m.user, m.modRole)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user, m.modRole))}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
-  ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, m.mentions)}</div>` : ''}
-  ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy">` : ''}
-  ${previewHtml(m.preview)}
-  ${commentBlock('msg', m.id, m.commentCount)}
-</div>`;
 const heartCard = (m, i) => `<div class="card col" style="gap:6px">
   <div class="row wrap"><span class="pill">#${i + 1}</span><span class="pill warn">${m.interactions} tương tác</span><a class="pill warn" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>
     <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
@@ -52,17 +42,19 @@ export async function renderHot(view, tab = htab) {
   htab = tab;
   const isAdmin = S.me.role === 'admin';
   const needHot = tab === 'all' || tab === 'admin' || tab === 'hearts';
-  const [{ items = [], pinned = [], others = [] }, board] = await Promise.all([
+  const [{ items = [], pinned = [] }, board, boardNew] = await Promise.all([
     needHot ? api('GET', '/hot') : Promise.resolve({}),
     tab === 'all' ? api('GET', '/topic-board?tab=hot') : tab === 'hot' || tab === 'new' ? api('GET', '/topic-board?tab=' + tab) : Promise.resolve(null),
+    tab === 'all' ? api('GET', '/topic-board?tab=new') : Promise.resolve(null),
   ]);
   const needsApproval = board ? board.needsApproval : !isAdmin;
   let body;
   if (tab === 'all') {
-    body = `${board.topics.length ? `${sectionHead('Chủ đề nổi bật', 'hot')}<div class="list">${board.topics.slice(0, ALL_TOPICS).map((t) => boardCard(t, 'hot')).join('')}</div>` : ''}
-      ${pinned.length ? `${sectionHead('Từ quản trị', 'admin')}<div class="list">${pinned.slice(0, ALL_ADMIN).map((m) => pinnedCard(m, isAdmin)).join('')}</div>` : ''}
-      ${others.length ? `${sectionHead('Tin khác', '')}<div class="list">${others.map(otherCard).join('')}</div>` : ''}
-      ${!board.topics.length && !pinned.length && !others.length ? '<p class="muted">Chưa có gì nổi bật. Hãy vào bàn luận hoặc thả tim cho những tin bạn thích!</p>' : ''}`;
+    body = `${board.topics.length ? `${sectionHead('Chủ đề nổi bật', 'hot')}<div class="list">${board.topics.slice(0, ALL_N).map((t) => boardCard(t, 'hot')).join('')}</div>` : ''}
+      ${pinned.length ? `${sectionHead('Từ quản trị', 'admin')}<div class="list">${pinned.slice(0, ALL_N).map((m) => pinnedCard(m, isAdmin)).join('')}</div>` : ''}
+      ${items.length ? `${sectionHead('Tin nhiều tương tác', 'hearts')}<div class="list">${items.slice(0, ALL_N).map(heartCard).join('')}</div>` : ''}
+      ${boardNew.topics.length ? `${sectionHead('Chủ đề mới được duyệt', 'new')}<div class="list">${boardNew.topics.slice(0, ALL_N).map((t) => boardCard(t, 'new')).join('')}</div>` : ''}
+      ${!board.topics.length && !pinned.length && !items.length && !boardNew.topics.length ? '<p class="muted">Chưa có gì nổi bật. Hãy vào bàn luận hoặc thả tim cho những tin bạn thích!</p>' : ''}`;
   } else if (tab === 'hot' || tab === 'new') {
     body = `<p class="small muted">${tab === 'new' ? 'Chủ đề mới được duyệt, mới nhất ở trên cùng.' : 'Chủ đề được Admin đặt nổi bật, hoặc đang có nhiều thảo luận trong 24 giờ qua.'}</p>
       <div class="list">${board.topics.map((t) => boardCard(t, tab)).join('') || `<p class="muted">${tab === 'new' ? 'Chưa có chủ đề nào.' : 'Chưa có chủ đề nổi bật. Hãy vào bàn luận để chủ đề lên đây!'}</p>`}</div>`;
