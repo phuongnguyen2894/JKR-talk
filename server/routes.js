@@ -7,7 +7,7 @@ import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
-  isSystemAdmin, canPostTrend, locationOf, log, hub, isOnline, notify, messageDto, areFriends, isBlockedEither, shareGroup, pair,
+  isSystemAdmin, isSuper, canPostTrend, locationOf, log, hub, isOnline, notify, messageDto, areFriends, isBlockedEither, shareGroup, pair,
   AVATAR_COUNT,
 } from './lib.js';
 
@@ -59,6 +59,11 @@ function auth(req, _res, next) {
 }
 const adminOnly = (req, _res, next) => {
   if (req.user.role !== 'admin') throw forbidden();
+  next();
+};
+// chỉ Admin hệ thống
+const superOnly = (req, _res, next) => {
+  if (req.user.role !== 'admin' || !req.user.is_super) throw forbidden('Chỉ Admin hệ thống mới có quyền này');
   next();
 };
 
@@ -1062,7 +1067,9 @@ api.post(
 
 function lockUser(actor, uid, days, reason) {
   const t = getUser(uid);
-  if (!t || t.role === 'admin') throw forbidden('Không thể khóa tài khoản này');
+  const sup = isSuper(actor);
+  if (!t || (t.role === 'admin' && (!sup || t.is_super))) throw forbidden('Không thể khóa tài khoản này');
+  if (!days && !sup) throw forbidden('Chỉ Admin hệ thống mới được khóa vĩnh viễn');
   db.prepare("UPDATE users SET status='locked', locked_until=? WHERE id=?").run(days ? now() + days * DAY : null, uid);
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(uid);
   hub.send(uid, { type: 'locked' });
@@ -1141,7 +1148,7 @@ api.delete('/admin/news/:id', adminOnly, wrap((req, res) => {
 api.get('/admin/users', adminOnly, wrap((req, res) => {
   const q = `%${str(req.query.q, 60)}%`;
   const rows = db.prepare("SELECT * FROM users WHERE status != 'deleted' AND (display_name LIKE ? OR email LIKE ?) ORDER BY id DESC LIMIT 50").all(q, q);
-  res.json({ users: rows.map((u) => ({ ...publicUser(u), location: locationOf(u), email: u.email, status: u.status, lockedUntil: u.locked_until, role: u.role })) });
+  res.json({ users: rows.map((u) => ({ ...publicUser(u), location: locationOf(u), email: u.email, status: u.status, lockedUntil: u.locked_until, role: u.role, isSuper: !!u.is_super })) });
 }));
 api.post('/admin/users/:id/lock', adminOnly, wrap((req, res) => {
   const days = req.body.permanent ? null : Math.min(int(req.body.days) || 7, 365);
@@ -1165,7 +1172,7 @@ api.post('/admin/mods', adminOnly, wrap((req, res) => {
   if (!g || !PUBLIC_TYPES.includes(g.type)) throw bad('Chỉ trao quyền mod cho group công khai');
   const target = getUser(uid);
   if (!target || target.status === 'deleted') throw bad('Không tìm thấy người dùng');
-  if (target.role === 'admin') throw bad('Admin hệ thống đã có toàn quyền');
+  if (target.role === 'admin') throw bad('Admin đã có toàn quyền');
   // trao cho bất kỳ ai: chưa ở trong nhóm thì tự thêm vào (gỡ lệnh cấm nếu có)
   db.prepare('DELETE FROM bans WHERE group_id = ? AND user_id = ?').run(g.id, uid);
   if (!getMember(g.id, uid)) addMember(g.id, uid);
@@ -1179,6 +1186,33 @@ api.delete('/admin/mods/:groupId/:userId', adminOnly, wrap((req, res) => {
   db.prepare("UPDATE members SET role='member' WHERE group_id=? AND user_id=? AND role='mod'").run(gid, uid);
   log(req.user.id, 'revoke_mod', { target: uid, group: gid });
   notify(uid, 'mod', 'Quyền mod của bạn đã được thu hồi');
+  res.json({ ok: true });
+}));
+
+// Phong / thu hồi Admin: chỉ Admin hệ thống
+api.get('/admin/admins', superOnly, wrap((_req, res) => {
+  const rows = db.prepare("SELECT * FROM users WHERE role = 'admin' AND status != 'deleted' ORDER BY is_super DESC, id").all();
+  res.json({ admins: rows.map((u) => ({ ...publicUser(u), email: u.email, isSuper: !!u.is_super })) });
+}));
+api.post('/admin/admins', superOnly, wrap((req, res) => {
+  const uid = int(req.body.userId);
+  const t = getUser(uid);
+  if (!t || t.status !== 'active') throw bad('Không tìm thấy người dùng (hoặc tài khoản đang bị khóa)');
+  if (t.role === 'admin') throw bad('Người này đã là Admin');
+  db.prepare("UPDATE users SET role = 'admin', is_super = 0 WHERE id = ?").run(uid);
+  addMember(trendGroupId(), uid);
+  log(req.user.id, 'grant_admin', { target: uid });
+  notify(uid, 'mod', 'Bạn được trao quyền Admin');
+  res.json({ ok: true });
+}));
+api.delete('/admin/admins/:userId', superOnly, wrap((req, res) => {
+  const uid = int(req.params.userId);
+  const t = getUser(uid);
+  if (!t || t.role !== 'admin') throw notFound('Người này không phải Admin');
+  if (t.is_super) throw bad('Không thể thu hồi Admin hệ thống');
+  db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(uid);
+  log(req.user.id, 'revoke_admin', { target: uid });
+  notify(uid, 'mod', 'Quyền Admin của bạn đã được thu hồi');
   res.json({ ok: true });
 }));
 
@@ -1264,14 +1298,14 @@ function composeAgentText(userPrompt, bugs, origin) {
 }
 
 // Ghép sẵn nội dung gửi agent (dùng để xem trước / sao chép)
-api.post('/admin/bugs/compose', adminOnly, wrap((req, res) => {
+api.post('/admin/bugs/compose', superOnly, wrap((req, res) => {
   const bugs = pickBugs(req.body.ids);
   const prompt = str(req.body.prompt, 4000) || DEFAULT_AGENT_PROMPT;
   res.json({ text: composeAgentText(prompt, bugs, publicOrigin(req)), defaultPrompt: DEFAULT_AGENT_PROMPT });
 }));
 
 // Gửi các lỗi đã chọn + prompt tới agent qua webhook (AGENT_WEBHOOK_URL)
-api.post('/admin/bugs/send', adminOnly, wrap(async (req, res) => {
+api.post('/admin/bugs/send', superOnly, wrap(async (req, res) => {
   const url = process.env.AGENT_WEBHOOK_URL;
   if (!url) throw bad('Chưa cấu hình AGENT_WEBHOOK_URL trên máy chủ. Hãy dùng nút "Sao chép prompt".');
   const bugs = pickBugs(req.body.ids);

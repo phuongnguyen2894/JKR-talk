@@ -22,8 +22,8 @@ function seedAdmin() {
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return;
   const province = provinceById(1);
   const r = db
-    .prepare(`INSERT INTO users (email, pass_hash, display_name, name_key, province_id, role, verified, created_at) VALUES (?,?,?,?,?,?,?,?)`)
-    .run(email, hashPassword(password), 'Admin JKR', nameKey('Admin JKR'), province.id, 'admin', 1, now());
+    .prepare(`INSERT INTO users (email, pass_hash, display_name, name_key, province_id, role, is_super, verified, created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(email, hashPassword(password), 'Admin JKR', nameKey('Admin JKR'), province.id, 'admin', 1, 1, now());
   for (const gid of [...homeGroupIds(province), trendGroupId()]) addMember(gid, Number(r.lastInsertRowid));
   console.log(PROD ? `[seed] đã tạo admin: ${email}` : `[seed] admin: ${email} / ${password}`);
 }

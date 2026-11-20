@@ -84,6 +84,7 @@ export function selfUser(u) {
     provinceId: u.province_id,
     verified: !!u.verified,
     role: u.role,
+    isSuper: u.role === 'admin' && !!u.is_super,
     friendPolicy: u.friend_policy,
     showOnline: !!u.show_online,
     newsPush: !!u.news_push,
@@ -135,8 +136,14 @@ export function addMember(gid, uid, role = 'member') {
 export const removeMember = (gid, uid) =>
   db.prepare('DELETE FROM members WHERE group_id = ? AND user_id = ?').run(gid, uid);
 
+// Quyền Admin (toàn hệ thống): gồm Admin hệ thống và Admin
 export function isSystemAdmin(uid) {
   return getUser(uid)?.role === 'admin';
+}
+// Admin hệ thống: cấp cao nhất
+export function isSuper(uid) {
+  const u = getUser(uid);
+  return u?.role === 'admin' && !!u.is_super;
 }
 
 // Được đăng vào "Đẩy trend": admin hệ thống hoặc mod của bất kỳ nhóm công khai nào

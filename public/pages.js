@@ -246,12 +246,12 @@ actions['delete-account'] = async () => {
 // Quản trị: report (admin + mod + admin group riêng), người dùng, mod, nhật ký
 // ===========================================================================
 const ACTION_LABEL = { dismiss: 'Bỏ qua (không vi phạm)', delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng 24 giờ trong nhóm', kick: 'Xóa khỏi nhóm', warn: 'Cảnh cáo', lock_temp: 'Khóa tài khoản tạm thời', lock_perm: 'Khóa tài khoản vĩnh viễn' };
-const LOG_LABEL = { delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng', kick: 'Xóa khỏi nhóm', warn: 'Cảnh cáo', lock_temp: 'Khóa tạm', lock_perm: 'Khóa vĩnh viễn', unlock: 'Mở khóa', grant_mod: 'Trao quyền mod', revoke_mod: 'Thu hồi mod' };
+const LOG_LABEL = { delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng', kick: 'Xóa khỏi nhóm', warn: 'Cảnh cáo', lock_temp: 'Khóa tạm', lock_perm: 'Khóa vĩnh viễn', unlock: 'Mở khóa', grant_mod: 'Trao quyền mod', revoke_mod: 'Thu hồi mod', grant_admin: 'Trao quyền Admin', revoke_admin: 'Thu hồi Admin' };
 
 export async function renderAdmin(view, tab = 'reports') {
   const admin = S.me.role === 'admin';
   if (!admin) tab = 'reports';
-  const tabs = admin ? [['reports', 'Báo cáo'], ['users', 'Người dùng'], ['mods', 'Mod'], ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
+  const tabs = admin ? [['reports', 'Báo cáo'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
   view.innerHTML = `<div class="page"><div class="page-inner"><h1>${admin ? 'Quản trị' : 'Báo cáo trong nhóm của bạn'}</h1>
     <div class="pillnav">${tabs.map(([k, n]) => `<button data-tab="${k}" aria-pressed="${k === tab}">${n}</button>`).join('')}</div><div id="tabbody"></div></div></div>`;
   $$('[data-tab]', view).forEach((b) => (b.onclick = () => renderAdmin(view, b.dataset.tab)));
@@ -260,6 +260,7 @@ export async function renderAdmin(view, tab = 'reports') {
     if (tab === 'reports') await adminReports(body);
     if (tab === 'users') await adminUsers(body);
     if (tab === 'mods') await adminMods(body);
+    if (tab === 'admins' && S.me.isSuper) await adminAdmins(body);
     if (tab === 'logs') await adminLogs(body);
   } catch (e) { body.innerHTML = `<div class="error">${esc(e.message)}</div>`; }
 }
@@ -278,7 +279,7 @@ async function adminReports(body) {
 actions.resolve = async (el) => {
   const admin = S.me.role === 'admin';
   const opts = Object.keys(ACTION_LABEL).filter((a) =>
-    (admin || ['dismiss', 'delete_message', 'mute', 'kick'].includes(a)) &&
+    (admin || ['dismiss', 'delete_message', 'mute', 'kick'].includes(a)) && (a !== 'lock_perm' || S.me.isSuper) &&
     (a !== 'delete_message' || el.dataset.msg) && (!['mute', 'kick'].includes(a) || el.dataset.group));
   const v = await ask({ title: 'Xử lý báo cáo', text: 'Người báo cáo sẽ được thông báo khi báo cáo được xử lý.', fields: [
     { name: 'action', label: 'Hành động', type: 'select', options: opts.map((a) => ({ value: a, label: ACTION_LABEL[a] })) },
@@ -292,8 +293,9 @@ async function adminUsers(body) {
   body.innerHTML = `<div class="col"><label class="sr-only" for="uq">Tìm người dùng</label><input class="input" id="uq" type="search" placeholder="Tìm theo tên hoặc email"><div class="list" id="ul"></div></div>`;
   const load = async () => {
     const { users } = await api('GET', `/admin/users?q=${encodeURIComponent($('#uq').value)}`);
-    $('#ul').innerHTML = users.map((u) => `<div class="card">${avatar(u)}<div class="grow"><b>${esc(u.displayName)}</b> ${u.role === 'admin' ? '<span class="pill">Admin</span>' : ''}${u.status === 'locked' ? '<span class="pill warn">Đã khóa</span>' : ''}<div class="tiny muted">${esc(u.email)} · ${esc(u.location?.province || '')}</div></div>
-      ${u.role === 'admin' ? '' : `<button class="btn sm" data-act="grant-mod" data-id="${u.id}" data-name="${esc(u.displayName)}">Trao quyền mod</button>
+    $('#ul').innerHTML = users.map((u) => `<div class="card">${avatar(u)}<div class="grow"><b>${esc(u.displayName)}</b> ${u.role === 'admin' ? `<span class="pill">${u.isSuper ? 'Admin hệ thống' : 'Admin'}</span>` : ''}${u.status === 'locked' ? '<span class="pill warn">Đã khóa</span>' : ''}<div class="tiny muted">${esc(u.email)} · ${esc(u.location?.province || '')}</div></div>
+      ${S.me.isSuper && u.role !== 'admin' && u.status === 'active' ? `<button class="btn sm" data-act="grant-admin" data-id="${u.id}" data-name="${esc(u.displayName)}">Trao quyền Admin</button>` : ''}
+      ${u.role === 'admin' && !(S.me.isSuper && !u.isSuper) ? '' : `<button class="btn sm" data-act="grant-mod" data-id="${u.id}" data-name="${esc(u.displayName)}">Trao quyền mod</button>
       ${u.status === 'locked' ? `<button class="btn sm" data-act="unlock" data-id="${u.id}">Mở khóa</button>` : `<button class="btn sm danger" data-act="lock" data-id="${u.id}">Khóa</button>`}`}</div>`).join('') || '<p class="muted">Không tìm thấy.</p>';
   };
   let t; $('#uq').oninput = () => { clearTimeout(t); t = setTimeout(() => load().catch(fail), 250); };
@@ -301,7 +303,7 @@ async function adminUsers(body) {
 }
 actions.lock = async (el) => {
   const v = await ask({ title: 'Khóa tài khoản', fields: [
-    { name: 'kind', label: 'Loại', type: 'select', options: [{ value: 'temp', label: 'Tạm thời' }, { value: 'perm', label: 'Vĩnh viễn' }] },
+    { name: 'kind', label: 'Loại', type: 'select', options: [{ value: 'temp', label: 'Tạm thời' }, ...(S.me.isSuper ? [{ value: 'perm', label: 'Vĩnh viễn' }] : [])] },
     { name: 'days', label: 'Số ngày (nếu tạm thời)', type: 'number', value: 7, min: 1, max: 365 },
     { name: 'reason', label: 'Lý do', type: 'textarea', required: true, max: 300 }], ok: 'Khóa', danger: true });
   if (!v) return;
@@ -314,6 +316,18 @@ actions['grant-mod'] = async (el) => {
     { name: 'groupId', label: 'Nhóm công khai', type: 'select', options: groups.map((g) => ({ value: g.id, label: g.name })) }], ok: 'Trao quyền' });
   if (!v) return;
   try { await api('POST', '/admin/mods', { groupId: Number(v.groupId), userId: Number(el.dataset.id) }); toast('Đã trao quyền mod'); } catch (e) { fail(e); }
+};
+actions['grant-admin'] = async (el) => {
+  if (!(await confirmBox(`Trao quyền Admin cho ${el.dataset.name}?`, 'Admin quản trị toàn hệ thống: xóa tin, xử lý báo cáo, khóa tạm tài khoản, đăng bản tin, trao quyền mod. Admin không được phong Admin khác hay khóa vĩnh viễn.', 'Trao quyền'))) return;
+  try { await api('POST', '/admin/admins', { userId: Number(el.dataset.id) }); toast('Đã trao quyền Admin'); renderAdmin($('#view'), 'users'); } catch (e) { fail(e); }
+};
+async function adminAdmins(body) {
+  const { admins } = await api('GET', '/admin/admins');
+  body.innerHTML = `<p class="small muted">Chỉ Admin hệ thống mới phong hoặc thu hồi Admin. Phong Admin ở tab "Người dùng" (tìm theo tên hoặc email).</p><div class="list">${admins.map((a) => `<div class="card">${avatar(a)}<div class="grow"><b>${esc(a.displayName)}</b> <span class="pill">${a.isSuper ? 'Admin hệ thống' : 'Admin'}</span><div class="tiny muted">${esc(a.email)}</div></div>${a.isSuper ? '' : `<button class="btn sm danger" data-act="revoke-admin" data-id="${a.id}">Thu hồi</button>`}</div>`).join('')}</div>`;
+}
+actions['revoke-admin'] = async (el) => {
+  if (!(await confirmBox('Thu hồi quyền Admin?', 'Người này trở lại người dùng thường (quyền mod ở các nhóm, nếu có, vẫn giữ).', 'Thu hồi', true))) return;
+  try { await api('DELETE', `/admin/admins/${el.dataset.id}`); renderAdmin($('#view'), 'admins'); } catch (e) { fail(e); }
 };
 async function adminMods(body) {
   const { mods } = await api('GET', '/admin/mods');

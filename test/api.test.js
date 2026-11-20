@@ -442,3 +442,30 @@ test('chủ đề nóng không trùng lặp: cùng liên kết/nội dung chỉ 
   assert.equal(items.length, 1);
   assert.equal(items[0].id, m1.id); // giữ tin nhiều tim hơn
 });
+
+test('phân quyền: chỉ Admin hệ thống phong Admin; Admin không phong Admin, không khóa vĩnh viễn, không gửi agent', async () => {
+  const a = await signup('quyen1', 1), t1 = await signup('quyen2', 1), t2 = await signup('quyen3', 1);
+  // người thường không phong được
+  assert.equal((await call('POST', '/admin/admins', { userId: a.id }, t1.token)).status, 403);
+  // Admin hệ thống phong Admin
+  assert.equal((await call('POST', '/admin/admins', { userId: a.id }, admin.token)).status, 200);
+  const me = await call('GET', '/me', null, a.token);
+  assert.equal(me.data.user.role, 'admin'); assert.equal(me.data.user.isSuper, false);
+  assert.equal((await call('POST', '/admin/admins', { userId: a.id }, admin.token)).status, 400); // đã là Admin
+  // Admin không phong Admin khác, không xem danh sách Admin
+  assert.equal((await call('POST', '/admin/admins', { userId: t1.id }, a.token)).status, 403);
+  assert.equal((await call('GET', '/admin/admins', null, a.token)).status, 403);
+  // Admin vẫn trao mod, khóa tạm; không khóa vĩnh viễn; không gửi agent
+  const vn = (await call('GET', '/groups/mine', null, t1.token)).data.groups.find((x) => x.type === 'country');
+  assert.equal((await call('POST', '/admin/mods', { groupId: vn.id, userId: t1.id }, a.token)).status, 200);
+  assert.equal((await call('POST', `/admin/users/${t2.id}/lock`, { permanent: true, reason: 'x' }, a.token)).status, 403);
+  assert.equal((await call('POST', `/admin/users/${t2.id}/lock`, { days: 1, reason: 'x' }, a.token)).status, 200);
+  assert.equal((await call('POST', '/admin/bugs/compose', { ids: [1] }, a.token)).status, 403);
+  // Admin không khóa được Admin hệ thống; Admin hệ thống khóa được Admin nhưng không thu hồi/khóa chính mình
+  const sup = (await call('GET', '/admin/admins', null, admin.token)).data.admins.find((x) => x.isSuper);
+  assert.equal((await call('POST', `/admin/users/${sup.id}/lock`, { days: 1, reason: 'x' }, a.token)).status, 403);
+  assert.equal((await call('DELETE', `/admin/admins/${sup.id}`, {}, admin.token)).status, 400);
+  // thu hồi Admin: hiệu lực ngay
+  assert.equal((await call('DELETE', `/admin/admins/${a.id}`, {}, admin.token)).status, 200);
+  assert.equal((await call('POST', '/admin/mods', { groupId: vn.id, userId: t2.id }, a.token)).status, 403);
+});

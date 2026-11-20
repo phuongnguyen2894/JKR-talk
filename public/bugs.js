@@ -52,12 +52,12 @@ export async function renderBugs(view, status = state.status) {
     <div class="pillnav" role="group" aria-label="Lọc theo trạng thái">
       ${[['new', 'Mới'], ['sent', 'Đã gửi agent'], ['fixed', 'Đã sửa'], ['dismissed', 'Bỏ qua']].map(([k, n]) => `<button data-st="${k}" aria-pressed="${status === k}">${n} (${counts[k] || 0})</button>`).join('')}
       <button data-st="all" aria-pressed="${status === 'all'}">Tất cả (${total})</button></div>
-    ${webhookConfigured ? '' : '<div class="notice small">Chưa cấu hình <b>AGENT_WEBHOOK_URL</b> trên máy chủ nên chưa gửi thẳng được. Bạn vẫn dùng được nút "Sao chép prompt" để dán vào agent.</div>'}
+    ${webhookConfigured || !S.me.isSuper ? '' : '<div class="notice small">Chưa cấu hình <b>AGENT_WEBHOOK_URL</b> trên máy chủ nên chưa gửi thẳng được. Bạn vẫn dùng được nút "Sao chép prompt" để dán vào agent.</div>'}
     <div class="row wrap card" style="position:sticky;top:0;z-index:2">
       <label class="check"><input type="checkbox" id="selall"> Chọn tất cả</label>
       <span class="small muted grow" id="selcount">Chưa chọn lỗi nào</span>
-      <button class="btn" data-act="bug-copy" id="bcopy" disabled>Sao chép prompt</button>
-      <button class="btn primary" data-act="bug-send" id="bsendall" disabled>Gửi cho agent</button></div>
+      <button class="btn" data-act="bug-copy" id="bcopy" disabled ${S.me.isSuper ? '' : 'style="display:none"'}>Sao chép prompt</button>
+      <button class="btn primary" data-act="bug-send" id="bsendall" disabled ${S.me.isSuper ? '' : 'style="display:none"'}>Gửi cho agent</button></div>
     <div class="list">${bugs.map((b) => {
       const [label, cls] = STATUS[b.status] || ['', ''];
       return `<article class="card col" style="gap:8px">
