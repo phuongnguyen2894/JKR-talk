@@ -1,5 +1,7 @@
 :root {
   --accent: #5B3FD9;
+  --role-admin: #8F5F00; --role-admin-bg: #F2B600; --role-admin-ink: #2B1D00;
+  --role-mod: #7C3AED; --role-mod-bg: #7C3AED; --role-mod-ink: #FFFFFF;
   --heart: #7C3AED;
   --accent-ink: #FFFFFF;
   --bg: #F7F4FF;
@@ -19,6 +21,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --accent: #8C75FF; --heart: #B79CFF; --accent-ink: #14102A;
+    --role-admin: #F2C94C; --role-mod: #B79CFF; --role-mod-bg: #8C75FF; --role-mod-ink: #14102A;
     --bg: #14111F; --surface: #1C1830; --line: #2E2848; --field: #3F3862;
     --muted: #B3ABCB; --text: #F1EEFB; --soft: #2A2350; --soft-ink: #CFC5FF;
     --ok-bg: #14382F; --ok-ink: #8FE0C8; --warn-bg: #3A2F10; --warn-ink: #F3D27A;
@@ -367,3 +370,13 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .wl-quick .chip { min-height: 32px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); font-size: 12.5px; color: var(--text); text-align: left; }
 .wl-form { display: flex; gap: 8px; }
 .wl-form .input { flex: 1; min-width: 0; }
+
+/* Vai trò quản trị: biểu tượng ở góc ảnh đại diện + màu tên */
+.av-wrap { position: relative; display: inline-flex; flex: 0 0 auto; }
+.role-badge { position: absolute; right: -4px; bottom: -4px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--bg); box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+.role-badge svg { width: 9px; height: 9px; }
+.role-badge.rb-admin { background: var(--role-admin-bg); color: var(--role-admin-ink); }
+.role-badge.rb-mod { background: var(--role-mod-bg); color: var(--role-mod-ink); }
+.card .role-badge { border-color: var(--surface); }
+.role-admin { color: var(--role-admin) !important; font-weight: 700; }
+.role-mod { color: var(--role-mod) !important; font-weight: 700; }

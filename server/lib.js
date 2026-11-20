@@ -71,6 +71,7 @@ export function publicUser(u, viewerId) {
     avatarUrl: u.avatar_url,
     language: u.language,
     isAdmin: u.role === 'admin',
+    staff: u.role === 'admin' ? (u.is_super ? 'super' : 'admin') : null, // vai trò toàn hệ thống (hiện huy hiệu + màu tên)
   };
   if (viewerId) out.online = presenceVisible(u, viewerId) ? isOnline(u.id) : undefined;
   return out;

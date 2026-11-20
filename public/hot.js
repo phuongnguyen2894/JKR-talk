@@ -1,5 +1,5 @@
 import { previewHtml } from './chat.js';
-import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, imageToDataUrl, actions, toast, fail, confirmBox } from './core.js';
+import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR, roleClass, roleSr, imageToDataUrl, actions, toast, fail, confirmBox } from './core.js';
 
 // Chủ đề nóng: tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua (tối đa 38 tin)
 const SCOPES = [['', 'Tất cả'], ['country', 'Quốc gia'], ['region', 'Khu vực'], ['province', 'Tỉnh thành']];
@@ -22,7 +22,7 @@ export async function renderHot(view, sc = scope) {
     <div class="list">${items.map((m, i) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>
         <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
-      <div class="row">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
+      <div class="row">${avatarR(m.user, roleOf(m.user, m.modRole))}<div class="grow"><b class="${roleClass(roleOf(m.user, m.modRole)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user, m.modRole))}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
       ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, m.mentions)}</div>` : ''}
       ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy">` : ''}
       ${previewHtml(m.preview)}
@@ -48,7 +48,7 @@ export async function renderHot(view, sc = scope) {
 function pinnedCard(m, isAdmin) {
   return `<div class="card col hot-pin" style="gap:6px" data-mid="${m.id}">
     <div class="row wrap"><span class="pill warn">Từ quản trị</span><span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div>
-    <div class="row">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b></div></div>
+    <div class="row">${avatarR(m.user, roleOf(m.user, m.modRole))}<div class="grow"><b class="${roleClass(roleOf(m.user, m.modRole)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user, m.modRole))}</b></div></div>
     ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, m.mentions)}</div>` : ''}
     ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong bài đăng" style="max-width:100%;border-radius:10px" loading="lazy" decoding="async">` : ''}
     ${previewHtml(m.preview)}

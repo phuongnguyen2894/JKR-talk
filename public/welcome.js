@@ -1,5 +1,5 @@
 // Mục "Chào mừng" riêng của từng nhóm: gửi lời chào cho thành viên mới, không đăng vào khung chat chung
-import { $, esc, S, api, go, icon, avatar, toast, fail, actions } from './core.js';
+import { $, esc, S, api, go, icon, avatar, avatarR, roleOf, roleClass, roleSr, toast, fail, actions } from './core.js';
 
 const QUICK = [
   'Chào mừng bạn đến với nhóm! 💜',
@@ -16,7 +16,7 @@ const ago = (t) => {
   return `${Math.floor(h / 24)} ngày trước`;
 };
 
-const bubble = (w) => `<div class="wl-msg${w.mine ? ' mine' : ''}"><span class="wl-who">${esc(w.author.displayName)}</span> <span>${esc(w.body)}</span></div>`;
+const bubble = (w) => `<div class="wl-msg${w.mine ? ' mine' : ''}"><span class="wl-who${roleClass(roleOf(w.author))}">${esc(w.author.displayName)}${roleSr(roleOf(w.author))}</span> <span>${esc(w.body)}</span></div>`;
 
 function cardHtml(n, perAuthor) {
   const u = n.user;
@@ -29,7 +29,7 @@ function cardHtml(n, perAuthor) {
           <input class="input" id="wl-${u.id}" maxlength="300" placeholder="Viết lời chào cho ${esc(u.displayName)}…" autocomplete="off"><button class="btn primary">Gửi</button></form>`
       : '<p class="small muted">Bạn đã gửi đủ lời chào cho thành viên này. Cảm ơn bạn! 💜</p>';
   return `<article class="card col wl-card" data-uid="${u.id}">
-    <div class="row">${avatar(u)}<div class="grow"><b>${esc(u.displayName)}</b>${n.isMe ? ' <span class="pill">Bạn</span>' : ''}<div class="tiny muted">Tham gia ${ago(n.joinedAt)}</div></div>
+    <div class="row">${avatarR(u, roleOf(u))}<div class="grow"><b class="${roleClass(roleOf(u)).trim()}">${esc(u.displayName)}${roleSr(roleOf(u))}</b>${n.isMe ? ' <span class="pill">Bạn</span>' : ''}<div class="tiny muted">Tham gia ${ago(n.joinedAt)}</div></div>
       <span class="tiny muted">${n.welcomes.length ? `${n.welcomes.length} lời chào` : 'Chưa có lời chào'}</span></div>
     <div class="wl-list">${n.welcomes.map(bubble).join('')}</div>${form}</article>`;
 }

@@ -1,5 +1,5 @@
 // Chế độ khách (chưa đăng ký): chỉ đọc nhóm công khai, Đẩy trend, Chủ đề nóng, Bản tin
-import { $, esc, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, actions, lightbox, linkify } from './core.js';
+import { $, esc, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, actions, lightbox, linkify, roleOf, avatarR, roleClass, roleSr } from './core.js';
 import { previewHtml } from './chat.js';
 
 const G = { groups: null, trendId: 0 };
@@ -55,10 +55,10 @@ function renderGuestSide(r) {
 function msgHtml(m) {
   const quote = m.reply ? `<div class="quote">↪ ${esc(m.reply.displayName)}: ${m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</div>` : '';
   const fwd = m.fwd ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
-  const role = m.modRole ? `<span class="pill">${m.modRole === 'mod' ? 'Mod' : 'Admin'}</span>` : '';
-  return `<div class="msg" data-mid="${m.id}">${avatar(m.user)}
+  const rr = roleOf(m.user, m.modRole);
+  return `<div class="msg" data-mid="${m.id}">${avatarR(m.user, rr)}
     <div class="body">
-      <div class="meta"><span class="who">${esc(m.user.displayName)}</span>${role}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
+      <div class="meta"><span class="who${roleClass(rr)}">${esc(m.user.displayName)}${roleSr(rr)}</span><span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
       ${fwd}${quote}${m.body ? `<div class="text">${linkify(m.body)}</div>` : ''}${m.imageUrl ? `<img class="pic" data-act="guest-zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}
       <div class="row" style="gap:4px;margin-top:2px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
@@ -101,6 +101,7 @@ async function renderGuestHot(view) {
     ${cta()}
     ${pinned.length ? `<h2 class="h2" style="margin:8px 0 0">Từ quản trị</h2><div class="list">${pinned.map((m) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill warn">Từ quản trị</span><span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div>
+      <div class="row">${avatarR(m.user, roleOf(m.user))}<div class="grow"><b class="${roleClass(roleOf(m.user)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user))}</b></div></div>
       ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, [])}</div>` : ''}
       ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong bài đăng" style="max-width:100%;border-radius:10px" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}

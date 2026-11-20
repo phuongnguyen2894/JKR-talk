@@ -238,3 +238,20 @@ export function linkify(text, mentions) {
   out.push(plainHtml(t.slice(last), mentions));
   return out.join('');
 }
+
+// ---- vai trò quản trị: biểu tượng ở góc ảnh + màu tên (Admin hệ thống / Admin: vàng, Mod: tím) ----
+// staff: 'super' | 'admin' (toàn hệ thống, từ server); modRole: vai trò trong nhóm (Mod nhóm công khai, quản trị nhóm riêng)
+export const roleOf = (u, modRole) => (u && u.staff) || (modRole ? 'mod' : null);
+const ROLE_SVG = {
+  super: '<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z"/></svg>',
+  admin: '<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z"/></svg>',
+  mod: '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>',
+};
+const ROLE_TEXT = { super: 'Admin hệ thống', admin: 'Admin', mod: 'Mod' };
+// ảnh đại diện kèm biểu tượng vai trò (không có vai trò: như avatar thường)
+export function avatarR(u, role, cls = '') {
+  const av = avatar(u, cls);
+  return role ? `<span class="av-wrap">${av}<span class="role-badge rb-${role === 'mod' ? 'mod' : 'admin'}">${ROLE_SVG[role]}</span></span>` : av;
+}
+export const roleClass = (role) => (role ? ` role-${role === 'mod' ? 'mod' : 'admin'}` : '');
+export const roleSr = (role) => (role ? `<span class="sr-only"> (${ROLE_TEXT[role]})</span>` : '');

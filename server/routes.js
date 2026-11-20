@@ -200,7 +200,7 @@ function guestMsg(m, extra = {}) {
   return {
     id: d.id, groupId: d.groupId, body: d.body, imageUrl: d.imageUrl, preview: d.preview, fwd: d.fwd,
     hearts: extra.hearts ?? d.hearts, createdAt: d.createdAt, modRole: d.modRole,
-    user: { displayName: d.user.displayName, avatarColor: d.user.avatarColor, avatarUrl: d.user.avatarUrl, deleted: d.user.deleted },
+    user: { displayName: d.user.displayName, avatarColor: d.user.avatarColor, avatarUrl: d.user.avatarUrl, deleted: d.user.deleted, staff: d.user.staff },
     reply: d.reply && !d.reply.deleted ? { displayName: d.reply.displayName, body: d.reply.body, hasImage: d.reply.hasImage } : null,
     ...('groupName' in extra ? { groupName: extra.groupName } : {}),
   };

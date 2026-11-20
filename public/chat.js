@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, roleOf, avatarR, roleClass, roleSr } from './core.js';
 
 const PUBLIC = ['country', 'region', 'province'];
 const EMOJI = ['😀','😂','🥹','😍','🥰','😭','😘','🤣','👍','🙏','👏','🔥','💜','💚','💙','💖','✨','🎉','😎','🤗','😅','🥺','😢','😡','🤔','🙌','💪','🌸','⭐','🎬','📺','🍿'];
@@ -225,7 +225,7 @@ function msgHtml(m) {
   const text = m.deleted
     ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
     : `${m.body ? (own ? `<div class="bubble">${linkify(m.body, m.mentions)}</div>` : `<div class="text">${linkify(m.body, m.mentions)}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}`;
-  const role = m.modRole ? `<span class="pill">${m.modRole === 'mod' ? 'Mod' : 'Admin'}</span>` : '';
+  const rr = roleOf(m.user, m.modRole);
   const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !C.joined ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
   const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
   const canReply = C.joined && !(C.group.type === 'trend' && !C.group.canPost);
@@ -239,11 +239,11 @@ function msgHtml(m) {
       </div></div>`;
   const who = m.user.deleted
     ? `<span class="who muted">${esc(m.user.displayName)}</span>`
-    : `<button class="who" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}</button>`;
+    : `<button class="who${roleClass(rr)}" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}${roleSr(rr)}</button>`;
   return `<div class="msg ${own ? 'own' : ''}" data-mid="${m.id}" data-uid="${m.user.id}" data-name="${esc(m.user.displayName)}">
-    ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatar(m.user)}</button>`}
+    ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
     <div class="body">
-      <div class="meta">${own ? '' : who}${own ? '' : role}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
+      <div class="meta">${own ? '' : who}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
       ${fwdTag}${quote}${text}${m.deleted ? '' : previewHtml(m.preview)}<div class="row" style="gap:4px;margin-top:2px">${heartBtn}${acts}</div>
     </div></div>`;
 }
