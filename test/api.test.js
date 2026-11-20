@@ -843,6 +843,14 @@ test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, 
   // sửa: người thường không được; người tạo được
   assert.equal((await call('PATCH', `/topics/${tid}`, { name: 'Đổi tên' }, u.token)).status, 403);
   assert.equal((await call('PATCH', `/topics/${tid}`, { name: 'Bàn về concert 2026' }, v.token)).data.topic.name, 'Bàn về concert 2026');
+  // link chia sẻ /t/:id: có thẻ xem trước + chuyển vào app; id không phải chủ đề → về trang chính
+  const share = await fetch(`http://localhost:3998/t/${tid}`);
+  const html = await share.text();
+  assert.equal(share.status, 200);
+  assert.ok(html.includes('og:title" content="Bàn về concert 2026 · JKR talks"'), html);
+  assert.ok(html.includes(`url=/#/g/${tid}`));
+  const notTopic = await fetch('http://localhost:3998/t/1', { redirect: 'manual' });
+  assert.equal(notTopic.status, 302);
   // đóng: người thường không được; Admin được; thành viên được báo
   assert.equal((await call('DELETE', `/topics/${tid}`, {}, u.token)).status, 403);
   assert.equal((await call('DELETE', `/topics/${tid}`, {}, adm.token)).status, 200);

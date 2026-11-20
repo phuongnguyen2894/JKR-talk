@@ -46,6 +46,30 @@ app.get('/healthz', (_req, res) => {
   try { db.prepare('SELECT 1').get(); res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); }
 });
 app.use('/api', api);
+
+// ---- link chia sẻ chủ đề: /t/:id → trang nhỏ có thẻ xem trước (Facebook, Messenger, Zalo…) rồi chuyển vào app ----
+const htmlEsc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+app.get('/t/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const g = Number.isInteger(id) && id > 0 ? db.prepare("SELECT id, name, description FROM groups WHERE id = ? AND type = 'topic'").get(id) : null;
+  if (!g) return res.redirect(302, '/#/news');
+  const members = db.prepare('SELECT COUNT(*) c FROM members WHERE group_id = ?').get(g.id).c;
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const target = `/#/g/${g.id}`;
+  const title = `${g.name} · JKR talks`;
+  const desc = `${g.description ? g.description + ' · ' : ''}Chủ đề thảo luận · ${members} thành viên. Vào đọc và cùng bàn luận về LingOrm.`;
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(`<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${htmlEsc(title)}</title>
+<meta name="description" content="${htmlEsc(desc)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="JKR talks">
+<meta property="og:title" content="${htmlEsc(title)}"><meta property="og:description" content="${htmlEsc(desc)}">
+<meta property="og:url" content="${htmlEsc(origin + req.originalUrl)}"><meta property="og:image" content="${htmlEsc(origin)}/icons/icon-512.png">
+<meta name="twitter:card" content="summary">
+<meta http-equiv="refresh" content="0;url=${target}">
+</head><body style="font-family:system-ui,sans-serif;padding:24px"><p>Đang mở chủ đề <b>${htmlEsc(g.name)}</b>… <a href="${target}">Bấm vào đây nếu chưa tự chuyển</a>.</p></body></html>`);
+});
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '365d', immutable: true, index: false }));
 app.use(express.static(path.join(__dirname, '..', 'public'), { setHeaders: (res, f) => { if (/.(js|html|css)$/.test(f)) res.setHeader('Cache-Control', 'no-cache'); } }));
 

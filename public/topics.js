@@ -24,7 +24,7 @@ export async function renderTopics(view) {
           ${t.description ? `<span class="small muted topic-desc">${esc(t.description)}</span>` : ''}
           <span class="tiny muted">${t.memberCount} thành viên · hoạt động ${ago(t.lastAt)}${t.creator ? ` · tạo bởi <span class="${roleClass(r).trim()}">${esc(t.creator.displayName)}</span>` : ''}</span></span>
       </a>
-      ${t.canManage ? `<div class="row wrap" style="gap:6px"><button class="btn sm" data-act="topic-edit" data-id="${t.id}" data-name="${esc(t.name)}" data-desc="${esc(t.description)}">Sửa</button><button class="btn sm danger" data-act="topic-del" data-id="${t.id}" data-name="${esc(t.name)}">Đóng chủ đề</button></div>` : ''}
+      <div class="row wrap" style="gap:6px"><button class="btn sm" data-act="share-topic" data-id="${t.id}" data-name="${esc(t.name)}">${icon('share', 15)} Chia sẻ</button>${t.canManage ? `<button class="btn sm" data-act="topic-edit" data-id="${t.id}" data-name="${esc(t.name)}" data-desc="${esc(t.description)}">Sửa</button><button class="btn sm danger" data-act="topic-del" data-id="${t.id}" data-name="${esc(t.name)}">Đóng chủ đề</button>` : ''}</div>
     </article>`;
     }).join('') || '<p class="muted">Chưa có chủ đề nào.</p>'}</div>
   </div></div>`;

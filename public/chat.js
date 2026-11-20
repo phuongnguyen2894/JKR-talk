@@ -69,6 +69,7 @@ function drawChat(view) {
     ${g.type === 'dm' ? avatar(g.peer) : groupAvatar(g)}
     <div class="grow"><h1>${esc(g.name)}</h1><div class="small muted sub">${subtitle(g)}</div></div>
     ${C.joined && ['country', 'region', 'province', 'private'].includes(g.type) ? `<button class="icon-btn welcome-btn" data-act="welcome-open" data-id="${g.id}" aria-label="Chào mừng thành viên mới${g.newcomers ? `, ${g.newcomers} người chưa được bạn chào` : ''}" title="Chào mừng thành viên mới">👋${g.newcomers ? `<span class="badge">${g.newcomers > 99 ? '99+' : g.newcomers}</span>` : ''}</button>` : ''}
+    ${g.type === 'topic' ? `<button class="icon-btn" data-act="share-topic" data-id="${g.id}" data-name="${esc(g.name)}" aria-label="Chia sẻ chủ đề" title="Chia sẻ chủ đề">${icon('share', 20)}</button>` : ''}
     <button class="icon-btn info-btn" data-act="info" aria-label="Thông tin nhóm">${icon('info', 20)}</button>
     ${g.type !== 'dm' && C.joined ? `<button class="icon-btn" data-act="mute-dialog" aria-label="Thông báo" title="${g.muted ? 'Đang tắt thông báo' : 'Tắt thông báo'}">${icon('bell', 20)}${g.muted ? '<span class="sr-only">đang tắt</span>' : ''}</button>
     ${g.type !== 'trend' && g.type !== 'country' ? `<button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">Rời nhóm</button>` : ''}` : ''}

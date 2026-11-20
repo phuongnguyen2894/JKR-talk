@@ -83,6 +83,7 @@ async function renderGuestGroup(view, gid) {
     <a class="icon-btn back" href="#/explore" aria-label="Quay lại danh sách">${icon('back', 22)}</a>
     ${groupAvatar(g)}
     <div class="grow"><h1>${esc(g.name)}</h1><div class="small muted sub">${sub} · chế độ khách (chỉ đọc)</div></div>
+    ${g.type === 'topic' ? `<button class="icon-btn" data-act="share-topic" data-id="${g.id}" data-name="${esc(g.name)}" aria-label="Chia sẻ chủ đề" title="Chia sẻ chủ đề">${icon('share', 20)}</button>` : ''}
   </div>
   <div class="chat-body"><div class="chat-col">
     <div class="msgs" id="msgs">
@@ -93,6 +94,8 @@ async function renderGuestGroup(view, gid) {
   </div></div>`;
   const box = $('#msgs');
   box.scrollTop = box.scrollHeight;
+  // khách mở chủ đề (thường qua link chia sẻ) → đăng nhập/đăng ký xong quay lại đúng chủ đề
+  try { if (g.type === 'topic') sessionStorage.setItem('jkr_next', `#/chat/${g.id}`); else sessionStorage.removeItem('jkr_next'); } catch { /* bỏ qua */ }
 }
 
 async function renderGuestHot(view) {

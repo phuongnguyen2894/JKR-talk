@@ -158,7 +158,12 @@ async function boot() {
     await Promise.all([refreshGroups(), refreshCounters()]);
     connectWs();
     syncPush();
-    if (!parseHash().name || ['login', 'register'].includes(parseHash().name)) history.replaceState(null, '', '#/chat');
+    if (!parseHash().name || ['login', 'register'].includes(parseHash().name)) {
+      // vừa đăng nhập/đăng ký từ một chủ đề được chia sẻ → quay lại đúng chủ đề đó
+      let next = null;
+      try { next = sessionStorage.getItem('jkr_next'); sessionStorage.removeItem('jkr_next'); } catch { /* bỏ qua */ }
+      history.replaceState(null, '', next && /^#\/chat\/\d+$/.test(next) ? next : '#/chat');
+    }
     root.innerHTML = '';
     route();
   } catch (e) {
