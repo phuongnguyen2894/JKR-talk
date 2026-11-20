@@ -36,6 +36,7 @@ export async function renderChat(view, gid) {
   try { first = await api('GET', `/groups/${gid}/messages?limit=40`); } catch (e) { C = null; view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">Quay lại</a></div>`; return; }
   C.hasMore = first.hasMore;
   drawChat(view);
+  wireSwipe();
   for (const m of first.messages) appendMsg(m, true);
   scrollBottom(true);
   if (joined) {
@@ -226,11 +227,15 @@ function msgHtml(m) {
   const role = m.modRole ? `<span class="pill">${m.modRole === 'mod' ? 'Mod' : 'Admin'}</span>` : '';
   const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !C.joined ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
   const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
+  const canReply = C.joined && !(C.group.type === 'trend' && !C.group.canPost);
   const acts = m.deleted ? '' : `<div class="actions">
-      <button class="link-btn" data-act="fwd-msg" data-id="${m.id}">Chuyển tiếp</button>
-      ${!C.joined || (C.group.type === 'trend' && !C.group.canPost) ? '' : `<button class="link-btn" data-act="reply" data-id="${m.id}">Trả lời</button>`}
-      ${!own && C.joined ? `<button class="link-btn" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
-      ${canDelete(m) ? `<button class="link-btn" data-act="del-msg" data-id="${m.id}">Xóa</button>` : ''}</div>`;
+      <button type="button" class="link-btn more" data-act="msg-more" aria-haspopup="menu" aria-expanded="false" aria-label="Thêm thao tác">⋯</button>
+      <div class="msg-menu" role="menu" hidden>
+        ${canReply ? `<button type="button" role="menuitem" data-act="reply" data-id="${m.id}">Trả lời</button>` : ''}
+        <button type="button" role="menuitem" data-act="fwd-msg" data-id="${m.id}">Chuyển tiếp</button>
+        ${!own && C.joined ? `<button type="button" role="menuitem" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
+        ${canDelete(m) ? `<button type="button" role="menuitem" class="danger" data-act="del-msg" data-id="${m.id}">Xóa</button>` : ''}
+      </div></div>`;
   const who = m.user.deleted
     ? `<span class="who muted">${esc(m.user.displayName)}</span>`
     : `<button class="who" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}</button>`;
@@ -369,6 +374,56 @@ actions.heart = async (el) => {
   const r = await api('POST', `/messages/${el.dataset.id}/heart`);
   setHeart(el, r.hearts, r.hearted);
 };
+// menu ⋯ của tin nhắn: hiện dạng nổi (fixed) để không bị cắt bởi vùng cuộn
+function closeMsgMenu() {
+  $$('.msg-menu:not([hidden])').forEach((m) => {
+    m.hidden = true;
+    m.style.cssText = '';
+    m.parentElement.querySelector('.more')?.setAttribute('aria-expanded', 'false');
+  });
+}
+actions['msg-more'] = (el) => {
+  const menu = el.parentElement.querySelector('.msg-menu');
+  const wasOpen = !menu.hidden;
+  closeMsgMenu();
+  if (wasOpen) return;
+  menu.style.cssText = 'position:fixed;top:0;left:0;visibility:hidden'; // ra khỏi luồng trước khi đo, để không đẩy lệch hàng nút
+  menu.hidden = false;
+  el.setAttribute('aria-expanded', 'true');
+  const r = el.getBoundingClientRect(), mh = menu.offsetHeight, mw = menu.offsetWidth;
+  const top = r.bottom + mh + 8 > innerHeight ? Math.max(8, r.top - mh - 4) : r.bottom + 4;
+  const left = Math.min(Math.max(8, r.left), innerWidth - mw - 8);
+  menu.style.cssText = `position:fixed;top:${top}px;left:${left}px`;
+  menu.querySelector('button')?.focus();
+};
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.msg-menu, [data-act="msg-more"]') || e.target.closest('.msg-menu button')) closeMsgMenu();
+}, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMsgMenu(); });
+document.addEventListener('scroll', closeMsgMenu, true);
+
+// vuốt sang phải trên một tin để trả lời nhanh (cảm ứng)
+function wireSwipe() {
+  const box = $('#msgs');
+  if (!box) return;
+  let x0, y0, el0, t0;
+  box.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+    el0 = x0 > 28 ? e.target.closest('.msg') : null;
+  }, { passive: true });
+  box.addEventListener('touchend', (e) => {
+    if (!el0) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = Math.abs(t.clientY - y0);
+    const msg = el0; el0 = null;
+    if (dx > 70 && dy < 30 && Date.now() - t0 < 600) {
+      const b = msg.querySelector('[data-act="reply"]');
+      if (b) { actions.reply(b); $('#msg')?.focus(); }
+    }
+  }, { passive: true });
+}
+
 actions.reply = (el) => {
   const msg = el.closest('.msg');
   C.replyTo = { id: Number(msg.dataset.mid), name: msg.dataset.name, text: ($('.text, .bubble', msg)?.textContent || '[Ảnh]').slice(0, 60) };

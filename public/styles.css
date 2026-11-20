@@ -334,3 +334,12 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 
 /* Link trong bong bóng tin của mình (nền màu nhấn): dùng màu chữ sáng để không chìm vào nền */
 .bubble .ext-link, .msg.own .ext-link { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
+
+/* Menu ⋯ của tin nhắn */
+.msg .actions, .msg:hover .actions, .msg:focus-within .actions { opacity: 1; position: relative; }
+.msg .link-btn.more { font-size: 18px; letter-spacing: 1px; padding: 0 8px; min-height: 22px; color: var(--muted); }
+.msg-menu { min-width: 150px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 4px; z-index: 60; display: flex; flex-direction: column; }
+.msg-menu[hidden] { display: none; }
+.msg-menu button { min-height: 44px; padding: 0 14px; border: 0; background: none; text-align: left; font: inherit; font-size: 14px; color: var(--text); border-radius: 8px; }
+.msg-menu button:hover, .msg-menu button:focus-visible { background: var(--soft); }
+.msg-menu button.danger { color: var(--danger); }
