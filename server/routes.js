@@ -484,12 +484,90 @@ api.get(
       .prepare("SELECT user_id FROM members WHERE group_id = ? AND role IN ('mod','admin')")
       .all(id)
       .map((r) => ({ ...publicUser(getUser(r.user_id)), role: getMember(id, r.user_id).role }));
+    dto.canPin = canPin(g, req.user.id, m);
+    dto.pinned = pinnedDto(g, req.user.id);
     if (g.type === 'private' && m) {
       dto.members = memberIds(id).map((uid) => ({ ...publicUser(getUser(uid), req.user.id), role: getMember(id, uid).role }));
     }
     res.json({ group: dto });
   })
 );
+
+// ---- ghim một tin nhắn lên đầu nhóm ----------------------------------------------
+function canPin(g, uid, m = getMember(g.id, uid)) {
+  if (g.type === 'dm' || g.type === 'hot') return false;
+  if (g.type === 'private') return m?.role === 'admin';
+  return isSystemAdmin(uid);
+}
+function pinnedDto(g, uid) {
+  if (!g.pinned_message_id) return null;
+  const msg = db.prepare('SELECT * FROM messages WHERE id = ? AND group_id = ? AND deleted = 0').get(g.pinned_message_id, g.id);
+  return msg ? messageDto(msg, uid) : null;
+}
+api.post('/groups/:id/pin', wrap((req, res) => {
+  const g = getGroup(int(req.params.id));
+  if (!g) throw notFound('Không tìm thấy nhóm');
+  if (!canPin(g, req.user.id)) throw forbidden('Chỉ Admin được ghim tin nhắn');
+  const msg = db.prepare('SELECT * FROM messages WHERE id = ? AND group_id = ? AND deleted = 0').get(int(req.body.messageId), g.id);
+  if (!msg) throw notFound('Tin nhắn không tồn tại trong nhóm này');
+  db.prepare('UPDATE groups SET pinned_message_id = ? WHERE id = ?').run(msg.id, g.id);
+  log(req.user.id, 'pin_message', { group: g.id, message: msg.id });
+  hub.sendMany(memberIds(g.id), { type: 'pin', groupId: g.id, message: messageDto(msg, null) });
+  res.json({ pinned: messageDto(msg, req.user.id) });
+}));
+api.delete('/groups/:id/pin', wrap((req, res) => {
+  const g = getGroup(int(req.params.id));
+  if (!g) throw notFound('Không tìm thấy nhóm');
+  if (!canPin(g, req.user.id)) throw forbidden('Chỉ Admin được bỏ ghim tin nhắn');
+  db.prepare('UPDATE groups SET pinned_message_id = NULL WHERE id = ?').run(g.id);
+  hub.sendMany(memberIds(g.id), { type: 'pin', groupId: g.id, message: null });
+  res.json({ ok: true });
+}));
+
+// ---- bình luận: bản tin và tin ở Chủ đề nóng --------------------------------------------
+const COMMENT_KINDS = ['news', 'msg'];
+// kiểm tra người dùng được xem/bình luận đối tượng này; trả về { ownerId } (tác giả để báo khi có bình luận)
+function commentTarget(kind, id, uid) {
+  if (!COMMENT_KINDS.includes(kind)) throw bad('Loại bình luận không hợp lệ');
+  if (kind === 'news') {
+    const n = db.prepare('SELECT id FROM news WHERE id = ?').get(id);
+    if (!n) throw notFound('Bản tin không tồn tại');
+    return { ownerId: null };
+  }
+  const msg = db.prepare('SELECT * FROM messages WHERE id = ? AND deleted = 0').get(id);
+  if (!msg) throw notFound('Tin nhắn không tồn tại');
+  const g = getGroup(msg.group_id);
+  const open = [...PUBLIC_TYPES, 'trend', 'hot'].includes(g.type);
+  if (!open && !getMember(g.id, uid)) throw forbidden();
+  if (isBlockedEither(uid, msg.user_id)) throw forbidden();
+  return { ownerId: msg.user_id };
+}
+const commentDto = (c, uid) => ({
+  id: c.id, body: c.body, createdAt: c.created_at, user: publicUser(getUser(c.user_id)),
+  mine: c.user_id === uid, canDelete: c.user_id === uid || isSystemAdmin(uid),
+});
+api.get('/comments/:kind/:id', wrap((req, res) => {
+  commentTarget(req.params.kind, int(req.params.id), req.user.id);
+  const rows = db.prepare('SELECT * FROM comments WHERE kind = ? AND target_id = ? ORDER BY id ASC LIMIT 300').all(req.params.kind, int(req.params.id));
+  res.json({ comments: rows.filter((c) => c.user_id === req.user.id || !isBlockedEither(req.user.id, c.user_id)).map((c) => commentDto(c, req.user.id)) });
+}));
+api.post('/comments/:kind/:id', wrap((req, res) => {
+  rateLimit(`cmt:${req.user.id}`, 20, 60_000);
+  const kind = req.params.kind, id = int(req.params.id);
+  const { ownerId } = commentTarget(kind, id, req.user.id);
+  const body = str(req.body.body, 1000);
+  if (!body) throw bad('Bình luận trống');
+  const r = db.prepare('INSERT INTO comments (kind, target_id, user_id, body, created_at) VALUES (?,?,?,?,?)').run(kind, id, req.user.id, body, now());
+  if (ownerId && ownerId !== req.user.id) notify(ownerId, 'reply', `${req.user.display_name} đã bình luận tin của bạn ở Chủ đề nóng`, { url: '/#/hot', tag: `cmt-${id}` });
+  res.status(201).json({ comment: commentDto(db.prepare('SELECT * FROM comments WHERE id = ?').get(r.lastInsertRowid), req.user.id) });
+}));
+api.delete('/comments/:cid', wrap((req, res) => {
+  const c = db.prepare('SELECT * FROM comments WHERE id = ?').get(int(req.params.cid));
+  if (!c) throw notFound();
+  if (c.user_id !== req.user.id && !isSystemAdmin(req.user.id)) throw forbidden();
+  db.prepare('DELETE FROM comments WHERE id = ?').run(c.id);
+  res.json({ ok: true });
+}));
 
 api.post(
   '/groups/:id/join',
@@ -648,14 +726,27 @@ api.post(
       replyTo = r?.id ?? null;
     }
     const mentionIds = validMentions(gid, req.user.id, body, req.body.mentions);
+    // @everyone: chỉ Admin (toàn hệ thống), không dùng trong tin nhắn riêng
+    const mentionAll = /(^|\s)@everyone(?![\p{L}\p{N}_])/iu.test(body) && isSystemAdmin(req.user.id) && g.type !== 'dm';
     const r = db
-      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, reply_to, mentions, created_at) VALUES (?,?,?,?,?,?,?)')
-      .run(gid, req.user.id, body, imageUrl, replyTo, mentionIds.length ? JSON.stringify(mentionIds) : null, now());
+      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, reply_to, mentions, mention_all, created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(gid, req.user.id, body, imageUrl, replyTo, mentionIds.length ? JSON.stringify(mentionIds) : null, mentionAll ? 1 : 0, now());
     const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), req.user.id);
     db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
     hub.sendMany(memberIds(gid), { type: 'message', message: dto });
     res.status(201).json({ message: dto });
     notifyMentions(g, req.user, mentionIds);
+    if (mentionAll) {
+      const text = `${req.user.display_name} đã nhắc đến mọi người trong "${g.name}"`;
+      tx(() => {
+        for (const uid of memberIds(gid)) {
+          if (uid === req.user.id || mentionIds.includes(uid)) continue;
+          const mm = getMember(gid, uid);
+          if (!mm || isMuted(mm) || isBlockedEither(req.user.id, uid)) continue;
+          notify(uid, 'mention', text, { url: `/#/chat/${gid}`, tag: `mention-${gid}` });
+        }
+      });
+    }
     // báo cho người được trả lời (nếu chưa được báo vì tag)
     if (replyTo && g.type !== 'dm') {
       const orig = db.prepare('SELECT user_id FROM messages WHERE id = ?').get(replyTo);
@@ -1308,6 +1399,7 @@ function cleanNewsImages(list) {
   return urls;
 }
 const newsDto = (n, uid) => ({
+  commentCount: db.prepare("SELECT COUNT(*) c FROM comments WHERE kind = 'news' AND target_id = ?").get(n.id).c,
   imageUrls: newsImgs(n),
   hearts: newsHearts(n.id), hearted: !!db.prepare('SELECT 1 FROM news_hearts WHERE news_id = ? AND user_id = ?').get(n.id, uid),
   id: n.id, title: n.title, body: n.body, imageUrl: newsImgs(n)[0] || null, pinned: !!n.pinned, edited: !!n.edited,
@@ -1385,6 +1477,7 @@ api.post('/news/:id/heart', wrap((req, res) => {
 }));
 api.delete('/admin/news/:id', adminOnly, wrap((req, res) => {
   db.prepare('DELETE FROM news_hearts WHERE news_id = ?').run(int(req.params.id));
+  db.prepare("DELETE FROM comments WHERE kind = 'news' AND target_id = ?").run(int(req.params.id));
   db.prepare('DELETE FROM news WHERE id = ?').run(int(req.params.id));
   db.prepare('DELETE FROM news_reads WHERE news_id = ?').run(int(req.params.id));
   res.json({ ok: true });

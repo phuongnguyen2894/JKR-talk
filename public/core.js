@@ -215,7 +215,7 @@ function plainHtml(seg, mentions) {
   const tags = [...by.keys()].sort((a, b) => b.length - a.length).map((t) => esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return h.replace(new RegExp(tags.join('|'), 'gi'), (t) => {
     const u = by.get(t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").toLowerCase());
-    return '<span class="mention' + (u && S.me?.id === u.id ? ' me' : '') + '">' + t + '</span>';
+    return '<span class="mention' + (u && (u.all || S.me?.id === u.id) ? ' me' : '') + '">' + t + '</span>';
   });
 }
 export function linkify(text, mentions) {

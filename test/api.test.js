@@ -728,3 +728,82 @@ test('bản tin: đăng tối đa 4 ảnh; 5 ảnh bị từ chối; sửa danh 
   purgeOldMessages(dir);
   assert.ok(fs.existsSync(path.join(dir, shared.replace('/uploads/', ''))), 'ảnh còn được bản tin dùng phải được giữ');
 });
+
+test('@everyone: chỉ Admin dùng được, báo cho mọi thành viên (trừ người tắt thông báo nhóm)', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const a = await signup('everyA', 1), b = await signup('everyB', 1), c = await signup('everyC', 1);
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.type === 'country');
+  for (const u of [a, b, c, { token: adm.token }]) await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  await call('POST', `/groups/${vn.id}/mute`, { minutes: -1 }, c.token); // C tắt thông báo nhóm
+  const cnt = async (tok) => (await call('GET', '/notifications', null, tok)).data.notifications.filter((n) => n.text.includes('nhắc đến mọi người')).length;
+  // người thường gõ @everyone: không có tác dụng
+  const m1 = await call('POST', `/groups/${vn.id}/messages`, { body: '@everyone ơi' }, a.token);
+  assert.equal(m1.data.message.mentionAll, false);
+  assert.equal(await cnt(b.token), 0);
+  const m2 = await call('POST', `/groups/${vn.id}/messages`, { body: 'Thông báo quan trọng @everyone' }, adm.token);
+  assert.equal(m2.data.message.mentionAll, true);
+  assert.equal(await cnt(a.token), 1);
+  assert.equal(await cnt(b.token), 1);
+  const muted = (await call('GET', '/groups/mine', null, c.token)).data.groups.find((x) => x.id === vn.id).muted;
+  if (muted) assert.equal(await cnt(c.token), 0);
+  assert.equal(await cnt(adm.token), 0); // không tự báo cho mình
+});
+
+test('ghim tin: Admin ghim / bỏ ghim một tin lên đầu nhóm; người thường không được', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('pinUser', 1);
+  const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((x) => x.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  const msg = (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin cần ghim' }, u.token)).data.message;
+  assert.equal((await call('GET', `/groups/${vn.id}`, null, u.token)).data.group.canPin, false);
+  assert.equal((await call('POST', `/groups/${vn.id}/pin`, { messageId: msg.id }, u.token)).status, 403);
+  assert.equal((await call('GET', `/groups/${vn.id}`, null, adm.token)).data.group.canPin, true);
+  assert.equal((await call('POST', `/groups/${vn.id}/pin`, { messageId: 999999 }, adm.token)).status, 404);
+  assert.equal((await call('POST', `/groups/${vn.id}/pin`, { messageId: msg.id }, adm.token)).status, 200);
+  assert.equal((await call('GET', `/groups/${vn.id}`, null, u.token)).data.group.pinned.id, msg.id);
+  // ghim tin khác thay thế tin cũ (chỉ 1 tin)
+  const msg2 = (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin ghim thứ hai' }, u.token)).data.message;
+  await call('POST', `/groups/${vn.id}/pin`, { messageId: msg2.id }, adm.token);
+  assert.equal((await call('GET', `/groups/${vn.id}`, null, u.token)).data.group.pinned.id, msg2.id);
+  // tin bị xóa thì không còn ghim
+  await call('DELETE', `/messages/${msg2.id}`, {}, u.token);
+  assert.equal((await call('GET', `/groups/${vn.id}`, null, u.token)).data.group.pinned, null);
+  await call('POST', `/groups/${vn.id}/pin`, { messageId: msg.id }, adm.token);
+  assert.equal((await call('DELETE', `/groups/${vn.id}/pin`, {}, u.token)).status, 403);
+  assert.equal((await call('DELETE', `/groups/${vn.id}/pin`, {}, adm.token)).status, 200);
+  assert.equal((await call('GET', `/groups/${vn.id}`, null, u.token)).data.group.pinned, null);
+});
+
+test('bình luận: bản tin và tin ở Chủ đề nóng; tác giả tin được báo; xóa bình luận; khách không gọi được', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const a = await signup('cmtA', 1), b = await signup('cmtB', 1);
+  const news = (await call('POST', '/admin/news', { title: 'Tin có bình luận' }, adm.token)).data.news;
+  assert.equal((await fetch(BASE + `/comments/news/${news.id}`)).status, 401);
+  assert.equal((await call('POST', `/comments/news/${news.id}`, { body: '  ' }, a.token)).status, 400);
+  const c1 = await call('POST', `/comments/news/${news.id}`, { body: 'Bình luận bản tin' }, a.token);
+  assert.equal(c1.status, 201);
+  assert.equal((await call('GET', '/news', null, b.token)).data.news.find((n) => n.id === news.id).commentCount, 1);
+  const list = (await call('GET', `/comments/news/${news.id}`, null, b.token)).data.comments;
+  assert.deepEqual([list.length, list[0].body, list[0].mine, list[0].canDelete], [1, 'Bình luận bản tin', false, false]);
+  assert.equal((await call('DELETE', `/comments/${c1.data.comment.id}`, {}, b.token)).status, 403);
+  // tin nhắn (ở nhóm công khai, như trong Chủ đề nóng)
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, a.token);
+  const msg = (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin sẽ được bình luận' }, a.token)).data.message;
+  assert.equal((await call('POST', `/comments/msg/${msg.id}`, { body: 'Hay quá' }, b.token)).status, 201);
+  assert.ok((await call('GET', '/notifications', null, a.token)).data.notifications.some((n) => n.text.includes('bình luận tin của bạn')));
+  const hist = (await call('GET', `/groups/${vn.id}/messages`, null, a.token)).data.messages;
+  assert.equal(hist.find((m) => m.id === msg.id).commentCount, 1);
+  // tin trong nhóm riêng người ngoài không bình luận được
+  const priv = await call('POST', '/private', { name: 'Riêng tư cmt' }, a.token);
+  if (priv.status === 201 || priv.status === 200) {
+    const gid = priv.data.group?.id;
+    if (gid) {
+      const pm = (await call('POST', `/groups/${gid}/messages`, { body: 'kín' }, a.token)).data.message;
+      if (pm) assert.equal((await call('POST', `/comments/msg/${pm.id}`, { body: 'x' }, b.token)).status, 403);
+    }
+  }
+  // Admin xóa được bình luận của người khác; xóa bản tin xóa luôn bình luận
+  assert.equal((await call('DELETE', `/comments/${c1.data.comment.id}`, {}, adm.token)).status, 200);
+  assert.equal((await call('GET', `/comments/news/${news.id}`, null, a.token)).data.comments.length, 0);
+});

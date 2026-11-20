@@ -1,4 +1,5 @@
 import { pushSectionHtml } from './push.js';
+import { commentBlock } from './comments.js';
 import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify, newsGallery, lightbox } from './core.js';
 
 // ===========================================================================
@@ -116,13 +117,13 @@ export async function renderNews(view) {
   const admin = S.me.role === 'admin';
   view.innerHTML = `<div class="page"><div class="page-inner">
     <div class="row between"><h1>Bản tin</h1>${admin ? '<button class="btn primary" data-act="news-new">Đăng bản tin</button>' : ''}</div>
-    <p class="small muted">Thông báo từ đội vận hành JKR talks. Bạn chỉ đọc, không trả lời trong bản tin.</p>
+    <p class="small muted">Thông báo từ đội vận hành JKR talks. Bạn có thể thả tim và bình luận dưới mỗi bản tin.</p>
     <div class="list">${news.map((n) => `<article class="card col" ${n.read ? '' : 'style="border-color:var(--accent)"'}>
       <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}${n.read ? '' : '<span class="pill">Mới</span>'}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
       ${n.title ? `<h2 style="font-size:18px">${esc(n.title)}</h2>` : ''}
       ${n.body ? `<p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>` : ''}
       ${newsGallery(n.imageUrls)}
-      <div class="row" style="gap:4px"><button type="button" class="heart ${n.hearted ? 'on' : ''}" data-act="news-heart" data-id="${n.id}" aria-pressed="${n.hearted}" aria-label="Thả tim, hiện có ${n.hearts} tim">${icon('heart', 15, n.hearted ? 'fill="currentColor"' : '')}<span class="hc">${n.hearts || ''}</span></button></div>
+      <div class="row" style="gap:4px"><button type="button" class="heart ${n.hearted ? 'on' : ''}" data-act="news-heart" data-id="${n.id}" aria-pressed="${n.hearted}" aria-label="Thả tim, hiện có ${n.hearts} tim">${icon('heart', 15, n.hearted ? 'fill="currentColor"' : '')}<span class="hc">${n.hearts || ''}</span></button>${commentBlock('news', n.id, n.commentCount)}</div>
       ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}" data-imgs="${esc(JSON.stringify(n.imageUrls || []))}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
   view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });

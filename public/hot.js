@@ -1,4 +1,5 @@
 import { previewHtml } from './chat.js';
+import { commentBlock } from './comments.js';
 import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR, roleClass, roleSr, imageToDataUrl, actions, toast, fail, confirmBox } from './core.js';
 
 // Chủ đề nóng: tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua (tối đa 38 tin)
@@ -26,6 +27,7 @@ export async function renderHot(view, sc = scope) {
       ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, m.mentions)}</div>` : ''}
       ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy">` : ''}
       ${previewHtml(m.preview)}
+      ${commentBlock('msg', m.id, m.commentCount)}
     </div>`).join('') || '<p class="muted">Chưa có chủ đề nóng nào ở phạm vi này. Hãy thả tim cho những tin nhắn bạn thích!</p>'}</div>
   </div></div>`;
   const form = $('#hotpost', view);
@@ -56,7 +58,7 @@ function pinnedCard(m, isAdmin) {
       <button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${m.user.id === S.me.id ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>
       <button type="button" class="link-btn" data-act="fwd-msg" data-id="${m.id}">Chuyển tiếp</button>
       ${isAdmin ? `<button type="button" class="link-btn" data-act="hot-del" data-id="${m.id}">Xóa</button>` : ''}
-    </div></div>`;
+    </div>${commentBlock('msg', m.id, m.commentCount)}</div>`;
 }
 actions['hot-del'] = async (el) => {
   if (!(await confirmBox('Xóa bài đăng?', 'Bài sẽ biến mất khỏi Chủ đề nóng với mọi người.', 'Xóa', true))) return;

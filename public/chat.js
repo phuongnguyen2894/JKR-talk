@@ -72,6 +72,7 @@ function drawChat(view) {
     ${g.type !== 'dm' && C.joined ? `<button class="icon-btn" data-act="mute-dialog" aria-label="Thông báo" title="${g.muted ? 'Đang tắt thông báo' : 'Tắt thông báo'}">${icon('bell', 20)}${g.muted ? '<span class="sr-only">đang tắt</span>' : ''}</button>
     ${g.type !== 'trend' && g.type !== 'country' ? `<button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">Rời nhóm</button>` : ''}` : ''}
   </div>
+  <div id="pinbar">${pinBarHtml()}</div>
   <div class="chat-body">
     <div class="chat-col">
       <div class="msgs" id="msgs" aria-live="off"><div id="more" ${C.hasMore ? '' : 'hidden'} style="text-align:center"><button class="btn sm" data-act="load-more">Tải tin cũ hơn</button></div></div>
@@ -83,6 +84,28 @@ function drawChat(view) {
   wireComposer();
   syncReadMode();
 }
+
+function pinBarHtml() {
+  const p = C?.group?.pinned;
+  if (!p) return '';
+  const text = p.body ? p.body.replace(/\s+/g, ' ').slice(0, 140) : p.imageUrl ? '[Ảnh]' : '';
+  return `<div class="pinbar"><button type="button" class="pin-go" data-act="goto-msg" data-id="${p.id}" aria-label="Đi tới tin đã ghim">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 5 3 3H7l3-3-1-5zM12 12v8"/></svg>
+      <span class="pin-txt"><b>${esc(p.user.displayName)}</b>: ${esc(text)}</span></button>
+    ${C.group.canPin ? `<button type="button" class="icon-btn pin-x" data-act="unpin" aria-label="Bỏ ghim">${icon('x', 16)}</button>` : ''}</div>`;
+}
+const redrawPin = () => { const el = $('#pinbar'); if (el) el.innerHTML = pinBarHtml(); };
+actions['pin-msg'] = async (el) => {
+  const id = Number(el.dataset.id);
+  try {
+    if (C.group.pinned?.id === id) { await api('DELETE', `/groups/${C.gid}/pin`); C.group.pinned = null; toast('Đã bỏ ghim'); }
+    else { C.group.pinned = (await api('POST', `/groups/${C.gid}/pin`, { messageId: id })).pinned; toast('Đã ghim lên đầu nhóm'); }
+    redrawPin();
+  } catch (e) { fail(e); }
+};
+actions.unpin = async () => {
+  try { await api('DELETE', `/groups/${C.gid}/pin`); C.group.pinned = null; redrawPin(); toast('Đã bỏ ghim'); } catch (e) { fail(e); }
+};
 
 function composerHtml() {
   const g = C.group;
@@ -181,7 +204,7 @@ function wireMention() {
     input.value = input.value.slice(0, t.start) + ins + after;
     const pos = t.start + ins.length;
     input.setSelectionRange(pos, pos);
-    (C.mentionMap ||= {})[u.displayName.toLowerCase()] = u.id;
+    if (!u.all) (C.mentionMap ||= {})[u.displayName.toLowerCase()] = u.id;
     close(); input.focus();
   };
   input.addEventListener('input', () => {
@@ -193,7 +216,9 @@ function wireMention() {
       try {
         const r = await api('GET', `/groups/${C.gid}/mention-search?q=${encodeURIComponent(t.q)}`);
         if (mine !== seq || !token()) return;
-        items = r.users; active = 0; draw();
+        items = r.users;
+        if (S.me.role === 'admin' && C.group.type !== 'dm' && 'everyone'.startsWith(t.q.toLowerCase())) items = [{ id: 0, displayName: 'everyone', all: true }, ...items];
+        active = 0; draw();
       } catch { close(); }
     }, 180);
   });
@@ -205,6 +230,9 @@ function wireMention() {
   });
   input.addEventListener('blur', () => setTimeout(close, 150));
 }
+
+const EVERYONE = { id: -1, displayName: 'everyone', all: true };
+const mentionsOf = (m) => (m.mentionAll ? [...(m.mentions || []), EVERYONE] : m.mentions);
 
 // ---- hiển thị tin nhắn ---------------------------------------------------------
 const mine = (m) => m.user.id === S.me.id;
@@ -224,7 +252,7 @@ function msgHtml(m) {
   const quote = m.reply && !m.reply.deleted ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
   const text = m.deleted
     ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
-    : `${m.body ? (own ? `<div class="bubble">${linkify(m.body, m.mentions)}</div>` : `<div class="text">${linkify(m.body, m.mentions)}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}`;
+    : `${m.body ? (own ? `<div class="bubble">${linkify(m.body, mentionsOf(m))}</div>` : `<div class="text">${linkify(m.body, mentionsOf(m))}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}`;
   const rr = roleOf(m.user, m.modRole);
   const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !C.joined ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
   const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
@@ -234,6 +262,7 @@ function msgHtml(m) {
       <div class="msg-menu" role="menu" hidden>
         ${canReply ? `<button type="button" role="menuitem" data-act="reply" data-id="${m.id}">Trả lời</button>` : ''}
         <button type="button" role="menuitem" data-act="fwd-msg" data-id="${m.id}">Chuyển tiếp</button>
+        ${C.group.canPin ? `<button type="button" role="menuitem" data-act="pin-msg" data-id="${m.id}">${C.group.pinned?.id === m.id ? 'Bỏ ghim' : 'Ghim lên đầu nhóm'}</button>` : ''}
         ${!own && C.joined ? `<button type="button" role="menuitem" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
         ${canDelete(m) ? `<button type="button" role="menuitem" class="danger" data-act="del-msg" data-id="${m.id}">Xóa</button>` : ''}
       </div></div>`;
@@ -289,6 +318,9 @@ export function onSocket(ev) {
       if (!mutedNow(g)) { S.hooks.toastMsg?.(g, m); }
       S.hooks.renderSide?.();
     }
+  } else if (ev.type === 'pin' && C && C.gid === ev.groupId) {
+    C.group.pinned = ev.message;
+    redrawPin();
   } else if (ev.type === 'heart' && C && C.gid === ev.groupId) {
     setHeart($(`.msg[data-mid="${ev.messageId}"] .heart`), ev.hearts);
   } else if (ev.type === 'message_preview' && C && C.gid === ev.groupId) {

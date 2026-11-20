@@ -201,6 +201,14 @@ try { db.exec('ALTER TABLE messages ADD COLUMN preview TEXT'); } catch { /* đã
 try { db.exec('ALTER TABLE messages ADD COLUMN fwd TEXT'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN fwd_id INTEGER'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN mentions TEXT'); } catch { /* đã có cột */ }
+try { db.exec('ALTER TABLE messages ADD COLUMN mention_all INTEGER NOT NULL DEFAULT 0'); } catch { /* đã có cột */ } // admin tag @everyone
+try { db.exec('ALTER TABLE groups ADD COLUMN pinned_message_id INTEGER'); } catch { /* đã có cột */ } // tin được ghim lên đầu nhóm
+// Bình luận cho bản tin (kind='news') và tin nhắn ở Chủ đề nóng (kind='msg')
+db.exec(`CREATE TABLE IF NOT EXISTS comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, target_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(kind, target_id);`);
 try { db.exec('ALTER TABLE news ADD COLUMN images TEXT'); } catch { /* đã có cột */ } // JSON: tối đa 4 ảnh; image_url giữ ảnh đầu tiên
 // is_super = 1: Admin hệ thống (duy nhất được phong Admin). role='admin' & is_super=0: Admin
 try { db.exec('ALTER TABLE users ADD COLUMN is_super INTEGER NOT NULL DEFAULT 0'); } catch { /* đã có cột */ }

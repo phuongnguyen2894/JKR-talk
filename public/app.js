@@ -126,7 +126,7 @@ function connectWs() {
   ws.onopen = () => { if (wsTries) { refreshGroups().catch(() => {}); } wsTries = 0; };
   ws.onmessage = (e) => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
-    if (ev.type === 'message' || ev.type === 'message_deleted' || ev.type === 'message_preview') return onSocket(ev);
+    if (['message', 'message_deleted', 'message_preview', 'heart', 'pin'].includes(ev.type)) return onSocket(ev);
     if (ev.type === 'notification') {
       S.unreadNotif++; renderSide();
       toast(ev.notification.text, 7000);

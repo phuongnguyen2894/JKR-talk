@@ -416,3 +416,25 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 
 /* Bàn phím đang mở (iOS): ẩn thanh tab để ô nhập nằm sát bàn phím */
 html.kb .tabs-bar, html.kb .app .tabs-bar { display: none !important; }
+
+/* Tin được ghim lên đầu nhóm */
+.pinbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px 4px 12px; background: var(--soft); border-bottom: 1px solid var(--line); }
+.pin-go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 40px; background: none; border: 0; text-align: left; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.pin-go svg { flex: 0 0 auto; color: var(--accent); }
+.pin-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pin-x { flex: 0 0 auto; }
+/* Bình luận */
+.cmt { display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%; }
+.cmt-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; min-height: 32px; }
+.cmt-box { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+.cmt-box[hidden] { display: none; }
+.cmt-list { display: flex; flex-direction: column; gap: 10px; }
+.cmt-item { display: flex; gap: 8px; align-items: flex-start; }
+.cmt-item .av { width: 28px; height: 28px; font-size: 12px; }
+.cmt-body { min-width: 0; flex: 1; }
+.cmt-meta { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.cmt-text { font-size: 14px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt-del { min-height: 24px; padding: 0 4px; }
+.cmt-form { display: flex; gap: 8px; }
+.cmt-form .input { flex: 1; min-width: 0; }
+.row:has(> .cmt) { flex-wrap: wrap; }

@@ -41,6 +41,7 @@ export function purgeOldMessages(uploadDir, days = RETENTION_DAYS) {
     if (b) candidates.add(b);
   }
   db.prepare('DELETE FROM messages WHERE created_at < ?').run(cutoff);
+  db.prepare("DELETE FROM comments WHERE kind = 'msg' AND target_id NOT IN (SELECT id FROM messages)").run();
   let files = 0;
   if (candidates.size) {
     const used = referencedFiles();
