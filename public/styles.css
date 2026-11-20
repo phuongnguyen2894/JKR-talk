@@ -343,3 +343,10 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .msg-menu button { min-height: 44px; padding: 0 14px; border: 0; background: none; text-align: left; font: inherit; font-size: 14px; color: var(--text); border-radius: 8px; }
 .msg-menu button:hover, .msg-menu button:focus-visible { background: var(--soft); }
 .msg-menu button.danger { color: var(--danger); }
+
+/* Giờ gửi chỉ hiện khi chạm vào tin nhắn */
+.msg .meta .time { display: none; }
+.msg.show-time .meta .time { display: inline; }
+.msg.own .meta { display: none; }
+.msg.own.show-time .meta { display: flex; }
+.msg { cursor: default; }

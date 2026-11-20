@@ -242,7 +242,7 @@ function msgHtml(m) {
   return `<div class="msg ${own ? 'own' : ''}" data-mid="${m.id}" data-uid="${m.user.id}" data-name="${esc(m.user.displayName)}">
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatar(m.user)}</button>`}
     <div class="body">
-      <div class="meta">${own ? '' : who}${own ? '' : role}<span class="tiny muted">${fmtTime(m.createdAt)}</span></div>
+      <div class="meta">${own ? '' : who}${own ? '' : role}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
       ${fwdTag}${quote}${text}${m.deleted ? '' : previewHtml(m.preview)}<div class="row" style="gap:4px;margin-top:2px">${heartBtn}${acts}</div>
     </div></div>`;
 }
@@ -374,6 +374,14 @@ actions.heart = async (el) => {
   const r = await api('POST', `/messages/${el.dataset.id}/heart`);
   setHeart(el, r.hearts, r.hearted);
 };
+// giờ gửi chỉ hiện khi chạm vào tin nhắn
+document.addEventListener('click', (e) => {
+  const msg = e.target.closest('.msg');
+  if (!msg || e.target.closest('button, a, img, input, textarea, select, .msg-menu, [data-act]')) return;
+  if (getSelection()?.toString()) return; // đang bôi đen chữ để sao chép
+  msg.classList.toggle('show-time');
+});
+
 // menu ⋯ của tin nhắn: hiện dạng nổi (fixed) để không bị cắt bởi vùng cuộn
 function closeMsgMenu() {
   $$('.msg-menu:not([hidden])').forEach((m) => {

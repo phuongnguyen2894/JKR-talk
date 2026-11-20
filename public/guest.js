@@ -58,7 +58,7 @@ function msgHtml(m) {
   const role = m.modRole ? `<span class="pill">${m.modRole === 'mod' ? 'Mod' : 'Admin'}</span>` : '';
   return `<div class="msg" data-mid="${m.id}">${avatar(m.user)}
     <div class="body">
-      <div class="meta"><span class="who">${esc(m.user.displayName)}</span>${role}<span class="tiny muted">${fmtTime(m.createdAt)}</span></div>
+      <div class="meta"><span class="who">${esc(m.user.displayName)}</span>${role}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
       ${fwd}${quote}${m.body ? `<div class="text">${linkify(m.body)}</div>` : ''}${m.imageUrl ? `<img class="pic" data-act="guest-zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}
       <div class="row" style="gap:4px;margin-top:2px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
