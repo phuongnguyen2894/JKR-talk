@@ -408,3 +408,8 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .app, .main, .chat-body, .chat-col { overflow: hidden; overflow: clip; }
 .chat-body, .chat-col, .msgs { min-height: 0; }
 .msgs { overscroll-behavior: contain; }
+
+/* Lưới ảnh bản tin: cột co theo khung, không để ảnh lớn kéo giãn ra ngoài thẻ */
+.news-gallery { width: 100%; max-width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.news-gallery.g2, .news-gallery.g3, .news-gallery.g4 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.news-gallery img { min-width: 0; max-width: 100%; }
