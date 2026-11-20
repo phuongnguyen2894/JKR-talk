@@ -1,6 +1,7 @@
 // Chế độ khách (chưa đăng ký): chỉ đọc nhóm công khai, Đẩy trend, Chủ đề nóng, Bản tin
 import { $, esc, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, actions, lightbox, linkify, roleOf, avatarR, roleClass, roleSr } from './core.js';
 import { previewHtml } from './chat.js';
+import { renderTools } from './pages.js';
 
 const G = { groups: null, trendId: 0 };
 const GROUP_ICON = { country: 'flag', region: 'grid', province: 'pin' };
@@ -42,6 +43,7 @@ function renderGuestSide(r) {
     ${G.trendId ? `<a class="nav-item" href="#/g/${G.trendId}" ${G.trendId === activeId ? 'aria-current="page"' : ''}>${icon('trend')}<span class="name">Đẩy trend</span></a>` : ''}
     ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame')}
     ${nav('#/news', 'news', 'Bản tin', 'news')}
+    ${nav('#/tools', 'tools', 'Công cụ', 'tool')}
     ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}`;
   const tab = (hash, on, label, ic) => `<a href="${hash}" ${on ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}</a>`;
   $('#tabs').innerHTML =
@@ -137,7 +139,7 @@ async function renderGuestNews(view) {
 // Điều hướng cho khách. Trả về false nếu route này không dành cho khách.
 export async function routeGuest(root, r) {
   if (r.name === 'chat' && r.arg) return go(`#/g/${r.arg}`), true; // link nhóm được chia sẻ
-  if (!['explore', 'g', 'hot', 'news', ''].includes(r.name)) return false;
+  if (!['explore', 'g', 'hot', 'news', 'tools', ''].includes(r.name)) return false;
   if (!r.name) return go('#/news'), true; // vào trang gốc → Bản tin
   buildGuestShell(root);
   await loadGroups();
@@ -153,6 +155,7 @@ export async function routeGuest(root, r) {
     } else if (r.name === 'g') await renderGuestGroup(view, Number(r.arg));
     else if (r.name === 'hot') await renderGuestHot(view);
     else if (r.name === 'news') await renderGuestNews(view);
+    else if (r.name === 'tools') renderTools(view);
   } catch (e) {
     view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/explore">Về danh sách nhóm</a></div>`;
   }
