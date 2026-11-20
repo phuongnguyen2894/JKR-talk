@@ -312,3 +312,5 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .user-acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .user-acts:empty{display:none}
 @media (max-width:640px){.card:has(>.user-acts){flex-wrap:wrap}.card>.user-acts{flex:1 0 100%;justify-content:flex-start}}
+
+.ext-link{color:var(--accent);text-decoration:underline;overflow-wrap:anywhere;word-break:break-all}

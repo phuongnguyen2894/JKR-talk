@@ -1,5 +1,5 @@
 // Chế độ khách (chưa đăng ký): chỉ đọc nhóm công khai, Đẩy trend, Chủ đề nóng, Bản tin
-import { $, esc, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, actions, lightbox } from './core.js';
+import { $, esc, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, actions, lightbox, linkify } from './core.js';
 import { previewHtml } from './chat.js';
 
 const G = { groups: null, trendId: 0 };
@@ -59,7 +59,7 @@ function msgHtml(m) {
   return `<div class="msg" data-mid="${m.id}">${avatar(m.user)}
     <div class="body">
       <div class="meta"><span class="who">${esc(m.user.displayName)}</span>${role}<span class="tiny muted">${fmtTime(m.createdAt)}</span></div>
-      ${fwd}${quote}${m.body ? `<div class="text">${esc(m.body)}</div>` : ''}${m.imageUrl ? `<img class="pic" data-act="guest-zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}
+      ${fwd}${quote}${m.body ? `<div class="text">${linkify(m.body)}</div>` : ''}${m.imageUrl ? `<img class="pic" data-act="guest-zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}
       <div class="row" style="gap:4px;margin-top:2px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
     </div></div>`;
@@ -103,7 +103,7 @@ async function renderGuestHot(view) {
       <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
         <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
       <div class="row">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
-      ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(m.body)}</div>` : ''}
+      ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body)}</div>` : ''}
       ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}
     </div>`).join('') || '<p class="muted">Chưa có chủ đề nóng nào.</p>'}</div>
@@ -119,7 +119,7 @@ async function renderGuestNews(view) {
     <div class="list">${news.map((n) => `<article class="card col">
       <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
       <h2 style="font-size:18px">${esc(n.title)}</h2>
-      <p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>
+      <p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>
       ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy" decoding="async">` : ''}
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
   view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });

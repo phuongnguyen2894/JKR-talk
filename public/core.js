@@ -203,3 +203,27 @@ export async function imageToDataUrl(file, maxSide = 1600) {
     return raw();
   }
 }
+
+// Văn bản → HTML đã escape, liên kết http(s) thành thẻ <a> hiển thị rút gọn
+export function linkify(text) {
+  const t = String(text ?? '');
+  const re = /https?:\/\/[^\s<>"]+/gi;
+  const out = [];
+  let last = 0, m;
+  while ((m = re.exec(t))) {
+    let url = m[0];
+    const trail = url.match(/[.,;:!?)\]}'"…]+$/);
+    if (trail) url = url.slice(0, -trail[0].length);
+    if (!/^https?:\/\/[^/]+\./i.test(url)) continue;
+    let short = url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
+    const q = short.search(/[?#]/);
+    if (q > -1) short = short.slice(0, q) + '…';
+    if (short.length > 34) short = short.slice(0, 33) + '…';
+    out.push(esc(t.slice(last, m.index)));
+    out.push('<a class="ext-link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer nofollow" title="' + esc(url) + '">' + esc(short) + '</a>');
+    last = m.index + url.length;
+    re.lastIndex = last;
+  }
+  out.push(esc(t.slice(last)));
+  return out.join('');
+}
