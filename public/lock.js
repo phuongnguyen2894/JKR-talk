@@ -19,11 +19,8 @@
   const isField = (el) => !!el && (el.tagName === 'TEXTAREA' || el.isContentEditable ||
     (el.tagName === 'INPUT' && !['checkbox', 'radio', 'file', 'button', 'submit', 'range', 'color'].includes(el.type)));
   const typing = () => isField(document.activeElement);
-  // iOS 26: thanh nổi "lên / xuống / xong" nằm đè lên trang, ngay trên bàn phím; chừa chỗ cho nó
-  const ua = navigator.userAgent || '';
-  const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const safari = Number((ua.match(/Version\/(\d+)/) || [])[1] || 0);
-  const kbExtra = isIOS && safari >= 26 ? 60 : 0;
+  // Không cần chừa thêm chỗ: đo thực tế trên iOS 26 cho thấy vùng nhìn thấy đã trừ cả thanh nổi "lên / xuống / xong"
+  const kbExtra = 0;
 
   let base = vv ? vv.height : window.innerHeight; // chiều cao vùng nhìn thấy khi không có bàn phím
   let wasKb = false;
