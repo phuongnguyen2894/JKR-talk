@@ -462,3 +462,10 @@ html.kb .tabs-bar, html.kb .app .tabs-bar { display: none !important; }
 /* số lượng trên tab quản trị */
 .tab-cnt:not(:empty) { display: inline-block; margin-left: 6px; min-width: 22px; padding: 1px 7px; border-radius: 11px; font-size: 12px; font-weight: 700; background: var(--soft); color: var(--soft-ink); }
 .pillnav button[aria-pressed="true"] .tab-cnt:not(:empty) { background: rgba(255, 255, 255, .25); color: inherit; }
+
+/* Chữ gọn hơn (giống Discord): Inter mặc định khá thưa ở cỡ nhỏ → siết khoảng cách chữ/từ;
+   gộp các dấu cách liên tiếp trong tin (vẫn giữ xuống dòng) */
+body { letter-spacing: -0.011em; word-spacing: -0.02em; }
+.msg .text, .msg.own .bubble, .cmt-text, .news-body, .quote { white-space: pre-line; }
+.bubble .mention, .bubble .mention.me { padding: 0; background: none; }
+.sec, .h2 { word-spacing: normal; }
