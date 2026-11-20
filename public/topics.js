@@ -1,5 +1,5 @@
 // Chủ đề thảo luận: Admin / Mod tạo, mọi người vào bàn luận như một nhóm chat
-import { $, esc, api, go, icon, fmtDateTime, toast, fail, ask, confirmBox, actions, refreshGroups, avatarR, roleOf, roleClass } from './core.js';
+import { $, S, esc, api, go, openModal, closeModal, imageToDataUrl, icon, fmtDateTime, toast, fail, ask, confirmBox, actions, refreshGroups, avatarR, roleOf, roleClass } from './core.js';
 
 export const ago = (t) => {
   const m = Math.max(0, Math.floor((Date.now() - t) / 60000));
@@ -11,7 +11,7 @@ export const ago = (t) => {
 };
 
 // Nút tạo chủ đề + danh sách chủ đề của tôi đang chờ duyệt (dùng ở trang Chủ đề nóng và Tất cả chủ đề)
-export const createTopicHtml = (needsApproval) => `<button class="btn primary" data-act="topic-new" data-approval="${needsApproval ? 1 : 0}">+ Tạo chủ đề</button>`;
+export const createTopicHtml = (needsApproval, isAdmin = false) => `<button class="btn primary" data-act="topic-new" data-approval="${needsApproval ? 1 : 0}" data-admin="${isAdmin ? 1 : 0}">${isAdmin ? '+ Tạo' : '+ Tạo chủ đề'}</button>`;
 export const pendingMineHtml = (mine = []) => mine.length ? `<section class="card col" style="gap:6px" aria-label="Chủ đề đang chờ duyệt">
   <div class="h2" style="margin:0">Đang chờ Admin duyệt</div>
   ${mine.map((t) => `<div class="row wrap" style="gap:8px"><span class="pill warn">Chờ duyệt</span><b class="grow">${esc(t.name)}</b><span class="tiny muted">${ago(t.createdAt)}</span><button class="btn sm" data-act="topic-withdraw" data-id="${t.id}">Rút lại</button></div>`).join('')}
@@ -20,7 +20,7 @@ export const pendingMineHtml = (mine = []) => mine.length ? `<section class="car
 export async function renderTopics(view) {
   const { topics, mine, needsApproval, canHighlight } = await api('GET', '/topics');
   view.innerHTML = `<div class="page" id="topics-page"><div class="page-inner">
-    <div class="row between wrap"><h1>Chủ đề thảo luận</h1>${createTopicHtml(needsApproval)}</div>
+    <div class="row between wrap"><h1>Chủ đề thảo luận</h1>${createTopicHtml(needsApproval, S.me.role === 'admin')}</div>
     <p class="small muted">Ai cũng có thể đề xuất chủ đề; chủ đề của người dùng sẽ hiện sau khi Admin duyệt. Bấm vào một chủ đề để đọc và cùng trò chuyện.</p>
     ${pendingMineHtml(mine)}
     <div class="list">${topics.map((t) => {
@@ -42,7 +42,48 @@ const fields = (v = {}) => [
   { name: 'name', label: 'Tên chủ đề', value: v.name || '', required: true, max: 60 },
   { name: 'description', label: 'Mô tả ngắn (không bắt buộc)', type: 'textarea', value: v.description || '', max: 300 },
 ];
+// Admin: một nút "Tạo" cho cả chủ đề thảo luận lẫn bài đăng từ quản trị
+function adminCompose() {
+  const m = openModal(`<form id="composef" class="col"><h2>Tạo mới</h2>
+    <div class="pillnav" role="group" aria-label="Loại nội dung"><button type="button" data-kind="topic" aria-pressed="true">Chủ đề thảo luận</button><button type="button" data-kind="post" aria-pressed="false">Bài từ quản trị</button></div>
+    <p class="muted small" id="cmphint">Chủ đề hiện ở Chủ đề nóng, mọi người vào bàn luận như một nhóm chat.</p>
+    <div data-sec="topic" class="col"><div class="field"><label for="cp-name">Tên chủ đề</label><input class="input" id="cp-name" maxlength="60" autocomplete="off"></div>
+      <div class="field"><label for="cp-desc">Mô tả ngắn (không bắt buộc)</label><textarea class="input" id="cp-desc" maxlength="300"></textarea></div></div>
+    <div data-sec="post" class="col" hidden><div class="field"><label for="cp-body">Nội dung</label><textarea class="input" id="cp-body" maxlength="2000" rows="4" placeholder="Viết nội dung hoặc dán liên kết cần mọi người chú ý…"></textarea></div>
+      <div class="field"><label for="cp-img">Ảnh đính kèm (không bắt buộc)</label><input type="file" id="cp-img" accept="image/png,image/jpeg,image/gif,image/webp"></div></div>
+    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary" id="cp-ok">Tạo chủ đề</button></div></form>`);
+  let kind = 'topic';
+  const hints = { topic: 'Chủ đề hiện ở Chủ đề nóng, mọi người vào bàn luận như một nhóm chat.', post: 'Bài hiện ở tab "Từ quản trị" của Chủ đề nóng cho mọi người.' };
+  const setKind = (k) => {
+    kind = k;
+    m.querySelectorAll('[data-kind]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.kind === k)));
+    m.querySelectorAll('[data-sec]').forEach((d) => { d.hidden = d.dataset.sec !== k; });
+    $('#cmphint', m).textContent = hints[k];
+    $('#cp-ok', m).textContent = k === 'topic' ? 'Tạo chủ đề' : 'Đăng bài';
+    $(k === 'topic' ? '#cp-name' : '#cp-body', m).focus();
+  };
+  m.querySelectorAll('[data-kind]').forEach((b) => (b.onclick = () => setKind(b.dataset.kind)));
+  $('[data-close]', m).onclick = () => closeModal();
+  $('#composef', m).onsubmit = async (e) => {
+    e.preventDefault();
+    const ok = $('#cp-ok', m); ok.disabled = true;
+    try {
+      if (kind === 'topic') {
+        const r = await api('POST', '/topics', { name: $('#cp-name', m).value, description: $('#cp-desc', m).value });
+        closeModal(); await refreshGroups(); toast('Đã tạo chủ đề'); go(`#/chat/${r.topic.id}`);
+      } else {
+        const body = $('#cp-body', m).value.trim(), f = $('#cp-img', m).files[0];
+        if (!body && !f) { ok.disabled = false; return; }
+        const imageUrl = f ? (await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url : undefined;
+        await api('POST', '/hot/posts', { body, imageUrl });
+        closeModal(); toast('Đã đăng bài từ quản trị');
+        document.dispatchEvent(new CustomEvent('topics-changed', { detail: { tab: 'admin' } }));
+      }
+    } catch (er) { ok.disabled = false; fail(er); }
+  };
+}
 actions['topic-new'] = async (el) => {
+  if (el?.dataset?.admin === '1') return adminCompose();
   const approval = el?.dataset?.approval === '1';
   const v = await ask({ title: 'Tạo chủ đề thảo luận', text: approval ? 'Chủ đề của bạn sẽ được gửi cho Admin duyệt. Sau khi được duyệt, nó hiện ở mục Chủ đề nóng cho mọi người cùng bàn luận.' : 'Chủ đề hiện cho mọi người. Ai cũng có thể vào đọc và tham gia bàn luận, theo quy tắc cộng đồng.', fields: fields(), ok: approval ? 'Gửi duyệt' : 'Tạo' });
   if (!v) return;

@@ -1,7 +1,7 @@
 import { previewHtml } from './chat.js';
 import { commentBlock } from './comments.js';
 import { ago, createTopicHtml, pendingMineHtml } from './topics.js';
-import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR, roleClass, roleSr, imageToDataUrl, actions, toast, fail, confirmBox } from './core.js';
+import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR, roleClass, roleSr, actions, toast, fail, confirmBox } from './core.js';
 
 // Chủ đề nóng gồm 3 tab:
 //  - Mới: chủ đề thảo luận mới được duyệt, mới nhất trước
@@ -34,12 +34,8 @@ export async function renderHot(view, tab = htab) {
   ]);
   const needsApproval = board ? board.needsApproval : S.me.role !== 'admin';
   view.innerHTML = `<div class="page" id="hot-page"><div class="page-inner">
-    <div class="row between wrap"><h1>Chủ đề nóng</h1>${createTopicHtml(needsApproval)}</div>
+    <div class="row between wrap"><h1>Chủ đề nóng</h1>${createTopicHtml(needsApproval, isAdmin)}</div>
     ${board ? pendingMineHtml(board.mine) : ''}
-    ${tab === 'admin' && isAdmin ? `<form class="card col" id="hotpost" aria-label="Đăng bài lên Chủ đề nóng">
-      <label for="hotbody"><b>Đăng bài lên Chủ đề nóng</b> <span class="tiny muted">(chỉ Admin; hiện đầu trang cho mọi người)</span></label>
-      <textarea class="input" id="hotbody" maxlength="2000" rows="3" placeholder="Viết nội dung hoặc dán liên kết cần mọi người chú ý…"></textarea>
-      <div class="row wrap"><input type="file" id="hotimg" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Ảnh đính kèm"><span class="grow"></span><button class="btn primary">Đăng</button></div></form>` : ''}
     <div class="pillnav" role="group" aria-label="Chọn mục">${HOT_TABS.map(([k, n]) => `<button data-htab="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
     ${board ? `<p class="small muted">${tab === 'new' ? 'Chủ đề mới được duyệt, mới nhất ở trên cùng.' : 'Chủ đề được Admin đặt nổi bật, hoặc đang có nhiều thảo luận trong 24 giờ qua.'}</p>
       <div class="list">${board.topics.map((t) => boardCard(t, tab)).join('') || `<p class="muted">${tab === 'new' ? 'Chưa có chủ đề nào.' : 'Chưa có chủ đề nổi bật. Hãy vào bàn luận để chủ đề lên đây!'}</p>`}</div>`
@@ -56,23 +52,9 @@ export async function renderHot(view, tab = htab) {
       ${commentBlock('msg', m.id, m.commentCount)}
     </div>`).join('') || '<p class="muted">Chưa có tin nào đạt ngưỡng. Hãy thả tim cho những tin nhắn bạn thích!</p>'}</div>`}
   </div></div>`;
-  const form = $('#hotpost', view);
-  if (form) form.onsubmit = async (e) => {
-    e.preventDefault();
-    const body = $('#hotbody').value.trim();
-    const f = $('#hotimg').files[0];
-    if (!body && !f) return;
-    const btn = $('button', form); btn.disabled = true;
-    try {
-      const imageUrl = f ? (await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url : undefined;
-      await api('POST', '/hot/posts', { body, imageUrl });
-      toast('Đã đăng lên Chủ đề nóng');
-      await renderHot(view);
-    } catch (er) { btn.disabled = false; fail(er); }
-  };
   $$('[data-htab]', view).forEach((b) => (b.onclick = () => renderHot(view, b.dataset.htab).catch(() => {})));
 }
-document.addEventListener('topics-changed', () => { if ($('#hot-page')) renderHot($('#view')).catch(() => {}); });
+document.addEventListener('topics-changed', (e) => { if ($('#hot-page')) renderHot($('#view'), e.detail?.tab || htab).catch(() => {}); });
 
 function pinnedCard(m, isAdmin) {
   return `<div class="card col hot-pin" style="gap:6px" data-mid="${m.id}">
