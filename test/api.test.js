@@ -412,3 +412,20 @@ test('không thể rời nhóm quốc gia', async () => {
   const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((x) => x.type === 'country');
   assert.equal((await call('POST', `/groups/${vn.id}/leave`, {}, u.token)).status, 400);
 });
+
+test('tim ở tin chuyển tiếp được tính cho tin gốc', async () => {
+  const a = await signup('goc1', 1), b = await signup('chuyen1', 1), c = await signup('tim1', 1);
+  for (const u of [a, b, c]) { const v = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((x) => x.type === 'country'); await call('POST', `/groups/${v.id}/rules-ack`, {}, u.token); u.vn = v.id; }
+  const src = (await call('POST', `/groups/${a.vn}/messages`, { body: 'gốc để thả tim' }, a.token)).data.message;
+  const fw = (await call('POST', `/messages/${src.id}/forward`, { groupId: b.vn }, b.token)).data.message;
+  const h = await call('POST', `/messages/${fw.id}/heart`, {}, c.token);
+  assert.equal(h.data.hearts, 1);
+  const list = (await call('GET', `/groups/${a.vn}/messages`, null, c.token)).data.messages;
+  const orig = list.find((m) => m.id === src.id), copy = list.find((m) => m.id === fw.id);
+  assert.equal(orig.hearts, 1); assert.equal(copy.hearts, 1); assert.equal(copy.hearted, true);
+  // thả tim ở tin gốc rồi cùng bản chuyển tiếp: bật/tắt chung
+  assert.equal((await call('POST', `/messages/${src.id}/heart`, {}, c.token)).data.hearts, 0);
+  // người chuyển tiếp không tự thả tim bản chuyển tiếp; chủ tin gốc cũng không
+  assert.equal((await call('POST', `/messages/${fw.id}/heart`, {}, b.token)).status, 400);
+  assert.equal((await call('POST', `/messages/${fw.id}/heart`, {}, a.token)).status, 400);
+});

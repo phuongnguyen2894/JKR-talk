@@ -205,8 +205,11 @@ export function messageDto(m, viewerId) {
     }
   }
   const member = getMember(m.group_id, m.user_id);
-  const hearts = db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(m.id).c;
-  const hearted = viewerId ? !!db.prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ?').get(m.id, viewerId) : false;
+  // tin chuyển tiếp: tim được tính chung cho tin gốc
+  const rootId = m.fwd_id || m.id;
+  const rootGone = m.fwd_id ? !db.prepare('SELECT 1 FROM messages WHERE id = ? AND deleted = 0').get(rootId) : false;
+  const hearts = rootGone ? 0 : db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(rootId).c;
+  const hearted = viewerId && !rootGone ? !!db.prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ?').get(rootId, viewerId) : false;
   return {
     hearts: m.deleted ? 0 : hearts,
     hearted,

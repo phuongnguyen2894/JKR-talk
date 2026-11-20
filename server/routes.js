@@ -524,8 +524,8 @@ api.post(
     // tin gốc đã là tin chuyển tiếp thì giữ nguồn gốc ban đầu
     const fwd = src.fwd || JSON.stringify({ name: publicUser(getUser(src.user_id)).displayName, group: sg.type === 'dm' || sg.type === 'private' ? null : sg.name });
     const r = db
-      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, preview, fwd, created_at) VALUES (?,?,?,?,?,?,?)')
-      .run(gid, req.user.id, src.body, src.image_url, src.preview, fwd, now());
+      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, preview, fwd, fwd_id, created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(gid, req.user.id, src.body, src.image_url, src.preview, fwd, src.fwd_id || src.id, now());
     const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), req.user.id);
     db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
     hub.sendMany(memberIds(gid), { type: 'message', message: dto });
@@ -541,12 +541,18 @@ api.post(
     const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
     if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
     requireMember(msg.group_id, req.user.id);
-    if (msg.user_id === req.user.id) throw bad('Bạn không thể thả tim tin nhắn của mình');
-    const had = db.prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ?').get(msg.id, req.user.id);
-    if (had) db.prepare('DELETE FROM reactions WHERE message_id = ? AND user_id = ?').run(msg.id, req.user.id);
-    else db.prepare('INSERT INTO reactions (message_id, user_id, created_at) VALUES (?,?,?)').run(msg.id, req.user.id, now());
-    const hearts = db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(msg.id).c;
-    hub.sendMany(memberIds(msg.group_id), { type: 'heart', groupId: msg.group_id, messageId: msg.id, hearts });
+    // tin chuyển tiếp: thả tim vào tin gốc
+    const root = msg.fwd_id ? db.prepare('SELECT * FROM messages WHERE id = ?').get(msg.fwd_id) : msg;
+    if (!root || root.deleted) throw notFound('Tin nhắn gốc không còn');
+    if (msg.user_id === req.user.id || root.user_id === req.user.id) throw bad('Bạn không thể thả tim tin nhắn của mình');
+    const had = db.prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ?').get(root.id, req.user.id);
+    if (had) db.prepare('DELETE FROM reactions WHERE message_id = ? AND user_id = ?').run(root.id, req.user.id);
+    else db.prepare('INSERT INTO reactions (message_id, user_id, created_at) VALUES (?,?,?)').run(root.id, req.user.id, now());
+    const hearts = db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(root.id).c;
+    // báo cho mọi nhóm đang hiển thị tin gốc hoặc bản chuyển tiếp của nó
+    for (const t of db.prepare('SELECT id, group_id FROM messages WHERE (id = ? OR fwd_id = ?) AND deleted = 0').all(root.id, root.id)) {
+      hub.sendMany(memberIds(t.group_id), { type: 'heart', groupId: t.group_id, messageId: t.id, hearts });
+    }
     res.json({ hearts, hearted: !had });
   })
 );
@@ -563,7 +569,7 @@ api.get(
         `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m
          JOIN reactions r ON r.message_id = m.id AND r.created_at > ?
          JOIN groups g ON g.id = m.group_id
-         WHERE g.type IN (${types.map(() => '?').join(',')}) AND m.deleted = 0
+         WHERE g.type IN (${types.map(() => '?').join(',')}) AND m.deleted = 0 AND m.fwd_id IS NULL
          GROUP BY m.id ORDER BY hc DESC, m.id DESC LIMIT ?`
       )
       .all(now() - DAY, ...types, HOT_LIMIT * 2) // lấy dư để còn lọc tin của người bị chặn

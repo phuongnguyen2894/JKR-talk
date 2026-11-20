@@ -197,6 +197,7 @@ export const nameKey = (s) => String(s).normalize('NFC').trim().replace(/\s+/g, 
 try { db.exec('ALTER TABLE users ADD COLUMN name_key TEXT'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN preview TEXT'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN fwd TEXT'); } catch { /* đã có cột */ }
+try { db.exec('ALTER TABLE messages ADD COLUMN fwd_id INTEGER'); } catch { /* đã có cột */ }
 for (const u of db.prepare("SELECT id, display_name FROM users WHERE name_key IS NULL AND status != 'deleted'").all()) {
   try { db.prepare('UPDATE users SET name_key = ? WHERE id = ?').run(nameKey(u.display_name), u.id); } catch { /* trùng cũ: bỏ qua */ }
 }
