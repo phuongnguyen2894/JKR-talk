@@ -322,3 +322,12 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .mention-pop{position:absolute;left:8px;right:8px;bottom:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.15);max-height:260px;overflow:auto;z-index:20;padding:4px}
 .mention-item{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:6px 10px;border:0;background:none;border-radius:8px;text-align:left;color:inherit;font:inherit;cursor:pointer}
 .mention-item[aria-selected="true"],.mention-item:hover{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+
+/* Gọn khoảng cách giữa các tin nhắn */
+.msg .link-btn, .msg .heart { min-height: 22px; padding: 0 6px; line-height: 1; }
+.msg .heart svg { width: 14px; height: 14px; }
+.msg .body > .row { margin-top: 0 !important; gap: 2px !important; }
+.msgs { gap: 4px; padding-top: 8px; padding-bottom: 8px; }
+.msg:not(.own) .text:not(.gone) { padding: 5px 10px; }
+.msg.own .bubble { padding: 5px 11px; }
+.msg .meta { line-height: 1.2; }
