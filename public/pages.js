@@ -282,8 +282,12 @@ export async function renderAdmin(view, tab = 'reports') {
   if (!admin) tab = 'reports';
   const tabs = admin ? [['reports', 'Báo cáo'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
   view.innerHTML = `<div class="page"><div class="page-inner"><h1>${admin ? 'Quản trị' : 'Báo cáo trong nhóm của bạn'}</h1>
-    <div class="pillnav">${tabs.map(([k, n]) => `<button data-tab="${k}" aria-pressed="${k === tab}">${n}</button>`).join('')}</div><div id="tabbody"></div></div></div>`;
+    <div class="pillnav">${tabs.map(([k, n]) => `<button data-tab="${k}" aria-pressed="${k === tab}">${n}<span class="tab-cnt" data-cnt="${k}"></span></button>`).join('')}</div><div id="tabbody"></div></div></div>`;
   $$('[data-tab]', view).forEach((b) => (b.onclick = () => renderAdmin(view, b.dataset.tab)));
+  // số lượng trên mỗi tab (tải song song, không chặn nội dung tab)
+  if (admin) api('GET', '/admin/counts').then((c) => {
+    for (const [k, v] of Object.entries(c)) { const el = $(`[data-cnt="${k}"]`, view); if (el) el.textContent = v.toLocaleString('vi-VN'); }
+  }).catch(() => {});
   const body = $('#tabbody');
   try {
     if (tab === 'reports') await adminReports(body);

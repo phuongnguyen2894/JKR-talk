@@ -1580,6 +1580,17 @@ api.post('/admin/users/:id/unlock', adminOnly, wrap((req, res) => {
   res.json({ ok: true });
 }));
 
+// Số lượng hiển thị trên các tab của trang quản trị
+api.get('/admin/counts', adminOnly, wrap((_req, res) => {
+  const c = (sql) => db.prepare(sql).get().c;
+  res.json({
+    reports: c("SELECT COUNT(*) c FROM reports WHERE status = 'open'"),
+    users: c("SELECT COUNT(*) c FROM users WHERE status != 'deleted'"),
+    mods: c("SELECT COUNT(DISTINCT m.user_id) c FROM members m JOIN groups g ON g.id = m.group_id WHERE m.role = 'mod' AND g.type IN ('country','region','province','topic')"),
+    admins: c("SELECT COUNT(*) c FROM users WHERE role = 'admin' AND status != 'deleted'"),
+  });
+}));
+
 // Trao / thu hồi quyền mod trong từng group công khai
 api.get('/admin/mods', adminOnly, wrap((_req, res) => {
   const rows = db.prepare("SELECT m.group_id, m.user_id FROM members m JOIN groups g ON g.id=m.group_id WHERE m.role='mod' AND g.type IN ('country','region','province','topic')").all();

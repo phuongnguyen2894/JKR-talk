@@ -458,3 +458,7 @@ html.kb .tabs-bar, html.kb .app .tabs-bar { display: none !important; }
 .nav-item.hl-topic svg { color: var(--hl-line); fill: currentColor; }
 .chat-head .sub .hl-pill { padding: 0 6px; font-size: 11px; }
 .topic-card.hl .topic-ic svg { fill: currentColor; }
+
+/* số lượng trên tab quản trị */
+.tab-cnt:not(:empty) { display: inline-block; margin-left: 6px; min-width: 22px; padding: 1px 7px; border-radius: 11px; font-size: 12px; font-weight: 700; background: var(--soft); color: var(--soft-ink); }
+.pillnav button[aria-pressed="true"] .tab-cnt:not(:empty) { background: rgba(255, 255, 255, .25); color: inherit; }

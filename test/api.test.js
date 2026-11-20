@@ -863,6 +863,12 @@ test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, 
   assert.equal((await call('POST', `/topics/${tid}/highlight`, { on: false }, adm.token)).data.topic.highlighted, false);
   assert.equal((await call('GET', '/groups/mine', null, adm.token)).data.highlights.length, 0);
   await call('DELETE', `/topics/${t2.id}`, {}, adm.token);
+  // số lượng trên tab quản trị: chỉ Admin
+  const cnt = await call('GET', '/admin/counts', null, adm.token);
+  assert.equal(cnt.status, 200);
+  for (const k of ['reports', 'users', 'mods', 'admins']) assert.equal(typeof cnt.data[k], 'number');
+  assert.ok(cnt.data.mods >= 1 && cnt.data.admins >= 1 && cnt.data.users >= 3);
+  assert.equal((await call('GET', '/admin/counts', null, u.token)).status, 403);
   // đóng: người thường không được; Admin được; thành viên được báo
   assert.equal((await call('DELETE', `/topics/${tid}`, {}, u.token)).status, 403);
   assert.equal((await call('DELETE', `/topics/${tid}`, {}, adm.token)).status, 200);
