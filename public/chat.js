@@ -168,7 +168,9 @@ function msgHtml(m) {
     : `${m.body ? (own ? `<div class="bubble">${esc(m.body)}</div>` : `<div class="text">${esc(m.body)}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy">` : ''}`;
   const role = m.modRole ? `<span class="pill">${m.modRole === 'mod' ? 'Mod' : 'Admin'}</span>` : '';
   const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !C.joined ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
+  const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
   const acts = m.deleted ? '' : `<div class="actions">
+      <button class="link-btn" data-act="fwd-msg" data-id="${m.id}">Chuyển tiếp</button>
       ${!C.joined || (C.group.type === 'trend' && !C.group.canPost) ? '' : `<button class="link-btn" data-act="reply" data-id="${m.id}">Trả lời</button>`}
       ${!own && C.joined ? `<button class="link-btn" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
       ${canDelete(m) ? `<button class="link-btn" data-act="del-msg" data-id="${m.id}">Xóa</button>` : ''}</div>`;
@@ -179,7 +181,7 @@ function msgHtml(m) {
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatar(m.user)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}${own ? '' : role}<span class="tiny muted">${fmtTime(m.createdAt)}</span></div>
-      ${quote}${text}${m.deleted ? '' : previewHtml(m.preview)}<div class="row" style="gap:4px;margin-top:2px">${heartBtn}${acts}</div>
+      ${fwdTag}${quote}${text}${m.deleted ? '' : previewHtml(m.preview)}<div class="row" style="gap:4px;margin-top:2px">${heartBtn}${acts}</div>
     </div></div>`;
 }
 
@@ -354,6 +356,19 @@ actions['del-msg'] = async (el) => {
     reason = v.reason;
   }
   try { await api('DELETE', `/messages/${msg.dataset.mid}`, { reason }); } catch (e) { fail(e); }
+};
+
+actions['fwd-msg'] = async (el) => {
+  const mid = Number(el.dataset.id);
+  try {
+    const { groups } = await api('GET', '/groups/mine');
+    const opts = groups.filter((g) => g.type !== 'trend' || g.canPost).map((g) => ({ value: g.id, label: g.name }));
+    if (!opts.length) return toast('Bạn chưa tham gia nhóm nào để chuyển tiếp');
+    const v = await ask({ title: 'Chuyển tiếp tin nhắn', text: 'Chọn nhóm bạn đã tham gia để gửi tin này vào.', fields: [{ name: 'groupId', label: 'Chuyển tiếp tới', type: 'select', options: opts }], ok: 'Chuyển tiếp' });
+    if (!v) return;
+    await api('POST', `/messages/${mid}/forward`, { groupId: Number(v.groupId) });
+    toast('Đã chuyển tiếp');
+  } catch (e) { fail(e); }
 };
 
 export const REPORT_REASONS = ['Spam hoặc quảng cáo', 'Quấy rối, công kích', 'Nội dung không phù hợp', 'Mạo danh', 'Khác'];

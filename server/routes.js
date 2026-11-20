@@ -499,6 +499,39 @@ api.post(
   })
 );
 
+// Chuyển tiếp tin từ nhóm khác (kể cả chưa tham gia, nếu là nhóm công khai) vào nhóm mình đã tham gia
+api.post(
+  '/messages/:id/forward',
+  wrap((req, res) => {
+    rateLimit(`msg:${req.user.id}`, 20, 10_000);
+    const src = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
+    if (!src || src.deleted) throw notFound('Tin nhắn không tồn tại');
+    const sg = getGroup(src.group_id);
+    const srcPublic = PUBLIC_TYPES.includes(sg.type) || sg.type === 'trend';
+    if (!srcPublic && !getMember(sg.id, req.user.id)) throw forbidden('Không thể chuyển tiếp tin từ nhóm riêng bạn chưa tham gia');
+    if (sg.type === 'dm' && isBlockedEither(req.user.id, src.user_id)) throw forbidden();
+    if (isBlockedEither(req.user.id, src.user_id)) throw forbidden();
+    const gid = int(req.body.groupId);
+    const { g, m } = requireMember(gid, req.user.id);
+    if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin và mod được đăng trong Đẩy trend');
+    if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
+    if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
+    if (g.type === 'dm') {
+      const peer = memberIds(gid).find((x) => x !== req.user.id);
+      if (!peer || !areFriends(req.user.id, peer) || isBlockedEither(req.user.id, peer)) throw forbidden('Không thể nhắn tin cho người này');
+    }
+    // tin gốc đã là tin chuyển tiếp thì giữ nguồn gốc ban đầu
+    const fwd = src.fwd || JSON.stringify({ name: publicUser(getUser(src.user_id)).displayName, group: sg.type === 'dm' || sg.type === 'private' ? null : sg.name });
+    const r = db
+      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, preview, fwd, created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(gid, req.user.id, src.body, src.image_url, src.preview, fwd, now());
+    const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), req.user.id);
+    db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
+    hub.sendMany(memberIds(gid), { type: 'message', message: dto });
+    res.status(201).json({ message: dto, groupId: gid });
+  })
+);
+
 // Thả tim màu tím: bật/tắt, mỗi người 1 tim cho mỗi tin; không tự thả tim tin của mình
 api.post(
   '/messages/:id/heart',

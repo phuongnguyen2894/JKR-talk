@@ -218,6 +218,7 @@ export function messageDto(m, viewerId) {
     imageUrl: m.deleted ? null : m.image_url,
     preview: m.deleted || !m.preview || m.preview === '0' ? null : JSON.parse(m.preview),
     deleted: !!m.deleted,
+    fwd: m.fwd ? JSON.parse(m.fwd) : null,
     reply,
     createdAt: m.created_at,
   };

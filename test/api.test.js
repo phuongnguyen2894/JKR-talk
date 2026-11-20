@@ -382,3 +382,27 @@ test('xem tin nhóm công khai không cần tham gia; không chat/thả tim đư
   const pg = await call('POST', '/private', { name: 'riêng tư', memberLimit: 10 }, admin.token);
   if (pg.status < 300) assert.equal((await call('GET', `/groups/${pg.data.group.id}/messages`, null, w.token)).status, 403);
 });
+
+test('chuyển tiếp tin từ nhóm công khai chưa tham gia vào nhóm mình; nhóm riêng người ngoài không chuyển được', async () => {
+  const w = await signup('chuyentiep', 1);
+  const vn = (await call('GET', '/groups/mine', null, w.token)).data.groups.find((x) => x.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, w.token);
+  const dn = (await call('GET', '/groups/discover?q=da nang', null, w.token)).data.groups.find((x) => x.type === 'province');
+  await call('POST', `/groups/${dn.id}/join`, {}, admin.token); await call('POST', `/groups/${dn.id}/rules-ack`, {}, admin.token);
+  const src = (await call('POST', `/groups/${dn.id}/messages`, { body: 'tin để chuyển tiếp' }, admin.token)).data.message;
+  const f = await call('POST', `/messages/${src.id}/forward`, { groupId: vn.id }, w.token);
+  assert.equal(f.status, 201);
+  assert.equal(f.data.message.body, 'tin để chuyển tiếp');
+  assert.equal(f.data.message.user.id, w.id);
+  assert.ok(f.data.message.fwd && f.data.message.fwd.group === dn.name);
+  // chưa tham gia nhóm đích => 403
+  assert.equal((await call('POST', `/messages/${src.id}/forward`, { groupId: dn.id }, w.token)).status, 403);
+  // tin trong nhóm riêng: người ngoài không chuyển tiếp được
+  const o = await signup('chukin', 1);
+  const pg = await call('POST', '/private', { name: 'kín' }, o.token);
+  assert.equal(pg.status, 201);
+  {
+    const pm = await call('POST', `/groups/${pg.data.group.id}/messages`, { body: 'bí mật' }, o.token);
+    assert.equal((await call('POST', `/messages/${pm.data.message.id}/forward`, { groupId: vn.id }, w.token)).status, 403);
+  }
+});
