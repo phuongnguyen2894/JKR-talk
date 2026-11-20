@@ -1,7 +1,7 @@
 // Chế độ khách (chưa đăng ký): chỉ đọc nhóm công khai, Đẩy trend, Chủ đề nóng, Bản tin
 import { $, esc, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, actions, lightbox, linkify, newsGallery, roleOf, avatarR, roleClass, roleSr } from './core.js';
 import { previewHtml } from './chat.js';
-import { boardCard, HOT_TABS, sectionHead, ALL_TOPICS, ALL_ADMIN, ALL_OTHER } from './hot.js';
+import { boardCard, HOT_TABS, sectionHead, ALL_TOPICS, ALL_ADMIN } from './hot.js';
 import { renderTools } from './pages.js';
 
 const G = { groups: null, trendId: 0 };
@@ -102,7 +102,7 @@ async function renderGuestGroup(view, gid) {
 let gtab = 'all';
 async function renderGuestHot(view, tab = gtab) {
   gtab = tab;
-  const [{ items, pinned = [] }, board] = await Promise.all([api('GET', '/public/hot'), tab === 'all' ? api('GET', '/public/topic-board?tab=hot') : tab === 'hot' || tab === 'new' ? api('GET', '/public/topic-board?tab=' + tab) : Promise.resolve(null)]);
+  const [{ items, pinned = [], others = [] }, board] = await Promise.all([api('GET', '/public/hot'), tab === 'all' ? api('GET', '/public/topic-board?tab=hot') : tab === 'hot' || tab === 'new' ? api('GET', '/public/topic-board?tab=' + tab) : Promise.resolve(null)]);
   const adminCard = (m) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill warn">Từ quản trị</span><span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div>
       <div class="row">${avatarR(m.user, roleOf(m.user))}<div class="grow"><b class="${roleClass(roleOf(m.user)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user))}</b></div></div>
@@ -119,12 +119,20 @@ async function renderGuestHot(view, tab = gtab) {
       ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}
     </div>`;
+  const otherCard = (m) => `<div class="card col" style="gap:6px">
+      <div class="row wrap">${m.kind === 'top' ? `<span class="pill warn">${m.interactions} tương tác</span>` : '<span class="pill">Mới</span>'}<a class="pill" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
+        <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
+      <div class="row">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
+      ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body)}</div>` : ''}
+      ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy" decoding="async">` : ''}
+      ${previewHtml(m.preview)}
+    </div>`;
   let body;
   if (tab === 'all') {
     body = `${board.topics.length ? `${sectionHead('Chủ đề nổi bật', 'hot')}<div class="list">${board.topics.slice(0, ALL_TOPICS).map((t) => boardCard(t, 'hot', true)).join('')}</div>` : ''}
       ${pinned.length ? `${sectionHead('Từ quản trị', 'admin')}<div class="list">${pinned.slice(0, ALL_ADMIN).map(adminCard).join('')}</div>` : ''}
-      ${items.length ? `${sectionHead('Tin khác được quan tâm', 'hearts')}<div class="list">${items.slice(0, ALL_OTHER).map(heartCard).join('')}</div>` : ''}
-      ${!board.topics.length && !pinned.length && !items.length ? '<p class="muted">Chưa có gì nổi bật.</p>' : ''}`;
+      ${others.length ? `${sectionHead('Tin khác', '')}<div class="list">${others.map(otherCard).join('')}</div>` : ''}
+      ${!board.topics.length && !pinned.length && !others.length ? '<p class="muted">Chưa có gì nổi bật.</p>' : ''}`;
   } else if (tab === 'admin') body = `<div class="list">${pinned.map(adminCard).join('') || '<p class="muted">Chưa có bài nào từ quản trị.</p>'}</div>`;
   else if (board) body = `<div class="list">${board.topics.map((t) => boardCard(t, tab, true)).join('') || '<p class="muted">Chưa có chủ đề nào.</p>'}</div>`;
   else body = `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua.</p><div class="list">${items.map(heartCard).join('') || '<p class="muted">Chưa có chủ đề nóng nào.</p>'}</div>`;

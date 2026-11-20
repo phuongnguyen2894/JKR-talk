@@ -222,7 +222,8 @@ api.get('/public/groups/:id', guestLimit, wrap((req, res) => {
 api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
   const rows = await hotRows(null, null, false); // khách không kích hoạt tải xem trước từ trang ngoài
   const pinned = hotPosts().map((m) => guestMsg(m, { hearts: messageDto(m, null).hearts, groupName: 'Chủ đề nóng' }));
-  res.json({ pinned, items: rows.map((m) => guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name })) });
+  const others = otherRows(null).map(({ m, kind }) => ({ ...guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name }), interactions: m.score, kind }));
+  res.json({ pinned, items: rows.map((m) => guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name })), others });
 }));
 api.get('/public/topic-board', guestLimit, wrap((req, res) => res.json({ topics: topicBoard(boardTab(req)).map(({ joined, creatorName, ...t }) => t) })));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
@@ -1060,6 +1061,27 @@ async function hotRows(viewerId, scope, backfill = true) {
     );
     return rows;
 }
+// "Tin khác" ở tab Tổng hợp: tin nhiều tương tác (tim + bình luận + trả lời) và tin mới nhất trong 48 giờ qua, ở các nhóm công khai
+const OTHER_TOP = 5, OTHER_NEW = 5, OTHER_MIN_SCORE = 2;
+function otherRows(viewerId) {
+  const rows = db.prepare(
+    `SELECT m.*,
+       (SELECT COUNT(*) FROM reactions r WHERE r.message_id = m.id) AS hc,
+       (SELECT COUNT(*) FROM comments c WHERE c.kind = 'msg' AND c.target_id = m.id) AS cc,
+       (SELECT COUNT(*) FROM messages x WHERE x.reply_to = m.id AND x.deleted = 0) AS rc
+     FROM messages m JOIN groups g ON g.id = m.group_id
+     WHERE g.type IN ('trend','country','region','province','topic') AND m.deleted = 0 AND m.fwd_id IS NULL AND m.fwd IS NULL
+       AND (m.body != '' OR m.image_url IS NOT NULL) AND m.created_at > ?
+     ORDER BY m.id DESC LIMIT 300`
+  ).all(now() - 2 * DAY)
+    .filter((m) => !viewerId || !isBlockedEither(viewerId, m.user_id))
+    .filter(dedupeHot());
+  for (const m of rows) m.score = m.hc + m.cc + m.rc;
+  const top = rows.filter((m) => m.score >= OTHER_MIN_SCORE).sort((a, b) => b.score - a.score || b.id - a.id).slice(0, OTHER_TOP);
+  const used = new Set(top.map((m) => m.id));
+  const fresh = rows.filter((m) => !used.has(m.id)).slice(0, OTHER_NEW); // rows đã xếp mới nhất trước
+  return [...top.map((m) => ({ m, kind: 'top' })), ...fresh.map((m) => ({ m, kind: 'new' }))];
+}
 api.get(
   '/hot',
   wrap(async (req, res) => {
@@ -1068,6 +1090,7 @@ api.get(
     res.json({
       pinned: hotPosts().map((m) => ({ ...messageDto(m, req.user.id), groupName: 'Chủ đề nóng' })),
       items: rows.map((m) => ({ ...messageDto(m, req.user.id), hearts: m.hc, groupName: getGroup(m.group_id).name })),
+      others: otherRows(req.user.id).map(({ m, kind }) => ({ ...messageDto(m, req.user.id), hearts: m.hc, interactions: m.score, kind, groupName: getGroup(m.group_id).name })),
     });
   })
 );
