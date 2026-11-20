@@ -224,7 +224,7 @@ api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
 }));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
-  res.json({ news: rows.map((n) => ({ id: n.id, title: n.title, body: n.body, imageUrl: n.image_url, pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at, hearts: newsHearts(n.id) })) });
+  res.json({ news: rows.map((n) => ({ id: n.id, title: n.title, body: n.body, imageUrl: newsImgs(n)[0] || null, imageUrls: newsImgs(n), pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at, hearts: newsHearts(n.id) })) });
 }));
 
 // Mọi route bên dưới cần đăng nhập
@@ -1299,9 +1299,18 @@ db.exec('CREATE TABLE IF NOT EXISTS news_hearts (news_id INTEGER NOT NULL, user_
 const newsHearts = (id) => db.prepare('SELECT COUNT(*) c FROM news_hearts WHERE news_id = ?').get(id).c;
 // tên ngắn của bản tin cho thông báo (tiêu đề / nội dung / ảnh đều có thể trống)
 const newsLabel = (n) => n.title || (n.body ? n.body.replace(/\s+/g, ' ').slice(0, 80) : 'có ảnh mới');
+const NEWS_MAX_IMAGES = 4;
+const newsImgs = (n) => { try { if (n.images) return JSON.parse(n.images); } catch { /* dùng cột cũ */ } return n.image_url ? [n.image_url] : []; };
+function cleanNewsImages(list) {
+  if (!Array.isArray(list)) throw bad('Danh sách ảnh không hợp lệ');
+  const urls = [...new Set(list.map((u) => checkUploadUrl(u)))];
+  if (urls.length > NEWS_MAX_IMAGES) throw bad(`Mỗi bản tin tối đa ${NEWS_MAX_IMAGES} ảnh`);
+  return urls;
+}
 const newsDto = (n, uid) => ({
+  imageUrls: newsImgs(n),
   hearts: newsHearts(n.id), hearted: !!db.prepare('SELECT 1 FROM news_hearts WHERE news_id = ? AND user_id = ?').get(n.id, uid),
-  id: n.id, title: n.title, body: n.body, imageUrl: n.image_url, pinned: !!n.pinned, edited: !!n.edited,
+  id: n.id, title: n.title, body: n.body, imageUrl: newsImgs(n)[0] || null, pinned: !!n.pinned, edited: !!n.edited,
   createdAt: n.created_at, read: !!db.prepare('SELECT 1 FROM news_reads WHERE user_id=? AND news_id=?').get(uid, n.id),
 });
 
@@ -1338,10 +1347,10 @@ api.post('/news/:id/read', wrap((req, res) => {
 
 api.post('/admin/news', adminOnly, wrap((req, res) => {
   const title = str(req.body.title, 150), body = str(req.body.body, 5000);
-  const img = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
-  if (!title && !body && !img) throw bad('Hãy nhập tiêu đề, nội dung hoặc chọn ảnh'); // tiêu đề và nội dung đều không bắt buộc
+  const imgs = req.body.imageUrls !== undefined ? cleanNewsImages(req.body.imageUrls) : req.body.imageUrl ? cleanNewsImages([req.body.imageUrl]) : [];
+  if (!title && !body && !imgs.length) throw bad('Hãy nhập tiêu đề, nội dung hoặc chọn ảnh'); // tiêu đề và nội dung đều không bắt buộc
   const pinned = req.body.pinned ? 1 : 0;
-  const r = db.prepare('INSERT INTO news (title, body, image_url, pinned, author_id, created_at) VALUES (?,?,?,?,?,?)').run(title, body, img, pinned, req.user.id, now());
+  const r = db.prepare('INSERT INTO news (title, body, image_url, images, pinned, author_id, created_at) VALUES (?,?,?,?,?,?,?)').run(title, body, imgs[0] || null, JSON.stringify(imgs), pinned, req.user.id, now());
   const n = db.prepare('SELECT * FROM news WHERE id = ?').get(r.lastInsertRowid);
   const recipients = db.prepare("SELECT id FROM users WHERE status='active' AND news_push=1 AND verified=1").all();
   for (const u of recipients) {
@@ -1357,11 +1366,12 @@ api.patch('/admin/news/:id', adminOnly, wrap((req, res) => {
   const b = req.body;
   const title = b.title !== undefined ? str(b.title, 150) : n.title;
   const body = b.body !== undefined ? str(b.body, 5000) : n.body;
-  // imageUrl: undefined = giữ nguyên, null/'' = gỡ ảnh, chuỗi = ảnh mới
-  const img = b.imageUrl === undefined ? n.image_url : b.imageUrl ? checkUploadUrl(b.imageUrl) : null;
-  if (!title && !body && !img) throw bad('Bản tin cần có tiêu đề, nội dung hoặc ảnh');
-  const contentChanged = title !== n.title || body !== n.body || img !== n.image_url;
-  db.prepare('UPDATE news SET title=?, body=?, image_url=?, pinned=?, edited=? WHERE id=?').run(title, body, img, b.pinned !== undefined ? (b.pinned ? 1 : 0) : n.pinned, contentChanged ? 1 : n.edited, n.id);
+  // imageUrls: danh sách ảnh mới (tối đa 4); không gửi = giữ nguyên. imageUrl (cũ): null/'' = gỡ hết ảnh, chuỗi = chỉ một ảnh
+  const cur = newsImgs(n);
+  const imgs = b.imageUrls !== undefined ? cleanNewsImages(b.imageUrls) : b.imageUrl === undefined ? cur : b.imageUrl ? cleanNewsImages([b.imageUrl]) : [];
+  if (!title && !body && !imgs.length) throw bad('Bản tin cần có tiêu đề, nội dung hoặc ảnh');
+  const contentChanged = title !== n.title || body !== n.body || JSON.stringify(imgs) !== JSON.stringify(cur);
+  db.prepare('UPDATE news SET title=?, body=?, image_url=?, images=?, pinned=?, edited=? WHERE id=?').run(title, body, imgs[0] || null, JSON.stringify(imgs), b.pinned !== undefined ? (b.pinned ? 1 : 0) : n.pinned, contentChanged ? 1 : n.edited, n.id);
   res.json({ news: newsDto(db.prepare('SELECT * FROM news WHERE id = ?').get(n.id), req.user.id) });
 }));
 api.post('/news/:id/heart', wrap((req, res) => {

@@ -20,6 +20,9 @@ function referencedFiles() {
   for (const [table, col] of [['users', 'avatar_url'], ['groups', 'avatar_url'], ['messages', 'image_url'], ['reports', 'snapshot_image'], ['news', 'image_url'], ['bug_reports', 'screenshot_url']]) {
     for (const r of db.prepare(`SELECT ${col} AS u FROM ${table} WHERE ${col} IS NOT NULL`).all()) add(r.u);
   }
+  for (const r of db.prepare('SELECT images FROM news WHERE images IS NOT NULL').all()) {
+    try { for (const u of JSON.parse(r.images)) add(u); } catch { /* bỏ qua */ }
+  }
   for (const r of db.prepare('SELECT preview FROM messages WHERE preview IS NOT NULL AND preview != \'0\'').all()) {
     const f = previewImage(r.preview);
     if (f) used.add(f);

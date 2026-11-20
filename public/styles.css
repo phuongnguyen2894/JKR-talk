@@ -388,3 +388,15 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .tool-card b { font-size: 16px; }
 .tool-ic { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 12px; background: var(--soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .tool-go { color: var(--muted); display: flex; }
+
+/* Lưới ảnh bản tin */
+.news-gallery { display: grid; gap: 4px; border-radius: 12px; overflow: hidden; }
+.news-gallery img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; background: var(--soft); }
+.news-gallery.g1 img { max-height: 420px; object-fit: contain; }
+.news-gallery.g2, .news-gallery.g3, .news-gallery.g4 { grid-template-columns: 1fr 1fr; }
+.news-gallery.g2 img, .news-gallery.g3 img, .news-gallery.g4 img { aspect-ratio: 1 / 1; }
+.news-gallery.g3 img:first-child { grid-row: span 2; aspect-ratio: auto; }
+.thumb-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.thumb-row .th { position: relative; width: 72px; }
+.thumb-row .th img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; display: block; }
+.thumb-row .th label { font-size: 12px; display: flex; gap: 4px; align-items: center; margin-top: 2px; }

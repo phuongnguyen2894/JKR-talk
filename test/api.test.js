@@ -691,3 +691,40 @@ test('bản tin: tiêu đề và nội dung không bắt buộc (cần ít nhấ
   assert.equal((await call('PATCH', `/admin/news/${onlyTitle.data.news.id}`, { title: '' }, adm.token)).status, 400);
   assert.equal((await call('PATCH', `/admin/news/${onlyBody.data.news.id}`, { title: 'Thêm tiêu đề', body: '' }, adm.token)).status, 200);
 });
+
+test('bản tin: đăng tối đa 4 ảnh; 5 ảnh bị từ chối; sửa danh sách ảnh; ảnh bản tin không bị dọn nhầm', async () => {
+  const fs = await import('node:fs');
+  const { db, now } = await import('../server/db.js');
+  const { purgeOldMessages } = await import('../server/retention.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const urls = [];
+  for (let i = 0; i < 5; i++) urls.push((await call('POST', '/upload', { dataUrl: png }, adm.token)).data.url);
+  assert.ok(urls.every((u) => /^\/uploads\//.test(u)));
+  assert.equal((await call('POST', '/admin/news', { title: '5 ảnh', imageUrls: urls }, adm.token)).status, 400);
+  const r = await call('POST', '/admin/news', { title: '4 ảnh', imageUrls: urls.slice(0, 4) }, adm.token);
+  assert.equal(r.status, 201);
+  assert.deepEqual(r.data.news.imageUrls, urls.slice(0, 4));
+  assert.equal(r.data.news.imageUrl, urls[0]);
+  const id = r.data.news.id;
+  assert.deepEqual((await (await fetch(BASE + '/public/news')).json()).news.find((n) => n.id === id).imageUrls, urls.slice(0, 4));
+  // sửa: bỏ ảnh đầu, đổi sang ảnh khác
+  let p = await call('PATCH', `/admin/news/${id}`, { imageUrls: [urls[1], urls[4]] }, adm.token);
+  assert.deepEqual(p.data.news.imageUrls, [urls[1], urls[4]]);
+  assert.equal(p.data.news.edited, true);
+  assert.equal((await call('PATCH', `/admin/news/${id}`, { imageUrls: urls }, adm.token)).status, 400);
+  // chỉ có ảnh (không tiêu đề/nội dung) vẫn đăng được; gỡ hết ảnh khi không còn gì khác thì bị từ chối
+  const only = await call('POST', '/admin/news', { imageUrls: [urls[2]] }, adm.token);
+  assert.equal(only.status, 201);
+  assert.equal((await call('PATCH', `/admin/news/${only.data.news.id}`, { imageUrls: [] }, adm.token)).status, 400);
+  // ảnh thứ 2-4 của bản tin không bị dọn khi tin nhắn cũ dùng chung ảnh bị xóa
+  const dir = process.env.UPLOAD_DIR;
+  const u = await signup('newsimgkeep', 1);
+  const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((x) => x.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  const mid = (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin cũ dùng chung ảnh bản tin' }, u.token)).data.message.id;
+  const shared = urls[4]; // ảnh thứ 2 của bản tin ở trên
+  db.prepare('UPDATE messages SET created_at = ?, image_url = ? WHERE id = ?').run(now() - 40 * 24 * 3600 * 1000, shared, mid);
+  purgeOldMessages(dir);
+  assert.ok(fs.existsSync(path.join(dir, shared.replace('/uploads/', ''))), 'ảnh còn được bản tin dùng phải được giữ');
+});

@@ -1,5 +1,5 @@
 import { pushSectionHtml } from './push.js';
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify, newsGallery, lightbox } from './core.js';
 
 // ===========================================================================
 // Đăng nhập / đăng ký (render vào #root, ngoài shell)
@@ -121,9 +121,9 @@ export async function renderNews(view) {
       <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}${n.read ? '' : '<span class="pill">Mới</span>'}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
       ${n.title ? `<h2 style="font-size:18px">${esc(n.title)}</h2>` : ''}
       ${n.body ? `<p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>` : ''}
-      ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy" decoding="async">` : ''}
+      ${newsGallery(n.imageUrls)}
       <div class="row" style="gap:4px"><button type="button" class="heart ${n.hearted ? 'on' : ''}" data-act="news-heart" data-id="${n.id}" aria-pressed="${n.hearted}" aria-label="Thả tim, hiện có ${n.hearts} tim">${icon('heart', 15, n.hearted ? 'fill="currentColor"' : '')}<span class="hc">${n.hearts || ''}</span></button></div>
-      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}" data-img="${esc(n.imageUrl || '')}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
+      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}" data-imgs="${esc(JSON.stringify(n.imageUrls || []))}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
   view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });
   if (S.unreadNews) { api('POST', '/news/read-all').then(() => { S.unreadNews = 0; S.hooks.renderSide(); }).catch(() => {}); }
@@ -139,12 +139,13 @@ actions['news-heart'] = async (el) => {
   el.innerHTML = icon('heart', 15, r.hearted ? 'fill="currentColor"' : '') + `<span class="hc">${r.hearts || ''}</span>`;
   el.setAttribute('aria-label', `Thả tim, hiện có ${r.hearts} tim`);
 };
+actions['news-zoom'] = (el) => lightbox(el.dataset.src);
 actions['news-more'] = (el) => { const p = el.previousElementSibling; const open = p.classList.toggle('clamp'); el.textContent = open ? 'Xem thêm' : 'Thu gọn'; };
 actions['news-new'] = async () => {
   const m = openModal(`<form id="nf" class="col"><h2>Đăng bản tin</h2>
     <div class="field"><label for="nt">Tiêu đề (không bắt buộc)</label><input class="input" id="nt" maxlength="150"></div>
     <div class="field"><label for="nb">Nội dung (không bắt buộc)</label><textarea class="input" id="nb" maxlength="5000"></textarea></div>
-    <div class="field"><label for="ni">Ảnh (không bắt buộc, tối đa 2MB)</label><input id="ni" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
+    <div class="field"><label for="ni">Ảnh (không bắt buộc, tối đa 4 ảnh, mỗi ảnh tối đa 2MB)</label><input id="ni" type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp"></div>
     <label class="check"><input type="checkbox" id="np"> Ghim lên đầu</label>
     <p class="small muted">Bản tin hiện cho toàn bộ người dùng và gửi thông báo đẩy tới người bật thông báo bản tin.</p>
     <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Đăng</button></div></form>`);
@@ -152,24 +153,23 @@ actions['news-new'] = async () => {
   $('#nf').onsubmit = async (e) => {
     e.preventDefault();
     try {
-      let imageUrl;
-      const f = $('#ni').files[0];
-      if (f) {
-        const dataUrl = await imageToDataUrl(f);
-        imageUrl = (await api('POST', '/upload', { dataUrl })).url;
-      }
-      await api('POST', '/admin/news', { title: $('#nt').value, body: $('#nb').value, imageUrl, pinned: $('#np').checked });
+      const files = [...$('#ni').files];
+      if (files.length > 4) throw new Error('Chỉ chọn tối đa 4 ảnh');
+      const imageUrls = [];
+      for (const f of files) imageUrls.push((await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url);
+      await api('POST', '/admin/news', { title: $('#nt').value, body: $('#nb').value, imageUrls, pinned: $('#np').checked });
       closeModal(); renderNews($('#view'));
     } catch (er) { fail(er); }
   };
 };
 actions['news-edit'] = async (el) => {
   const d = el.dataset;
+  let cur = []; try { cur = JSON.parse(d.imgs || '[]'); } catch { /* không có ảnh */ }
   const m = openModal(`<form id="nef" class="col"><h2>Sửa bản tin</h2>
     <div class="field"><label for="net">Tiêu đề (không bắt buộc)</label><input class="input" id="net" maxlength="150"></div>
     <div class="field"><label for="neb">Nội dung (không bắt buộc)</label><textarea class="input" id="neb" maxlength="5000" rows="8"></textarea></div>
-    ${d.img ? `<img src="${esc(d.img)}" alt="" style="max-width:160px;border-radius:10px"><label class="check"><input type="checkbox" id="nerm"> Gỡ ảnh hiện tại</label>` : ''}
-    <div class="field"><label for="nei">${d.img ? 'Thay bằng ảnh khác' : 'Thêm ảnh'} (không bắt buộc)</label><input id="nei" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
+    ${cur.length ? `<div class="thumb-row">${cur.map((u, i) => `<div class="th"><img src="${esc(u)}" alt="Ảnh ${i + 1}"><label><input type="checkbox" data-rm="${i}"> Gỡ</label></div>`).join('')}</div>` : ''}
+    <div class="field"><label for="nei">Thêm ảnh (tổng tối đa 4 ảnh, không bắt buộc)</label><input id="nei" type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp"></div>
     <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Lưu</button></div></form>`);
   $('#net').value = d.title; $('#neb').value = d.body;
   $('[data-close]', m).onclick = closeModal;
@@ -177,9 +177,11 @@ actions['news-edit'] = async (el) => {
     e.preventDefault();
     try {
       const patch = { title: $('#net').value, body: $('#neb').value };
-      const f = $('#nei').files[0];
-      if (f) patch.imageUrl = (await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url;
-      else if ($('#nerm')?.checked) patch.imageUrl = null;
+      const kept = cur.filter((_, i) => !$(`[data-rm="${i}"]`)?.checked);
+      const files = [...$('#nei').files];
+      if (kept.length + files.length > 4) throw new Error(`Tối đa 4 ảnh (hiện giữ ${kept.length}, thêm ${files.length})`);
+      for (const f of files) kept.push((await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url);
+      patch.imageUrls = kept;
       await api('PATCH', `/admin/news/${d.id}`, patch);
       closeModal(); renderNews($('#view'));
     } catch (er) { fail(er); }

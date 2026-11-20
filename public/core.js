@@ -257,3 +257,10 @@ export function avatarR(u, role, cls = '') {
 }
 export const roleClass = (role) => (role ? ` role-${role === 'mod' ? 'mod' : 'admin'}` : '');
 export const roleSr = (role) => (role ? `<span class="sr-only"> (${ROLE_TEXT[role]})</span>` : '');
+
+// Lưới ảnh bản tin (1 ảnh: rộng đầy đủ; 2-4 ảnh: lưới 2 cột). act = tên hành động khi bấm vào ảnh.
+export function newsGallery(urls, act = 'news-zoom') {
+  const list = (urls || []).slice(0, 4);
+  if (!list.length) return '';
+  return `<div class="news-gallery g${list.length}">${list.map((u) => `<img src="${esc(u)}" alt="" data-act="${act}" data-src="${esc(u)}" loading="lazy" decoding="async">`).join('')}</div>`;
+}
