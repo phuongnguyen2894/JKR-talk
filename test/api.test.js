@@ -521,7 +521,7 @@ test('tag @tên: người được tag nhận thông báo; không tag được A
   assert.equal(r.status, 201);
   assert.deepEqual(r.data.message.mentions.map((u) => u.id), [b.id]); // Admin hệ thống + chính mình bị bỏ
   const ns = (await call('GET', '/notifications', null, b.token)).data.notifications.filter((n) => n.type === 'mention');
-  assert.equal(ns.length, 4); // 3 tin chào mừng (nước, vùng, tỉnh) + 1 lần được tag
+  assert.equal(ns.length, 2); // chào mừng chỉ báo ở nhóm quốc gia (1) + 1 lần được tag
   assert.equal((await call('GET', '/notifications', null, adm.token)).data.notifications.some((n) => n.type === 'mention'), false);
   // tìm gợi ý: không có Admin hệ thống, không có chính mình
   const s = await call('GET', `/groups/${vn.id}/mention-search?q=ta`, null, a.token);

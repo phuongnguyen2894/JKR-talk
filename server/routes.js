@@ -84,7 +84,7 @@ function welcomeUser(uid, displayName, g) {
     const mr = db.prepare('INSERT INTO messages (group_id, user_id, body, mentions, created_at) VALUES (?,?,?,?,?)').run(g.id, bot.id, body, tag, now());
     const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(mr.lastInsertRowid), bot.id);
     hub.sendMany(memberIds(g.id), { type: 'message', message: dto });
-    notify(uid, 'mention', `${getUser(bot.id).display_name} đã nhắc đến bạn trong "${g.name}"`);
+    if (g.type === 'country') notify(uid, 'mention', `${getUser(bot.id).display_name} đã nhắc đến bạn trong "${g.name}"`); // chỉ báo ở nhóm quốc gia, các nhóm khác chỉ tag trong tin
   } catch (e) { console.error('[welcome]', e.message); }
 }
 
