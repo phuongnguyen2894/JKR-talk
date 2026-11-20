@@ -119,8 +119,8 @@ export async function renderNews(view) {
     <p class="small muted">Thông báo từ đội vận hành JKR talks. Bạn chỉ đọc, không trả lời trong bản tin.</p>
     <div class="list">${news.map((n) => `<article class="card col" ${n.read ? '' : 'style="border-color:var(--accent)"'}>
       <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}${n.read ? '' : '<span class="pill">Mới</span>'}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
-      <h2 style="font-size:18px">${esc(n.title)}</h2>
-      <p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>
+      ${n.title ? `<h2 style="font-size:18px">${esc(n.title)}</h2>` : ''}
+      ${n.body ? `<p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>` : ''}
       ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy" decoding="async">` : ''}
       <div class="row" style="gap:4px"><button type="button" class="heart ${n.hearted ? 'on' : ''}" data-act="news-heart" data-id="${n.id}" aria-pressed="${n.hearted}" aria-label="Thả tim, hiện có ${n.hearts} tim">${icon('heart', 15, n.hearted ? 'fill="currentColor"' : '')}<span class="hc">${n.hearts || ''}</span></button></div>
       ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}" data-img="${esc(n.imageUrl || '')}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
@@ -142,8 +142,8 @@ actions['news-heart'] = async (el) => {
 actions['news-more'] = (el) => { const p = el.previousElementSibling; const open = p.classList.toggle('clamp'); el.textContent = open ? 'Xem thêm' : 'Thu gọn'; };
 actions['news-new'] = async () => {
   const m = openModal(`<form id="nf" class="col"><h2>Đăng bản tin</h2>
-    <div class="field"><label for="nt">Tiêu đề</label><input class="input" id="nt" required maxlength="150"></div>
-    <div class="field"><label for="nb">Nội dung</label><textarea class="input" id="nb" required maxlength="5000"></textarea></div>
+    <div class="field"><label for="nt">Tiêu đề (không bắt buộc)</label><input class="input" id="nt" maxlength="150"></div>
+    <div class="field"><label for="nb">Nội dung (không bắt buộc)</label><textarea class="input" id="nb" maxlength="5000"></textarea></div>
     <div class="field"><label for="ni">Ảnh (không bắt buộc, tối đa 2MB)</label><input id="ni" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
     <label class="check"><input type="checkbox" id="np"> Ghim lên đầu</label>
     <p class="small muted">Bản tin hiện cho toàn bộ người dùng và gửi thông báo đẩy tới người bật thông báo bản tin.</p>
@@ -166,8 +166,8 @@ actions['news-new'] = async () => {
 actions['news-edit'] = async (el) => {
   const d = el.dataset;
   const m = openModal(`<form id="nef" class="col"><h2>Sửa bản tin</h2>
-    <div class="field"><label for="net">Tiêu đề</label><input class="input" id="net" required maxlength="150"></div>
-    <div class="field"><label for="neb">Nội dung</label><textarea class="input" id="neb" required maxlength="5000" rows="8"></textarea></div>
+    <div class="field"><label for="net">Tiêu đề (không bắt buộc)</label><input class="input" id="net" maxlength="150"></div>
+    <div class="field"><label for="neb">Nội dung (không bắt buộc)</label><textarea class="input" id="neb" maxlength="5000" rows="8"></textarea></div>
     ${d.img ? `<img src="${esc(d.img)}" alt="" style="max-width:160px;border-radius:10px"><label class="check"><input type="checkbox" id="nerm"> Gỡ ảnh hiện tại</label>` : ''}
     <div class="field"><label for="nei">${d.img ? 'Thay bằng ảnh khác' : 'Thêm ảnh'} (không bắt buộc)</label><input id="nei" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
     <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Lưu</button></div></form>`);

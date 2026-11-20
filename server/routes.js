@@ -1297,6 +1297,8 @@ api.post('/notifications/read', wrap((req, res) => {
 // Tim cho bản tin (bảng riêng, không tính vào Chủ đề nóng)
 db.exec('CREATE TABLE IF NOT EXISTS news_hearts (news_id INTEGER NOT NULL, user_id INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (news_id, user_id))');
 const newsHearts = (id) => db.prepare('SELECT COUNT(*) c FROM news_hearts WHERE news_id = ?').get(id).c;
+// tên ngắn của bản tin cho thông báo (tiêu đề / nội dung / ảnh đều có thể trống)
+const newsLabel = (n) => n.title || (n.body ? n.body.replace(/\s+/g, ' ').slice(0, 80) : 'có ảnh mới');
 const newsDto = (n, uid) => ({
   hearts: newsHearts(n.id), hearted: !!db.prepare('SELECT 1 FROM news_hearts WHERE news_id = ? AND user_id = ?').get(n.id, uid),
   id: n.id, title: n.title, body: n.body, imageUrl: n.image_url, pinned: !!n.pinned, edited: !!n.edited,
@@ -1336,15 +1338,15 @@ api.post('/news/:id/read', wrap((req, res) => {
 
 api.post('/admin/news', adminOnly, wrap((req, res) => {
   const title = str(req.body.title, 150), body = str(req.body.body, 5000);
-  if (!title || !body) throw bad('Cần có tiêu đề và nội dung');
   const img = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
+  if (!title && !body && !img) throw bad('Hãy nhập tiêu đề, nội dung hoặc chọn ảnh'); // tiêu đề và nội dung đều không bắt buộc
   const pinned = req.body.pinned ? 1 : 0;
   const r = db.prepare('INSERT INTO news (title, body, image_url, pinned, author_id, created_at) VALUES (?,?,?,?,?,?)').run(title, body, img, pinned, req.user.id, now());
   const n = db.prepare('SELECT * FROM news WHERE id = ?').get(r.lastInsertRowid);
   const recipients = db.prepare("SELECT id FROM users WHERE status='active' AND news_push=1 AND verified=1").all();
   for (const u of recipients) {
-    hub.send(u.id, { type: 'news', news: { id: n.id, title: n.title } });
-    if (u.id !== req.user.id) pushOnly(u.id, 'news', { body: `Bản tin mới: ${n.title}`, url: '/#/news', tag: `news-${n.id}` });
+    hub.send(u.id, { type: 'news', news: { id: n.id, title: newsLabel(n) } });
+    if (u.id !== req.user.id) pushOnly(u.id, 'news', { body: `Bản tin mới: ${newsLabel(n)}`, url: '/#/news', tag: `news-${n.id}` });
   }
   hub.sendMany(db.prepare("SELECT id FROM users WHERE status='active' AND news_push=0").all().map((u) => u.id), { type: 'news_silent' });
   res.status(201).json({ news: newsDto(n, req.user.id) });
@@ -1355,9 +1357,9 @@ api.patch('/admin/news/:id', adminOnly, wrap((req, res) => {
   const b = req.body;
   const title = b.title !== undefined ? str(b.title, 150) : n.title;
   const body = b.body !== undefined ? str(b.body, 5000) : n.body;
-  if (!title || !body) throw bad('Cần có tiêu đề và nội dung');
   // imageUrl: undefined = giữ nguyên, null/'' = gỡ ảnh, chuỗi = ảnh mới
   const img = b.imageUrl === undefined ? n.image_url : b.imageUrl ? checkUploadUrl(b.imageUrl) : null;
+  if (!title && !body && !img) throw bad('Bản tin cần có tiêu đề, nội dung hoặc ảnh');
   const contentChanged = title !== n.title || body !== n.body || img !== n.image_url;
   db.prepare('UPDATE news SET title=?, body=?, image_url=?, pinned=?, edited=? WHERE id=?').run(title, body, img, b.pinned !== undefined ? (b.pinned ? 1 : 0) : n.pinned, contentChanged ? 1 : n.edited, n.id);
   res.json({ news: newsDto(db.prepare('SELECT * FROM news WHERE id = ?').get(n.id), req.user.id) });

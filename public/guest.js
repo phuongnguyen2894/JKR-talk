@@ -126,8 +126,8 @@ async function renderGuestNews(view) {
     ${cta()}
     <div class="list">${news.map((n) => `<article class="card col">
       <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
-      <h2 style="font-size:18px">${esc(n.title)}</h2>
-      <p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>
+      ${n.title ? `<h2 style="font-size:18px">${esc(n.title)}</h2>` : ''}
+      ${n.body ? `<p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>` : ''}
       ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy" decoding="async">` : ''}
       <div class="row" style="gap:4px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${n.hearts} tim">${icon('heart', 15)}<span class="hc">${n.hearts || ''}</span></button></div>
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;

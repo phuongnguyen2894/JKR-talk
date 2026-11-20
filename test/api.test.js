@@ -676,3 +676,18 @@ test('bản tin: người dùng thả tim / bỏ tim; khách thấy số tim; x�
   await call('DELETE', `/admin/news/${n.id}`, {}, adm.token);
   assert.equal((await call('POST', `/news/${n.id}/heart`, {}, u.token)).status, 404);
 });
+
+test('bản tin: tiêu đề và nội dung không bắt buộc (cần ít nhất một trong tiêu đề, nội dung, ảnh)', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  assert.equal((await call('POST', '/admin/news', { title: '', body: '' }, adm.token)).status, 400);
+  const onlyTitle = await call('POST', '/admin/news', { title: 'Chỉ có tiêu đề' }, adm.token);
+  assert.equal(onlyTitle.status, 201);
+  const onlyBody = await call('POST', '/admin/news', { body: 'Chỉ có nội dung' }, adm.token);
+  assert.equal(onlyBody.status, 201);
+  const list = (await call('GET', '/news', null, adm.token)).data.news;
+  assert.equal(list.find((n) => n.id === onlyTitle.data.news.id).body, '');
+  assert.equal(list.find((n) => n.id === onlyBody.data.news.id).title, '');
+  // sửa: xóa hết cả tiêu đề lẫn nội dung (không còn ảnh) thì bị từ chối; xóa một trong hai thì được
+  assert.equal((await call('PATCH', `/admin/news/${onlyTitle.data.news.id}`, { title: '' }, adm.token)).status, 400);
+  assert.equal((await call('PATCH', `/admin/news/${onlyBody.data.news.id}`, { title: 'Thêm tiêu đề', body: '' }, adm.token)).status, 200);
+});
