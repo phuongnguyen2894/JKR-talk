@@ -825,14 +825,11 @@ test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, 
   // hiện trong danh sách chủ đề, không lẫn vào Khám phá nhóm
   const list = (await call('GET', '/topics', null, u.token)).data.topics;
   assert.ok(list.some((x) => x.id === tid && x.name === 'Bàn về concert' && !x.joined && !x.canManage));
-  // người thường: xem được khi chưa tham gia, chưa chat được; tham gia + đồng ý quy tắc thì chat được
+  // người thường: xem được khi chưa tham gia; bấm Tham gia (không đồng ý quy tắc riêng) vẫn chat được
   const g = (await call('GET', `/groups/${tid}`, null, u.token)).data.group;
   assert.equal(g.type, 'topic');
   assert.equal(g.description, 'Chia sẻ cảm nhận sau concert');
-  assert.equal((await call('POST', `/groups/${tid}/messages`, { body: 'hi' }, u.token)).status, 403);
   assert.equal((await call('POST', `/groups/${tid}/join`, {}, u.token)).status, 200);
-  assert.equal((await call('POST', `/groups/${tid}/messages`, { body: 'chưa đồng ý quy tắc' }, u.token)).status, 403);
-  await call('POST', `/groups/${tid}/rules-ack`, {}, u.token);
   const m = await call('POST', `/groups/${tid}/messages`, { body: 'Concert quá đỉnh!' }, u.token);
   assert.equal(m.status, 201);
   assert.ok((await call('GET', '/groups/mine', null, u.token)).data.groups.some((x) => x.id === tid && x.type === 'topic'));
@@ -869,6 +866,17 @@ test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, 
   for (const k of ['reports', 'users', 'mods', 'admins']) assert.equal(typeof cnt.data[k], 'number');
   assert.ok(cnt.data.mods >= 1 && cnt.data.admins >= 1 && cnt.data.users >= 3);
   assert.equal((await call('GET', '/admin/counts', null, u.token)).status, 403);
+  // chủ đề: chưa tham gia vẫn chat được ngay → tự thành thành viên
+  const t3 = (await call('POST', '/topics', { name: 'Chủ đề chat ngay' }, v.token)).data.topic;
+  const w = await signup('topicWalkin', 1);
+  assert.equal((await call('GET', `/groups/${t3.id}`, null, w.token)).data.group.role, undefined);
+  const sent = await call('POST', `/groups/${t3.id}/messages`, { body: 'Chào mọi người, mình vào thẳng luôn' }, w.token);
+  assert.equal(sent.status, 201, JSON.stringify(sent.data));
+  assert.ok((await call('GET', '/groups/mine', null, w.token)).data.groups.some((g) => g.id === t3.id));
+  // nhóm công khai thường vẫn cần tham gia
+  const reg = (await call('GET', '/groups/discover?type=region', null, w.token)).data.groups.find((g) => !g.joined);
+  if (reg) assert.equal((await call('POST', `/groups/${reg.id}/messages`, { body: 'x' }, w.token)).status, 403);
+  await call('DELETE', `/topics/${t3.id}`, {}, adm.token);
   // nhóm riêng: Admin thêm bất kỳ ai (không cần kết bạn); người thường chỉ thêm được bạn bè
   const pvA = (await call('POST', '/private', { name: 'Nhóm của Admin', memberIds: [u.id] }, adm.token)).data.group;
   assert.equal((await call('GET', `/groups/${pvA.id}`, null, u.token)).data.group.members.length, 2);

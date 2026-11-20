@@ -31,7 +31,8 @@ export async function renderChat(view, gid) {
   }
   // Nhóm công khai chưa tham gia: vẫn xem được tin (chỉ đọc), muốn chat/thả tim thì bấm Tham gia
   const joined = group.role !== undefined;
-  C = { gid: group.id, group, joined, seen: new Set(), first: null, last: null, hasMore: false, replyTo: null, image: null, emoji: false };
+  // Chủ đề thảo luận: chat / thả tim ngay, không cần bấm Tham gia (máy chủ tự thêm khi tương tác lần đầu)
+  C = { gid: group.id, group, joined, open: group.type === 'topic', seen: new Set(), first: null, last: null, hasMore: false, replyTo: null, image: null, emoji: false };
   let first;
   try { first = await api('GET', `/groups/${gid}/messages?limit=40`); } catch (e) { C = null; view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">Quay lại</a></div>`; return; }
   C.hasMore = first.hasMore;
@@ -41,7 +42,7 @@ export async function renderChat(view, gid) {
   scrollBottom(true);
   if (joined) {
     markRead();
-    if (isPublic(group) && !group.rulesAck) showRules();
+    if (isPublic(group) && !C.open && !group.rulesAck) showRules();
   } else {
     // chưa có WebSocket cho người xem ngoài: làm mới nhẹ mỗi 8 giây
     const mine = C;
@@ -109,13 +110,23 @@ actions.unpin = async () => {
   try { await api('DELETE', `/groups/${C.gid}/pin`); C.group.pinned = null; redrawPin(); toast('Đã bỏ ghim'); } catch (e) { fail(e); }
 };
 
+const canAct = () => C.joined || C.open;
+// lần đầu chat / thả tim trong chủ đề → đã thành thành viên: cập nhật menu, bắt đầu nhận tin realtime
+async function becameMember() {
+  if (!C || C.joined) return;
+  C.joined = true;
+  C.group.rulesAck = true;
+  await refreshGroups().catch(() => {});
+  markRead();
+}
+
 function composerHtml() {
   const g = C.group;
-  if (!C.joined)
+  if (!canAct())
     return `<div class="notice row between wrap"><span>Bạn đang xem nhóm này ở chế độ chỉ đọc.</span><button class="btn primary sm" data-act="join" data-id="${g.id}">Tham gia nhóm</button></div>`;
   if (g.type === 'trend' && !g.canPost)
     return `<div class="notice">Chỉ admin và mod được đăng ở đây. Bạn hãy bấm vào bài, tương tác rồi thả tim cho bài đó nhé.</div>`;
-  if (isPublic(g) && !g.rulesAck)
+  if (isPublic(g) && !C.open && !g.rulesAck)
     return `<div class="notice row between wrap"><span>Hãy xác nhận đã đọc quy tắc cộng đồng để bắt đầu chat.</span><button class="btn primary sm" data-act="rules">Xem quy tắc</button></div>`;
   if (g.modMutedUntil && g.modMutedUntil > Date.now())
     return `<div class="notice">Bạn đang bị tắt tiếng trong nhóm này đến ${fmtTime(g.modMutedUntil)} ${fmtDate(g.modMutedUntil)}.</div>`;
@@ -157,6 +168,7 @@ function wireComposer() {
       C.mentionMap = {};
       C.replyTo = null; C.image = null; C.emoji = false;
       appendMsg(message);
+      becameMember();
       scrollBottom(true);
       redrawComposer();
       $('#msg').value = '';
@@ -256,16 +268,16 @@ function msgHtml(m) {
     ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
     : `${m.body ? (own ? `<div class="bubble">${linkify(m.body, mentionsOf(m))}</div>` : `<div class="text">${linkify(m.body, mentionsOf(m))}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}`;
   const rr = roleOf(m.user, m.modRole);
-  const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !C.joined ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
+  const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !canAct() ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
   const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
-  const canReply = C.joined && !(C.group.type === 'trend' && !C.group.canPost);
+  const canReply = canAct() && !(C.group.type === 'trend' && !C.group.canPost);
   const acts = m.deleted ? '' : `<div class="actions">
       <button type="button" class="link-btn more" data-act="msg-more" aria-haspopup="menu" aria-expanded="false" aria-label="Thêm thao tác">⋯</button>
       <div class="msg-menu" role="menu" hidden>
         ${canReply ? `<button type="button" role="menuitem" data-act="reply" data-id="${m.id}">Trả lời</button>` : ''}
         <button type="button" role="menuitem" data-act="fwd-msg" data-id="${m.id}">Chuyển tiếp</button>
         ${C.group.canPin ? `<button type="button" role="menuitem" data-act="pin-msg" data-id="${m.id}">${C.group.pinned?.id === m.id ? 'Bỏ ghim' : 'Ghim lên đầu nhóm'}</button>` : ''}
-        ${!own && C.joined ? `<button type="button" role="menuitem" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
+        ${!own && canAct() ? `<button type="button" role="menuitem" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
         ${canDelete(m) ? `<button type="button" role="menuitem" class="danger" data-act="del-msg" data-id="${m.id}">Xóa</button>` : ''}
       </div></div>`;
   const who = m.user.deleted
@@ -408,6 +420,7 @@ export function setHeart(btn, hearts, hearted) {
 actions.heart = async (el) => {
   const r = await api('POST', `/messages/${el.dataset.id}/heart`);
   setHeart(el, r.hearts, r.hearted);
+  becameMember();
 };
 // giờ gửi chỉ hiện khi chạm vào tin nhắn
 document.addEventListener('click', (e) => {
@@ -614,7 +627,7 @@ function infoHtml() {
       <button class="btn sm" data-act="pg-edit">Đổi tên / giới hạn</button>
       <button class="btn sm danger" data-act="pg-dissolve">Giải tán nhóm</button></section>`;
   }
-  if (!C.joined) h += `<section><button class="btn primary block" data-act="join" data-id="${g.id}">Tham gia nhóm</button></section>`;
+  if (!C.joined && !C.open) h += `<section><button class="btn primary block" data-act="join" data-id="${g.id}">Tham gia nhóm</button></section>`;
   else if (g.type !== 'dm' && g.type !== 'trend' && g.type !== 'country') h += `<section><button class="btn danger block" data-act="leave" data-id="${g.id}">Rời nhóm</button></section>`;
   if (g.type !== 'dm') h += `<section><div class="h2">Gặp vấn đề?</div><button class="btn block" data-act="report-help">Báo cáo người dùng cho ${g.type === 'private' ? 'admin nhóm' : 'admin/mod'}</button></section>`;
   else h += `<section><div class="h2">Gặp vấn đề?</div><button class="btn block" data-act="report-user" data-id="${g.peer.id}" data-gid="${g.id}">Báo cáo người này</button></section>`;

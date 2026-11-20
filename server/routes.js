@@ -467,6 +467,17 @@ api.get(
   })
 );
 
+// Chủ đề thảo luận: ai cũng chat / thả tim được, không cần bấm "Tham gia" → tự vào khi tương tác lần đầu
+// (đã đồng ý quy tắc cộng đồng lúc đăng ký; người bị mời ra khỏi chủ đề thì không tự vào lại)
+function autoJoinTopic(gid, uid) {
+  const g = getGroup(gid);
+  if (g?.type !== 'topic') return;
+  const m = getMember(gid, uid);
+  if (m) { if (!m.rules_ack) db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(gid, uid); return; }
+  if (db.prepare('SELECT 1 FROM bans WHERE group_id = ? AND user_id = ?').get(gid, uid)) return;
+  addMember(gid, uid);
+  db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(gid, uid);
+}
 function requireMember(gid, uid) {
   const g = getGroup(gid);
   if (!g) throw notFound('Không tìm thấy nhóm');
@@ -694,7 +705,8 @@ function notifyMentions(g, author, ids) {
   for (const id of ids) notify(id, 'mention', `${author.display_name} đã nhắc đến bạn trong ${where}`, { url: `/#/chat/${g.id}`, tag: `mention-${g.id}` });
 }
 api.get('/groups/:id/mention-search', wrap((req, res) => {
-  const { g } = requireMember(int(req.params.id), req.user.id);
+  const tg = getGroup(int(req.params.id));
+  const { g } = tg?.type === 'topic' ? { g: tg } : requireMember(int(req.params.id), req.user.id); // chủ đề: chưa tham gia vẫn tag được
   const q = nameKey(str(req.query.q, 30)).replace(/[%_\\]/g, '');
   const rows = db.prepare(`SELECT u.id FROM members m JOIN users u ON u.id = m.user_id
       WHERE m.group_id = ? AND u.id != ? AND u.is_super = 0 AND u.status = 'active' AND u.name_key LIKE ?
@@ -787,6 +799,7 @@ api.post(
   wrap((req, res) => {
     rateLimit(`msg:${req.user.id}`, 20, 10_000);
     const gid = int(req.params.id);
+    autoJoinTopic(gid, req.user.id);
     const { g, m } = requireMember(gid, req.user.id);
     const body = str(req.body.body, 2000);
     const imageUrl = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
@@ -863,6 +876,7 @@ api.post(
     if (sg.type === 'dm' && isBlockedEither(req.user.id, src.user_id)) throw forbidden();
     if (isBlockedEither(req.user.id, src.user_id)) throw forbidden();
     const gid = int(req.body.groupId);
+    autoJoinTopic(gid, req.user.id);
     const { g, m } = requireMember(gid, req.user.id);
     if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin và mod được đăng trong Đẩy trend');
     if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
@@ -890,6 +904,7 @@ api.post(
     rateLimit(`heart:${req.user.id}`, 60, 60_000);
     const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
     if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
+    autoJoinTopic(msg.group_id, req.user.id);
     if (getGroup(msg.group_id)?.type !== 'hot') requireMember(msg.group_id, req.user.id);
     // tin chuyển tiếp: thả tim vào tin gốc
     const root = msg.fwd_id ? db.prepare('SELECT * FROM messages WHERE id = ?').get(msg.fwd_id) : msg;
@@ -1338,7 +1353,7 @@ api.post(
       const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.body.messageId));
       if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
       g = getGroup(msg.group_id);
-      if (!getMember(g.id, req.user.id)) throw forbidden();
+      if (!getMember(g.id, req.user.id) && g.type !== 'topic') throw forbidden(); // chủ đề: ai cũng đọc nên ai cũng báo cáo được
       targetId = msg.user_id;
       msgId = msg.id;
       snapshot = { body: msg.body, image: msg.image_url };
