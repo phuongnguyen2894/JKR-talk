@@ -121,16 +121,18 @@ export async function renderNews(view) {
     <div class="list">${news.map((n) => `<article class="card col" ${n.read ? '' : 'style="border-color:var(--accent)"'}>
       <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}${n.read ? '' : '<span class="pill">Mới</span>'}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
       <h2 style="font-size:18px">${esc(n.title)}</h2>
-      <p style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</p>
+      <p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>
       ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy">` : ''}
       ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
+  view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });
   if (S.unreadNews) { api('POST', '/news/read-all').then(() => { S.unreadNews = 0; S.hooks.renderSide(); }).catch(() => {}); }
 }
 const newsForm = (v = {}) => [
   { name: 'title', label: 'Tiêu đề', value: v.title || '', required: true, max: 150 },
   { name: 'body', label: 'Nội dung', type: 'textarea', value: v.body || '', required: true, max: 5000 },
 ];
+actions['news-more'] = (el) => { const p = el.previousElementSibling; const open = p.classList.toggle('clamp'); el.textContent = open ? 'Xem thêm' : 'Thu gọn'; };
 actions['news-new'] = async () => {
   const m = openModal(`<form id="nf" class="col"><h2>Đăng bản tin</h2>
     <div class="field"><label for="nt">Tiêu đề</label><input class="input" id="nt" required maxlength="150"></div>
