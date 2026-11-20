@@ -129,7 +129,7 @@ async function renderGuestNews(view) {
 export async function routeGuest(root, r) {
   if (r.name === 'chat' && r.arg) return go(`#/g/${r.arg}`), true; // link nhóm được chia sẻ
   if (!['explore', 'g', 'hot', 'news', ''].includes(r.name)) return false;
-  if (!r.name) return go('#/explore'), true;
+  if (!r.name) return go('#/news'), true; // vào trang gốc → Bản tin
   buildGuestShell(root);
   await loadGroups();
   const app = $('#app');
