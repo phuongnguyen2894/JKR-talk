@@ -45,8 +45,8 @@ function renderSide() {
     ${S.me.role === 'admin' ? '' : `<button class="nav-item" data-act="report-bug">${icon('bug')}<span class="name">Báo lỗi</span></button>`}
     ${S.me.role === 'admin' ? nav('#/bugs', 'bugs', 'Danh sách lỗi', 'bug') : ''}
     ${isStaff() ? nav('#/admin', 'admin', S.me.role === 'admin' ? 'Quản trị' : 'Báo cáo', 'shield') : ''}
-    <a class="nav-item only-mobile" href="#/settings" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${icon('gear')}<span class="name">Cài đặt tài khoản</span></a>
     <button class="nav-item" data-act="notifs">${icon('bell')}<span class="name">Thông báo</span>${S.unreadNotif ? `<span class="badge">${S.unreadNotif}</span>` : ''}</button>
+    <a class="nav-item only-mobile" href="#/settings" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${icon('gear')}<span class="name">Cài đặt tài khoản</span></a>
     <div class="side-foot"><a class="nav-item" href="#/settings" style="min-height:48px" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${avatar(S.me)}<span class="name" style="font-weight:600">${esc(S.me.displayName)}</span>${icon('gear')}</a></div>`;
 
   const chatUnread = S.groups.reduce((n, g) => n + (g.type === 'trend' ? 0 : g.unread || 0), 0);
