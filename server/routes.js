@@ -1174,8 +1174,10 @@ api.patch('/admin/news/:id', adminOnly, wrap((req, res) => {
   const title = b.title !== undefined ? str(b.title, 150) : n.title;
   const body = b.body !== undefined ? str(b.body, 5000) : n.body;
   if (!title || !body) throw bad('Cần có tiêu đề và nội dung');
-  const contentChanged = title !== n.title || body !== n.body;
-  db.prepare('UPDATE news SET title=?, body=?, pinned=?, edited=? WHERE id=?').run(title, body, b.pinned !== undefined ? (b.pinned ? 1 : 0) : n.pinned, contentChanged ? 1 : n.edited, n.id);
+  // imageUrl: undefined = giữ nguyên, null/'' = gỡ ảnh, chuỗi = ảnh mới
+  const img = b.imageUrl === undefined ? n.image_url : b.imageUrl ? checkUploadUrl(b.imageUrl) : null;
+  const contentChanged = title !== n.title || body !== n.body || img !== n.image_url;
+  db.prepare('UPDATE news SET title=?, body=?, image_url=?, pinned=?, edited=? WHERE id=?').run(title, body, img, b.pinned !== undefined ? (b.pinned ? 1 : 0) : n.pinned, contentChanged ? 1 : n.edited, n.id);
   res.json({ news: newsDto(db.prepare('SELECT * FROM news WHERE id = ?').get(n.id), req.user.id) });
 }));
 api.delete('/admin/news/:id', adminOnly, wrap((req, res) => {

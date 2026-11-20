@@ -124,7 +124,7 @@ export async function renderNews(view) {
       <h2 style="font-size:18px">${esc(n.title)}</h2>
       <p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>
       ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy" decoding="async">` : ''}
-      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
+      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}" data-img="${esc(n.imageUrl || '')}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
   view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });
   if (S.unreadNews) { api('POST', '/news/read-all').then(() => { S.unreadNews = 0; S.hooks.renderSide(); }).catch(() => {}); }
@@ -158,9 +158,26 @@ actions['news-new'] = async () => {
   };
 };
 actions['news-edit'] = async (el) => {
-  const v = await ask({ title: 'Sửa bản tin', fields: newsForm({ title: el.dataset.title, body: el.dataset.body }), ok: 'Lưu' });
-  if (!v) return;
-  try { await api('PATCH', `/admin/news/${el.dataset.id}`, v); renderNews($('#view')); } catch (e) { fail(e); }
+  const d = el.dataset;
+  const m = openModal(`<form id="nef" class="col"><h2>Sửa bản tin</h2>
+    <div class="field"><label for="net">Tiêu đề</label><input class="input" id="net" required maxlength="150"></div>
+    <div class="field"><label for="neb">Nội dung</label><textarea class="input" id="neb" required maxlength="5000" rows="8"></textarea></div>
+    ${d.img ? `<img src="${esc(d.img)}" alt="" style="max-width:160px;border-radius:10px"><label class="check"><input type="checkbox" id="nerm"> Gỡ ảnh hiện tại</label>` : ''}
+    <div class="field"><label for="nei">${d.img ? 'Thay bằng ảnh khác' : 'Thêm ảnh'} (không bắt buộc)</label><input id="nei" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
+    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Lưu</button></div></form>`);
+  $('#net').value = d.title; $('#neb').value = d.body;
+  $('[data-close]', m).onclick = closeModal;
+  $('#nef').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const patch = { title: $('#net').value, body: $('#neb').value };
+      const f = $('#nei').files[0];
+      if (f) patch.imageUrl = (await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url;
+      else if ($('#nerm')?.checked) patch.imageUrl = null;
+      await api('PATCH', `/admin/news/${d.id}`, patch);
+      closeModal(); renderNews($('#view'));
+    } catch (er) { fail(er); }
+  };
 };
 actions['news-pin'] = async (el) => { try { await api('PATCH', `/admin/news/${el.dataset.id}`, { pinned: el.dataset.pinned !== '1' }); renderNews($('#view')); } catch (e) { fail(e); } };
 actions['news-del'] = async (el) => {
