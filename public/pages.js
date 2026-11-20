@@ -312,9 +312,9 @@ async function adminUsers(body) {
   const load = async () => {
     const { users } = await api('GET', `/admin/users?q=${encodeURIComponent($('#uq').value)}`);
     $('#ul').innerHTML = users.map((u) => `<div class="card">${avatar(u)}<div class="grow"><b>${esc(u.displayName)}</b> ${u.role === 'admin' ? `<span class="pill">${u.isSuper ? 'Admin hệ thống' : 'Admin'}</span>` : ''}${u.status === 'locked' ? '<span class="pill warn">Đã khóa</span>' : ''}<div class="tiny muted">${esc(u.email)} · ${esc(u.location?.province || '')}</div></div>
-      ${S.me.isSuper && u.role !== 'admin' && u.status === 'active' ? `<button class="btn sm" data-act="grant-admin" data-id="${u.id}" data-name="${esc(u.displayName)}">Trao quyền Admin</button>` : ''}
+      <div class="user-acts">${S.me.isSuper && u.role !== 'admin' && u.status === 'active' ? `<button class="btn sm" data-act="grant-admin" data-id="${u.id}" data-name="${esc(u.displayName)}">Trao quyền Admin</button>` : ''}
       ${u.role === 'admin' && !(S.me.isSuper && !u.isSuper) ? '' : `<button class="btn sm" data-act="grant-mod" data-id="${u.id}" data-name="${esc(u.displayName)}">Trao quyền mod</button>
-      ${u.status === 'locked' ? `<button class="btn sm" data-act="unlock" data-id="${u.id}">Mở khóa</button>` : `<button class="btn sm danger" data-act="lock" data-id="${u.id}">Khóa</button>`}`}</div>`).join('') || '<p class="muted">Không tìm thấy.</p>';
+      ${u.status === 'locked' ? `<button class="btn sm" data-act="unlock" data-id="${u.id}">Mở khóa</button>` : `<button class="btn sm danger" data-act="lock" data-id="${u.id}">Khóa</button>`}`}</div></div>`).join('') || '<p class="muted">Không tìm thấy.</p>';
   };
   let t; $('#uq').oninput = () => { clearTimeout(t); t = setTimeout(() => load().catch(fail), 250); };
   await load();
