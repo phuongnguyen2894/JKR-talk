@@ -656,3 +656,23 @@ test('Chủ đề nóng: Admin đăng bài lên đầu trang; người thường
   assert.equal((await call('DELETE', `/messages/${id}`, {}, adm.token)).status, 200);
   assert.equal((await call('GET', '/hot', null, u.token)).data.pinned.some((m) => m.id === id), false);
 });
+
+test('bản tin: người dùng thả tim / bỏ tim; khách thấy số tim; xóa bản tin xóa luôn tim', async () => {
+  const u = await signup('newsheartU', 1);
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const n = (await call('POST', '/admin/news', { title: 'Tin tim', body: 'nội dung' }, adm.token)).data.news;
+  assert.equal(n.hearts, 0);
+  assert.equal((await fetch(BASE + `/news/${n.id}/heart`, { method: 'POST' })).status, 401);
+  let r = await call('POST', `/news/${n.id}/heart`, {}, u.token);
+  assert.deepEqual([r.status, r.data.hearts, r.data.hearted], [200, 1, true]);
+  r = await call('POST', `/news/${n.id}/heart`, {}, adm.token); // Admin cũng thả tim được
+  assert.equal(r.data.hearts, 2);
+  const mine = (await call('GET', '/news', null, u.token)).data.news.find((x) => x.id === n.id);
+  assert.deepEqual([mine.hearts, mine.hearted], [2, true]);
+  assert.equal((await (await fetch(BASE + '/public/news')).json()).news.find((x) => x.id === n.id).hearts, 2);
+  r = await call('POST', `/news/${n.id}/heart`, {}, u.token); // bấm lại = bỏ tim
+  assert.deepEqual([r.data.hearts, r.data.hearted], [1, false]);
+  assert.equal((await call('POST', '/news/99999/heart', {}, u.token)).status, 404);
+  await call('DELETE', `/admin/news/${n.id}`, {}, adm.token);
+  assert.equal((await call('POST', `/news/${n.id}/heart`, {}, u.token)).status, 404);
+});

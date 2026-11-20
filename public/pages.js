@@ -122,6 +122,7 @@ export async function renderNews(view) {
       <h2 style="font-size:18px">${esc(n.title)}</h2>
       <p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>
       ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy" decoding="async">` : ''}
+      <div class="row" style="gap:4px"><button type="button" class="heart ${n.hearted ? 'on' : ''}" data-act="news-heart" data-id="${n.id}" aria-pressed="${n.hearted}" aria-label="Thả tim, hiện có ${n.hearts} tim">${icon('heart', 15, n.hearted ? 'fill="currentColor"' : '')}<span class="hc">${n.hearts || ''}</span></button></div>
       ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}" data-img="${esc(n.imageUrl || '')}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
   view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });
@@ -131,6 +132,13 @@ const newsForm = (v = {}) => [
   { name: 'title', label: 'Tiêu đề', value: v.title || '', required: true, max: 150 },
   { name: 'body', label: 'Nội dung', type: 'textarea', value: v.body || '', required: true, max: 5000 },
 ];
+actions['news-heart'] = async (el) => {
+  const r = await api('POST', `/news/${el.dataset.id}/heart`);
+  el.classList.toggle('on', r.hearted);
+  el.setAttribute('aria-pressed', r.hearted);
+  el.innerHTML = icon('heart', 15, r.hearted ? 'fill="currentColor"' : '') + `<span class="hc">${r.hearts || ''}</span>`;
+  el.setAttribute('aria-label', `Thả tim, hiện có ${r.hearts} tim`);
+};
 actions['news-more'] = (el) => { const p = el.previousElementSibling; const open = p.classList.toggle('clamp'); el.textContent = open ? 'Xem thêm' : 'Thu gọn'; };
 actions['news-new'] = async () => {
   const m = openModal(`<form id="nf" class="col"><h2>Đăng bản tin</h2>

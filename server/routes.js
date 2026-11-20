@@ -224,7 +224,7 @@ api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
 }));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
-  res.json({ news: rows.map((n) => ({ id: n.id, title: n.title, body: n.body, imageUrl: n.image_url, pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at })) });
+  res.json({ news: rows.map((n) => ({ id: n.id, title: n.title, body: n.body, imageUrl: n.image_url, pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at, hearts: newsHearts(n.id) })) });
 }));
 
 // Mọi route bên dưới cần đăng nhập
@@ -1294,7 +1294,11 @@ api.post('/notifications/read', wrap((req, res) => {
 // ============================================================================
 // Bản tin
 // ============================================================================
+// Tim cho bản tin (bảng riêng, không tính vào Chủ đề nóng)
+db.exec('CREATE TABLE IF NOT EXISTS news_hearts (news_id INTEGER NOT NULL, user_id INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (news_id, user_id))');
+const newsHearts = (id) => db.prepare('SELECT COUNT(*) c FROM news_hearts WHERE news_id = ?').get(id).c;
 const newsDto = (n, uid) => ({
+  hearts: newsHearts(n.id), hearted: !!db.prepare('SELECT 1 FROM news_hearts WHERE news_id = ? AND user_id = ?').get(n.id, uid),
   id: n.id, title: n.title, body: n.body, imageUrl: n.image_url, pinned: !!n.pinned, edited: !!n.edited,
   createdAt: n.created_at, read: !!db.prepare('SELECT 1 FROM news_reads WHERE user_id=? AND news_id=?').get(uid, n.id),
 });
@@ -1358,7 +1362,17 @@ api.patch('/admin/news/:id', adminOnly, wrap((req, res) => {
   db.prepare('UPDATE news SET title=?, body=?, image_url=?, pinned=?, edited=? WHERE id=?').run(title, body, img, b.pinned !== undefined ? (b.pinned ? 1 : 0) : n.pinned, contentChanged ? 1 : n.edited, n.id);
   res.json({ news: newsDto(db.prepare('SELECT * FROM news WHERE id = ?').get(n.id), req.user.id) });
 }));
+api.post('/news/:id/heart', wrap((req, res) => {
+  rateLimit(`nheart:${req.user.id}`, 60, 60_000);
+  const n = db.prepare('SELECT id FROM news WHERE id = ?').get(int(req.params.id));
+  if (!n) throw notFound('Bản tin không tồn tại');
+  const had = db.prepare('SELECT 1 FROM news_hearts WHERE news_id = ? AND user_id = ?').get(n.id, req.user.id);
+  if (had) db.prepare('DELETE FROM news_hearts WHERE news_id = ? AND user_id = ?').run(n.id, req.user.id);
+  else db.prepare('INSERT INTO news_hearts (news_id, user_id, created_at) VALUES (?,?,?)').run(n.id, req.user.id, now());
+  res.json({ hearts: newsHearts(n.id), hearted: !had });
+}));
 api.delete('/admin/news/:id', adminOnly, wrap((req, res) => {
+  db.prepare('DELETE FROM news_hearts WHERE news_id = ?').run(int(req.params.id));
   db.prepare('DELETE FROM news WHERE id = ?').run(int(req.params.id));
   db.prepare('DELETE FROM news_reads WHERE news_id = ?').run(int(req.params.id));
   res.json({ ok: true });
