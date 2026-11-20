@@ -15,7 +15,8 @@ export function renderLogin(root, query) {
       <div class="field"><label for="pw">Mật khẩu</label><input class="input" id="pw" type="password" required autocomplete="current-password"></div>
       <button class="btn primary block" style="min-height:52px;font-size:16px;border-radius:14px">Đăng nhập</button>
     </form>
-    <p class="small muted">Chưa có tài khoản? <a href="#/register" style="color:var(--accent);font-weight:600">Tạo tài khoản</a></p></div></div>`;
+    <p class="small muted">Chưa có tài khoản? <a href="#/register" style="color:var(--accent);font-weight:600">Tạo tài khoản</a></p>
+    <p class="small muted"><a href="#/explore" style="color:var(--accent);font-weight:600">Xem trước không cần đăng ký →</a></p></div></div>`;
   $('#lf').onsubmit = async (e) => {
     e.preventDefault();
     try {

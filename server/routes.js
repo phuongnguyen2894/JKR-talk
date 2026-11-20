@@ -138,6 +138,44 @@ api.post(
   })
 );
 
+// ============================================================================
+// Khách chưa đăng ký: chỉ đọc nhóm công khai, Đẩy trend, Chủ đề nóng, Bản tin
+// ============================================================================
+const GUEST_TYPES = ['trend', 'country', 'region', 'province'];
+const GUEST_MSG_LIMIT = 30;
+const guestLimit = (req, _res, next) => { rateLimit(`guest:${req.ip}`, 120, 60_000); next(); };
+// tin cho khách: chỉ tên + ảnh đại diện người đăng, không có id/online/vị trí
+function guestMsg(m, extra = {}) {
+  const d = messageDto(m, null);
+  return {
+    id: d.id, groupId: d.groupId, body: d.body, imageUrl: d.imageUrl, preview: d.preview, fwd: d.fwd,
+    hearts: extra.hearts ?? d.hearts, createdAt: d.createdAt, modRole: d.modRole,
+    user: { displayName: d.user.displayName, avatarColor: d.user.avatarColor, avatarUrl: d.user.avatarUrl, deleted: d.user.deleted },
+    reply: d.reply && !d.reply.deleted ? { displayName: d.reply.displayName, body: d.reply.body, hasImage: d.reply.hasImage } : null,
+    ...('groupName' in extra ? { groupName: extra.groupName } : {}),
+  };
+}
+api.get('/public/groups', guestLimit, wrap((_req, res) => {
+  const rows = db.prepare(`SELECT id, type, name FROM groups WHERE type IN ('trend','country','region','province')`).all();
+  const order = { trend: 0, country: 1, region: 2, province: 3 };
+  rows.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name, 'vi'));
+  res.json({ groups: rows });
+}));
+api.get('/public/groups/:id', guestLimit, wrap((req, res) => {
+  const g = getGroup(int(req.params.id));
+  if (!g || !GUEST_TYPES.includes(g.type)) throw notFound('Không tìm thấy nhóm công khai');
+  const rows = db.prepare('SELECT * FROM messages WHERE group_id = ? AND deleted = 0 ORDER BY id DESC LIMIT ?').all(g.id, GUEST_MSG_LIMIT);
+  res.json({ group: { id: g.id, type: g.type, name: g.name }, messages: rows.reverse().map((m) => guestMsg(m)), limit: GUEST_MSG_LIMIT });
+}));
+api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
+  const rows = await hotRows(null, null, false); // khách không kích hoạt tải xem trước từ trang ngoài
+  res.json({ items: rows.map((m) => guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name })) });
+}));
+api.get('/public/news', guestLimit, wrap((_req, res) => {
+  const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
+  res.json({ news: rows.map((n) => ({ id: n.id, title: n.title, body: n.body, imageUrl: n.image_url, pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at })) });
+}));
+
 // Mọi route bên dưới cần đăng nhập
 api.use(auth);
 
@@ -577,10 +615,7 @@ function dedupeHot() {
   const seen = new Set();
   return (m) => { const k = hotKey(m); if (seen.has(k)) return false; seen.add(k); return true; };
 }
-api.get(
-  '/hot',
-  wrap(async (req, res) => {
-    const scope = ['country', 'region', 'province'].includes(req.query.scope) ? req.query.scope : null;
+async function hotRows(viewerId, scope, backfill = true) {
     const types = scope ? [scope] : ['trend', 'country', 'region', 'province'];
     const rows = db
       .prepare(
@@ -591,17 +626,24 @@ api.get(
          GROUP BY m.id ORDER BY hc DESC, m.id DESC LIMIT ?`
       )
       .all(now() - DAY, ...types, HOT_LIMIT * 4) // lấy dư để còn lọc tin của người bị chặn và tin trùng
-      .filter((m) => !isBlockedEither(req.user.id, m.user_id))
+      .filter((m) => !viewerId || !isBlockedEither(viewerId, m.user_id))
       .filter(dedupeHot())
       .slice(0, HOT_LIMIT);
     // tin cũ chưa có xem trước: lấy bù một lần (lưu '0' nếu không có để khỏi thử lại)
-    await Promise.all(
+    if (backfill) await Promise.all(
       rows.filter((m) => m.preview == null && firstUrl(m.body)).slice(0, 10).map(async (m) => {
         const p = await buildPreview(firstUrl(m.body), UPLOAD_DIR).catch(() => null);
         m.preview = p ? JSON.stringify(p) : '0';
         db.prepare('UPDATE messages SET preview = ? WHERE id = ?').run(m.preview, m.id);
       })
     );
+    return rows;
+}
+api.get(
+  '/hot',
+  wrap(async (req, res) => {
+    const scope = ['country', 'region', 'province'].includes(req.query.scope) ? req.query.scope : null;
+    const rows = await hotRows(req.user.id, scope);
     res.json({
       items: rows.map((m) => ({ ...messageDto(m, req.user.id), hearts: m.hc, groupName: getGroup(m.group_id).name })),
     });

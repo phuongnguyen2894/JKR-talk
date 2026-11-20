@@ -469,3 +469,31 @@ test('phân quyền: chỉ Admin hệ thống phong Admin; Admin không phong Ad
   assert.equal((await call('DELETE', `/admin/admins/${a.id}`, {}, admin.token)).status, 200);
   assert.equal((await call('POST', '/admin/mods', { groupId: vn.id, userId: t2.id }, a.token)).status, 403);
 });
+
+test('khách chưa đăng ký: chỉ đọc nhóm công khai, Đẩy trend, Chủ đề nóng, Bản tin; không ghi được', async () => {
+  const pub = async (u) => { const r = await fetch(BASE + u); return { status: r.status, data: await r.json().catch(() => null) }; };
+  const gs = await pub('/public/groups');
+  assert.equal(gs.status, 200);
+  assert.ok(gs.data.groups.every((g) => ['trend', 'country', 'region', 'province'].includes(g.type)));
+  const vn = gs.data.groups.find((g) => g.type === 'country');
+  const u = await signup('khachxem', 1);
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'tin cho khách' }, u.token);
+  const g = await pub(`/public/groups/${vn.id}`);
+  assert.equal(g.status, 200);
+  const m = g.data.messages.find((x) => x.body === 'tin cho khách');
+  assert.ok(m);
+  assert.equal(m.user.displayName, 'khachxem');
+  assert.equal(m.user.id, undefined); // không lộ id người dùng
+  assert.ok(g.data.messages.length <= 30);
+  // nhóm riêng: khách không xem được
+  const o = await signup('riengkhach', 1);
+  const pg = await call('POST', '/private', { name: 'kín khách' }, o.token);
+  assert.equal((await pub(`/public/groups/${pg.data.group.id}`)).status, 404);
+  assert.equal((await pub('/public/hot')).status, 200);
+  assert.equal((await pub('/public/news')).status, 200);
+  // không gọi được API cần đăng nhập
+  assert.equal((await pub(`/groups/${vn.id}/messages`)).status, 401);
+  const w = await fetch(BASE + `/groups/${vn.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: 'x' }) });
+  assert.equal(w.status, 401);
+});

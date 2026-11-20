@@ -2,6 +2,7 @@ import { $, $$, esc, S, api, go, icon, avatar, fmtDateTime, toast, fail, openMod
 import { renderChat, onSocket } from './chat.js';
 import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
+import { routeGuest } from './guest.js';
 import { renderBugs } from './bugs.js';
 import { renderLogin, renderRegister, renderDiscover, renderNews, renderSettings, renderAdmin } from './pages.js';
 
@@ -71,9 +72,12 @@ async function route() {
   closeModal();
   if (!S.token || !S.me) {
     if (r.name === 'register') return renderRegister(root);
-    if (r.name !== 'login') return go('#/login');
-    return renderLogin(root, r.query);
+    if (r.name === 'login') return renderLogin(root, r.query);
+    if (await routeGuest(root, r)) return; // khách: xem nhóm công khai, Chủ đề nóng, Bản tin
+    return go('#/login');
   }
+  if (r.name === 'explore' || r.name === 'g') return go(r.name === 'g' && r.arg ? `#/chat/${r.arg}` : '#/chat');
+  if ($('#app.guest')) root.innerHTML = '';
   if (r.name === 'login' || r.name === 'register' || !r.name) return go('#/chat');
   if (!$('#app')) buildShell();
   const view = $('#view');
