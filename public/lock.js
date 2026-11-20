@@ -18,11 +18,17 @@
   if (vv) {
     const root = document.documentElement;
     let wasKb = false;
+    // iOS 26: thanh nổi "lên / xuống / xong" của bàn phím nằm đè lên trang và không được tính vào visualViewport,
+    // nên chừa thêm chỗ để nó không che ô nhập (các bản iOS cũ: thanh này đã nằm trong vùng bàn phím)
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const safari = Number((ua.match(/Version\/(\d+)/) || [])[1] || 0);
+    const kbExtra = isIOS && safari >= 26 ? 60 : 0;
     const fit = () => {
       const kb = window.innerHeight - vv.height > 120;
       root.classList.toggle('kb', kb);
       if (kb) {
-        root.style.setProperty('--app-h', Math.round(vv.height) + 'px');
+        root.style.setProperty('--app-h', Math.round(vv.height - kbExtra) + 'px');
         root.style.setProperty('--app-top', Math.round(vv.offsetTop) + 'px');
         if (!wasKb) setTimeout(() => { const m = document.getElementById('msgs'); if (m) m.scrollTop = m.scrollHeight; }, 50); // giữ tin mới nhất trong tầm nhìn
       } else {
