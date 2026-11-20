@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl } from './core.js';
 
 // ===========================================================================
 // Đăng nhập / đăng ký (render vào #root, ngoài shell)
@@ -122,7 +122,7 @@ export async function renderNews(view) {
       <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}${n.read ? '' : '<span class="pill">Mới</span>'}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
       <h2 style="font-size:18px">${esc(n.title)}</h2>
       <p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>
-      ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy">` : ''}
+      ${n.imageUrl ? `<img src="${esc(n.imageUrl)}" alt="" style="max-width:100%;border-radius:12px" loading="lazy" decoding="async">` : ''}
       ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
     </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
   view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });
@@ -148,8 +148,7 @@ actions['news-new'] = async () => {
       let imageUrl;
       const f = $('#ni').files[0];
       if (f) {
-        if (f.size > 2 * 1024 * 1024) return toast('Ảnh quá lớn (tối đa 2MB)');
-        const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+        const dataUrl = await imageToDataUrl(f);
         imageUrl = (await api('POST', '/upload', { dataUrl })).url;
       }
       await api('POST', '/admin/news', { title: $('#nt').value, body: $('#nb').value, imageUrl, pinned: $('#np').checked });
@@ -208,9 +207,7 @@ export function renderSettings(view) {
   let pendingAvatar;
   $('#avf').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    if (f.size > 2 * 1024 * 1024) return toast('Ảnh quá lớn (tối đa 2MB)');
-    const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
-    try { pendingAvatar = (await api('POST', '/upload', { dataUrl })).url; toast('Đã chọn ảnh. Bấm "Lưu hồ sơ".'); } catch (er) { fail(er); }
+    try { const dataUrl = await imageToDataUrl(f, 512); pendingAvatar = (await api('POST', '/upload', { dataUrl })).url; toast('Đã chọn ảnh. Bấm "Lưu hồ sơ".'); } catch (er) { fail(er); }
   };
   const save = async (body) => { try { const r = await api('PATCH', '/me', body); S.me = r.user; toast('Đã lưu'); S.hooks.renderSide(); return true; } catch (e) { fail(e); } };
   $('#pf').onsubmit = async (e) => {

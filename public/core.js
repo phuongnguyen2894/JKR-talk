@@ -177,3 +177,29 @@ export const mutedNow = (g) => g.muted && (g.mutedUntil === -1 || g.mutedUntil >
 
 // Bảng hành động cho các nút data-act (app.js gắn listener click toàn cục)
 export const actions = {};
+
+// Đọc ảnh và thu nhỏ trước khi tải lên (tối đa maxSide px, JPEG) để tải nhanh hơn; GIF giữ nguyên
+export async function imageToDataUrl(file, maxSide = 1600) {
+  const raw = () => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  if (file.type === 'image/gif') {
+    if (file.size > 2 * 1024 * 1024) throw new Error('Ảnh GIF quá lớn (tối đa 2MB)');
+    return raw();
+  }
+  if (file.size > 25 * 1024 * 1024) throw new Error('Ảnh quá lớn');
+  try {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    URL.revokeObjectURL(url);
+    const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    if (k === 1 && file.size < 300 * 1024) return raw();
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+    const out = c.toDataURL('image/jpeg', 0.82);
+    if (out.length * 0.75 > 2 * 1024 * 1024) return c.toDataURL('image/jpeg', 0.6);
+    return out;
+  } catch {
+    if (file.size > 2 * 1024 * 1024) throw new Error('Ảnh quá lớn (tối đa 2MB)');
+    return raw();
+  }
+}

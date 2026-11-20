@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, toast, fail, openModal, closeModal, fmtDateTime, actions } from './core.js';
+import { $, $$, esc, S, api, toast, fail, openModal, closeModal, fmtDateTime, actions, imageToDataUrl } from './core.js';
 
 const STATUS = {
   new: ['Mới', 'warn'],
@@ -27,8 +27,7 @@ actions['report-bug'] = () => {
       let screenshotUrl;
       const f = $('#bs').files[0];
       if (f) {
-        if (f.size > 2 * 1024 * 1024) throw new Error('Ảnh quá lớn (tối đa 2MB)');
-        screenshotUrl = (await api('POST', '/upload', { dataUrl: await readFile(f) })).url;
+        screenshotUrl = (await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url;
       }
       await api('POST', '/bugs', { title: $('#bt').value, description: $('#bd').value, screenshotUrl, page: `${location.hash || '#/'} (${innerWidth}x${innerHeight})` });
       closeModal();

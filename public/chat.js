@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl } from './core.js';
 
 const PUBLIC = ['country', 'region', 'province'];
 const EMOJI = ['😀','😂','🥹','😍','🥰','😭','😘','🤣','👍','🙏','👏','🔥','💜','💚','💙','💖','✨','🎉','😎','🤗','😅','🥺','😢','😡','🤔','🙌','💪','🌸','⭐','🎬','📺','🍿'];
@@ -138,9 +138,8 @@ function wireComposer() {
   $('#file').onchange = async (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    if (f.size > 2 * 1024 * 1024) return toast('Ảnh quá lớn (tối đa 2MB)');
-    const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
     try {
+      const dataUrl = await imageToDataUrl(f);
       C.image = (await api('POST', '/upload', { dataUrl })).url;
       redrawComposer();
     } catch (err) { fail(err); }
@@ -156,7 +155,7 @@ export function previewHtml(p) {
   if (!p) return '';
   return `<a class="lp" href="${esc(safeHref(p.url))}" target="_blank" rel="noopener noreferrer nofollow">
     <span class="lp-t"><b>${esc(p.title)}</b>${p.description ? `<span class="lp-d">${esc(p.description)}</span>` : ''}</span>
-    ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : ''}
+    ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" decoding="async">` : ''}
     <span class="lp-s">${esc(p.site)}${p.time ? ` · ${fmtDateTime(p.time)}` : ''}</span></a>`;
 }
 
@@ -165,7 +164,7 @@ function msgHtml(m) {
   const quote = m.reply && !m.reply.deleted ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
   const text = m.deleted
     ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
-    : `${m.body ? (own ? `<div class="bubble">${esc(m.body)}</div>` : `<div class="text">${esc(m.body)}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy">` : ''}`;
+    : `${m.body ? (own ? `<div class="bubble">${esc(m.body)}</div>` : `<div class="text">${esc(m.body)}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}`;
   const role = m.modRole ? `<span class="pill">${m.modRole === 'mod' ? 'Mod' : 'Admin'}</span>` : '';
   const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !C.joined ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
   const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';

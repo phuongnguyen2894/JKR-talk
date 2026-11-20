@@ -46,7 +46,7 @@ app.get('/healthz', (_req, res) => {
   try { db.prepare('SELECT 1').get(); res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); }
 });
 app.use('/api', api);
-app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d', index: false }));
+app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '365d', immutable: true, index: false }));
 app.use(express.static(path.join(__dirname, '..', 'public'), { setHeaders: (res, f) => { if (/.(js|html|css)$/.test(f)) res.setHeader('Cache-Control', 'no-cache'); } }));
 
 const server = http.createServer(app);
