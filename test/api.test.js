@@ -50,6 +50,11 @@ test('đăng ký: chọn Đà Nẵng -> Việt Nam, Miền Trung, Đà Nẵng', 
   const g = await call('GET', '/groups/mine', null, linh.token);
   assert.deepEqual(g.data.groups.filter((x) => x.type !== 'trend').map((x) => x.name), ['Việt Nam', 'Miền Trung', 'Đà Nẵng']);
 });
+test('đăng ký mới: tự đăng tin chào mừng ở nhóm quốc gia', async () => {
+  const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups.find((x) => x.type === 'country');
+  const h = await call('GET', `/groups/${vn.id}/messages`, null, mai.token);
+  assert.ok(h.data.messages.some((m) => m.body.includes('Chào mừng') && m.body.includes('đu LingOrm')));
+});
 test('chat: phải xác nhận quy tắc rồi mới gửi được; tin hiện trong lịch sử', async () => {
   const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups.find((x) => x.type === 'country');
   let r = await call('POST', `/groups/${vn.id}/messages`, { body: 'hi' }, mai.token);
@@ -124,7 +129,7 @@ test('report -> admin xử lý, người báo nhận thông báo, người thư�
   admin = { token: l.data.token, id: l.data.user.id };
   const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups.find((x) => x.type === 'country');
   const msgs = (await call('GET', `/groups/${vn.id}/messages`, null, mai.token)).data.messages;
-  const rp = await call('POST', '/reports', { messageId: msgs.at(-1).id, reason: 'spam' }, linh.token);
+  const rp = await call('POST', '/reports', { messageId: msgs.find((m) => m.body === 'hi').id, reason: 'spam' }, linh.token);
   assert.equal(rp.status, 201);
   const q = await call('GET', '/reports', null, admin.token);
   assert.equal(q.data.reports.length, 1);

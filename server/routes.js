@@ -102,6 +102,17 @@ api.post(
       addMember(trendGroupId(), uid); // và nhóm Đẩy trend
       return uid;
     });
+    // tin chào mừng tự động ở nhóm quốc gia (đăng bởi tài khoản Admin hệ thống)
+    try {
+      const bot = db.prepare('SELECT id FROM users WHERE is_super = 1 ORDER BY id LIMIT 1').get();
+      const home = homeGroupIds(province).map((gid) => getGroup(gid)).find((x) => x?.type === 'country');
+      if (bot && home) {
+        const body = `🎉 Chào mừng ${displayName} đã tham gia JKR talks! Bạn bắt đầu đu LingOrm từ bao giờ vậy? Kể cho mọi người nghe nhé 💜`;
+        const mr = db.prepare('INSERT INTO messages (group_id, user_id, body, created_at) VALUES (?,?,?,?)').run(home.id, bot.id, body, now());
+        const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(mr.lastInsertRowid), bot.id);
+        hub.sendMany(memberIds(home.id), { type: 'message', message: dto });
+      }
+    } catch (e) { console.error('[welcome]', e.message); }
     // không cần xác nhận email: đăng nhập luôn sau khi đăng ký
     const token = randomToken();
     db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, id, now());
