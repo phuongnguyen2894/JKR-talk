@@ -4,6 +4,7 @@ import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
 import { routeGuest } from './guest.js';
 import { renderWelcome } from './welcome.js';
+import { renderTopics } from './topics.js';
 import { registerSW, syncPush, unsubscribeThisDevice } from './push.js';
 import { renderBugs } from './bugs.js';
 import { renderLogin, renderRegister, renderDiscover, renderNews, renderSettings, renderAdmin, renderTools } from './pages.js';
@@ -19,7 +20,7 @@ function buildShell() {
     <nav class="tabs-bar" id="tabs" aria-label="Điều hướng"></nav></div>`;
 }
 
-const GROUP_ICON = { country: 'flag', region: 'grid', province: 'pin', private: 'lock', dm: 'chat' };
+const GROUP_ICON = { country: 'flag', region: 'grid', province: 'pin', private: 'lock', dm: 'chat', topic: 'chat' };
 function renderSide() {
   const side = $('#side');
   if (!side || !S.me) return;
@@ -35,7 +36,10 @@ function renderSide() {
   };
   const nav = (hash, name, label, ic, badge) => `<a class="nav-item" href="${hash}" ${r.name === name ? 'aria-current="page"' : ''}>${icon(ic)}<span class="name">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
   side.innerHTML = `<div class="brand"><span class="logo">JK</span>JKR talks</div><h1 class="mob-title">Nhóm của bạn</h1>
-    ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}${sec('Nhóm riêng', 'private')}
+    ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}
+    <div class="sec">Chủ đề thảo luận</div>${S.groups.filter((g) => g.type === 'topic').map(item).join('')}
+    ${nav('#/topics', 'topics', 'Tất cả chủ đề', 'search')}
+    ${sec('Nhóm riêng', 'private')}
     <button class="nav-item accent" data-act="create-private">${icon('plus')}<span class="name">Tạo nhóm riêng</span></button>
     ${sec('Tin nhắn riêng', 'dm')}
     <div class="sec">Khác</div>
@@ -99,6 +103,7 @@ async function route() {
         }
         return await renderChat(view, Number(r.arg));
       case 'welcome': return await renderWelcome(view, Number(r.arg));
+      case 'topics': return await renderTopics(view);
       case 'tools': return renderTools(view);
       case 'discover': return await renderDiscover(view);
       case 'friends': return await renderFriends(view);

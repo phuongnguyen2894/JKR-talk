@@ -4,7 +4,7 @@ import { previewHtml } from './chat.js';
 import { renderTools } from './pages.js';
 
 const G = { groups: null, trendId: 0 };
-const GROUP_ICON = { country: 'flag', region: 'grid', province: 'pin' };
+const GROUP_ICON = { country: 'flag', region: 'grid', province: 'pin', topic: 'chat' };
 const wide = () => matchMedia('(min-width: 900px)').matches;
 
 async function loadGroups() {
@@ -44,7 +44,7 @@ function renderGuestSide(r) {
     ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame')}
     ${nav('#/news', 'news', 'Bản tin', 'news')}
     ${nav('#/tools', 'tools', 'Công cụ', 'tool')}
-    ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}`;
+    ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}${sec('Chủ đề thảo luận', 'topic')}`;
   const tab = (hash, on, label, ic) => `<a href="${hash}" ${on ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}</a>`;
   $('#tabs').innerHTML =
     tab('#/explore', r.name === 'explore' || (r.name === 'g' && activeId !== G.trendId), 'Nhóm', 'chat') +
@@ -77,7 +77,7 @@ async function renderGuestGroup(view, gid) {
     if (k !== last) { list += `<div class="day">${fmtDate(m.createdAt)}</div>`; last = k; }
     list += msgHtml(m);
   }
-  const sub = g.type === 'trend' ? 'Nơi đăng các bài cần tương tác' : 'Nhóm công khai';
+  const sub = g.type === 'trend' ? 'Nơi đăng các bài cần tương tác' : g.type === 'topic' ? 'Chủ đề thảo luận' : 'Nhóm công khai';
   view.innerHTML = `
   <div class="chat-head">
     <a class="icon-btn back" href="#/explore" aria-label="Quay lại danh sách">${icon('back', 22)}</a>

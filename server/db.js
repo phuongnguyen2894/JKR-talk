@@ -202,6 +202,7 @@ try { db.exec('ALTER TABLE messages ADD COLUMN fwd TEXT'); } catch { /* đã có
 try { db.exec('ALTER TABLE messages ADD COLUMN fwd_id INTEGER'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN mentions TEXT'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN mention_all INTEGER NOT NULL DEFAULT 0'); } catch { /* đã có cột */ } // admin tag @everyone
+try { db.exec('ALTER TABLE groups ADD COLUMN description TEXT'); } catch { /* đã có cột */ } // mô tả của chủ đề thảo luận
 try { db.exec('ALTER TABLE groups ADD COLUMN pinned_message_id INTEGER'); } catch { /* đã có cột */ } // tin được ghim lên đầu nhóm
 // Bình luận cho bản tin (kind='news') và tin nhắn ở Chủ đề nóng (kind='msg')
 db.exec(`CREATE TABLE IF NOT EXISTS comments (

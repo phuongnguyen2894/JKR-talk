@@ -438,3 +438,11 @@ html.kb .tabs-bar, html.kb .app .tabs-bar { display: none !important; }
 .cmt-form { display: flex; gap: 8px; }
 .cmt-form .input { flex: 1; min-width: 0; }
 .row:has(> .cmt) { flex-wrap: wrap; }
+
+/* Chủ đề thảo luận */
+.topic-card { gap: 10px; }
+.topic-link { display: flex; gap: 12px; align-items: flex-start; text-decoration: none; color: inherit; }
+.topic-link .grow { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.topic-name { font-size: 16px; }
+.topic-desc { overflow-wrap: anywhere; }
+.topic-ic { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 12px; background: var(--soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }

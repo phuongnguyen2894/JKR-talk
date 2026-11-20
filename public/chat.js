@@ -1,6 +1,6 @@
 import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, roleOf, avatarR, roleClass, roleSr } from './core.js';
 
-const PUBLIC = ['country', 'region', 'province'];
+const PUBLIC = ['country', 'region', 'province', 'topic'];
 const EMOJI = ['😀','😂','🥹','😍','🥰','😭','😘','🤣','👍','🙏','👏','🔥','💜','💚','💙','💖','✨','🎉','😎','🤗','😅','🥺','😢','😡','🤔','🙌','💪','🌸','⭐','🎬','📺','🍿'];
 const RULES = [
   'Ở các group chung chỉ nói về LingOrm và JKR.',
@@ -54,6 +54,7 @@ export async function renderChat(view, gid) {
 
 function subtitle(g) {
   if (g.type === 'trend') return `Nơi đăng các bài cần tương tác · chỉ admin/mod được đăng · ${g.memberCount} thành viên`;
+  if (g.type === 'topic') return `Chủ đề thảo luận${g.description ? ` · ${esc(g.description)}` : ''} · ${g.memberCount} thành viên`;
   if (isPublic(g)) return `Nhóm công khai · vào tự do, không cần duyệt · ${g.memberCount} thành viên`;
   if (g.type === 'private') return `Nhóm riêng · ${g.memberCount}/${g.memberLimit} thành viên`;
   const p = g.peer;

@@ -191,7 +191,7 @@ api.post(
 // ============================================================================
 // Khách chưa đăng ký: chỉ đọc nhóm công khai, Đẩy trend, Chủ đề nóng, Bản tin
 // ============================================================================
-const GUEST_TYPES = ['trend', 'country', 'region', 'province'];
+const GUEST_TYPES = ['trend', 'country', 'region', 'province', 'topic'];
 const GUEST_MSG_LIMIT = 30;
 const guestLimit = (req, _res, next) => { rateLimit(`guest:${req.ip}`, 120, 60_000); next(); };
 // tin cho khách: chỉ tên + ảnh đại diện người đăng, không có id/online/vị trí
@@ -206,8 +206,8 @@ function guestMsg(m, extra = {}) {
   };
 }
 api.get('/public/groups', guestLimit, wrap((_req, res) => {
-  const rows = db.prepare(`SELECT id, type, name FROM groups WHERE type IN ('trend','country','region','province')`).all();
-  const order = { trend: 0, country: 1, region: 2, province: 3 };
+  const rows = db.prepare(`SELECT id, type, name FROM groups WHERE type IN ('trend','country','region','province','topic')`).all();
+  const order = { trend: 0, country: 1, region: 2, province: 3, topic: 4 };
   rows.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name, 'vi'));
   res.json({ groups: rows });
 }));
@@ -373,7 +373,7 @@ api.post(
 // ============================================================================
 // Group
 // ============================================================================
-const PUBLIC_TYPES = ['country', 'region', 'province'];
+const PUBLIC_TYPES = ['country', 'region', 'province', 'topic']; // topic: chủ đề thảo luận do Admin/Mod tạo
 const isMuted = (m) => m.notif_muted_until === -1 || (m.notif_muted_until && m.notif_muted_until > now());
 
 function groupDto(g, uid, member) {
@@ -381,6 +381,7 @@ function groupDto(g, uid, member) {
     id: g.id, type: g.type, name: g.name, short: g.short, lang: g.lang, avatarUrl: g.avatar_url,
     memberLimit: g.member_limit, createdBy: g.created_by,
   };
+  if (g.type === 'topic') dto.description = g.description || '';
   if (member) {
     dto.role = member.role;
     dto.mutedUntil = member.notif_muted_until;
@@ -492,6 +493,67 @@ api.get(
     res.json({ group: dto });
   })
 );
+
+// ---- Chủ đề thảo luận: Admin / Mod tạo, mọi người vào bàn luận như một nhóm chat ----
+const canCreateTopic = (uid) => isSystemAdmin(uid) ||
+  !!db.prepare("SELECT 1 FROM members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ? AND m.role = 'mod' AND g.type IN ('country','region','province','topic')").get(uid);
+function topicDto(g, uid) {
+  const m = getMember(g.id, uid);
+  const last = db.prepare('SELECT MAX(created_at) t FROM messages WHERE group_id = ? AND deleted = 0').get(g.id).t;
+  return {
+    id: g.id, name: g.name, description: g.description || '', createdAt: g.created_at, lastAt: last || g.created_at,
+    memberCount: db.prepare('SELECT COUNT(*) c FROM members WHERE group_id = ?').get(g.id).c,
+    creator: g.created_by ? publicUser(getUser(g.created_by)) : null, joined: !!m,
+    canManage: g.created_by === uid || isSystemAdmin(uid),
+  };
+}
+api.get('/topics', wrap((req, res) => {
+  const rows = db.prepare("SELECT * FROM groups WHERE type = 'topic'").all();
+  const topics = rows.map((g) => topicDto(g, req.user.id)).sort((a, b) => b.lastAt - a.lastAt);
+  res.json({ topics, canCreate: canCreateTopic(req.user.id) });
+}));
+api.post('/topics', wrap((req, res) => {
+  if (!canCreateTopic(req.user.id)) throw forbidden('Chỉ Admin và Mod được tạo chủ đề');
+  rateLimit(`topic:${req.user.id}`, 10, 3600_000);
+  const name = str(req.body.name, 60), description = str(req.body.description, 300);
+  if (name.length < 2) throw bad('Tên chủ đề cần ít nhất 2 ký tự');
+  const id = tx(() => {
+    const r = db.prepare('INSERT INTO groups (type, key, name, description, created_by, created_at) VALUES (?,?,?,?,?,?)')
+      .run('topic', `topic:${req.user.id}:${now()}:${randomToken(4)}`, name, description || null, req.user.id, now());
+    const gid = Number(r.lastInsertRowid);
+    addMember(gid, req.user.id, 'mod'); // người tạo quản lý chủ đề
+    db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(gid, req.user.id);
+    return gid;
+  });
+  log(req.user.id, 'create_topic', { group: id, name });
+  res.status(201).json({ topic: topicDto(getGroup(id), req.user.id) });
+}));
+api.patch('/topics/:id', wrap((req, res) => {
+  const g = getGroup(int(req.params.id));
+  if (!g || g.type !== 'topic') throw notFound('Không tìm thấy chủ đề');
+  if (g.created_by !== req.user.id && !isSystemAdmin(req.user.id)) throw forbidden();
+  const name = req.body.name !== undefined ? str(req.body.name, 60) : g.name;
+  const description = req.body.description !== undefined ? str(req.body.description, 300) : g.description || '';
+  if (name.length < 2) throw bad('Tên chủ đề cần ít nhất 2 ký tự');
+  db.prepare('UPDATE groups SET name = ?, description = ? WHERE id = ?').run(name, description || null, g.id);
+  res.json({ topic: topicDto(getGroup(g.id), req.user.id) });
+}));
+api.delete('/topics/:id', wrap((req, res) => {
+  const g = getGroup(int(req.params.id));
+  if (!g || g.type !== 'topic') throw notFound('Không tìm thấy chủ đề');
+  if (g.created_by !== req.user.id && !isSystemAdmin(req.user.id)) throw forbidden();
+  const ids = memberIds(g.id);
+  tx(() => {
+    db.prepare("DELETE FROM comments WHERE kind = 'msg' AND target_id IN (SELECT id FROM messages WHERE group_id = ?)").run(g.id);
+    db.prepare('DELETE FROM reactions WHERE message_id IN (SELECT id FROM messages WHERE group_id = ?)').run(g.id);
+    db.prepare('DELETE FROM messages WHERE group_id = ?').run(g.id);
+    db.prepare('DELETE FROM members WHERE group_id = ?').run(g.id);
+    db.prepare('DELETE FROM groups WHERE id = ?').run(g.id);
+  });
+  log(req.user.id, 'delete_topic', { group: g.id, name: g.name });
+  for (const id of ids) if (id !== req.user.id) notify(id, 'group_dissolved', `Chủ đề "${g.name}" đã được đóng`);
+  res.json({ ok: true });
+}));
 
 // ---- ghim một tin nhắn lên đầu nhóm ----------------------------------------------
 function canPin(g, uid, m = getMember(g.id, uid)) {
@@ -864,7 +926,7 @@ api.post('/hot/posts', adminOnly, wrap((req, res) => {
 }));
 
 async function hotRows(viewerId, scope, backfill = true) {
-    const types = scope ? [scope] : ['trend', 'country', 'region', 'province'];
+    const types = scope ? [scope] : ['trend', 'country', 'region', 'province', 'topic'];
     const rows = db
       .prepare(
         `SELECT m.*, COUNT(r.user_id) AS hc FROM messages m
@@ -1303,7 +1365,7 @@ api.get('/reports', wrap((req, res) => {
     ? db.prepare('SELECT * FROM reports WHERE status = ? ORDER BY id DESC LIMIT 200').all(status)
     : db.prepare(
         `SELECT r.* FROM reports r JOIN members m ON m.group_id = r.group_id AND m.user_id = ?
-         WHERE r.status = ? AND ((r.group_type IN ('country','region','province') AND m.role='mod') OR (r.group_type='private' AND m.role='admin'))
+         WHERE r.status = ? AND ((r.group_type IN ('country','region','province','topic') AND m.role='mod') OR (r.group_type='private' AND m.role='admin'))
          ORDER BY r.id DESC LIMIT 200`
       ).all(req.user.id, status);
   res.json({ reports: rows.map((r) => reportDto(r, admin)) });
@@ -1504,7 +1566,7 @@ api.post('/admin/users/:id/unlock', adminOnly, wrap((req, res) => {
 
 // Trao / thu hồi quyền mod trong từng group công khai
 api.get('/admin/mods', adminOnly, wrap((_req, res) => {
-  const rows = db.prepare("SELECT m.group_id, m.user_id FROM members m JOIN groups g ON g.id=m.group_id WHERE m.role='mod' AND g.type IN ('country','region','province')").all();
+  const rows = db.prepare("SELECT m.group_id, m.user_id FROM members m JOIN groups g ON g.id=m.group_id WHERE m.role='mod' AND g.type IN ('country','region','province','topic')").all();
   res.json({ mods: rows.map((r) => ({ groupId: r.group_id, groupName: getGroup(r.group_id).name, user: publicUser(getUser(r.user_id)) })) });
 }));
 api.post('/admin/mods', adminOnly, wrap((req, res) => {

@@ -807,3 +807,45 @@ test('bình luận: bản tin và tin ở Chủ đề nóng; tác giả tin đư
   assert.equal((await call('DELETE', `/comments/${c1.data.comment.id}`, {}, adm.token)).status, 200);
   assert.equal((await call('GET', `/comments/news/${news.id}`, null, a.token)).data.comments.length, 0);
 });
+
+test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, chat như nhóm; người tạo/Admin sửa, đóng', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('topicUser', 1), v = await signup('topicMod', 1);
+  // người thường không tạo được
+  assert.equal((await call('GET', '/topics', null, u.token)).data.canCreate, false);
+  assert.equal((await call('POST', '/topics', { name: 'Chủ đề của user' }, u.token)).status, 403);
+  // Mod của một nhóm công khai tạo được
+  const vn = (await call('GET', '/groups/mine', null, v.token)).data.groups.find((x) => x.type === 'country');
+  await call('POST', '/admin/mods', { groupId: vn.id, userId: v.id }, adm.token);
+  assert.equal((await call('GET', '/topics', null, v.token)).data.canCreate, true);
+  assert.equal((await call('POST', '/topics', { name: 'x' }, v.token)).status, 400);
+  const t = await call('POST', '/topics', { name: 'Bàn về concert', description: 'Chia sẻ cảm nhận sau concert' }, v.token);
+  assert.equal(t.status, 201);
+  const tid = t.data.topic.id;
+  // hiện trong danh sách chủ đề, không lẫn vào Khám phá nhóm
+  const list = (await call('GET', '/topics', null, u.token)).data.topics;
+  assert.ok(list.some((x) => x.id === tid && x.name === 'Bàn về concert' && !x.joined && !x.canManage));
+  // người thường: xem được khi chưa tham gia, chưa chat được; tham gia + đồng ý quy tắc thì chat được
+  const g = (await call('GET', `/groups/${tid}`, null, u.token)).data.group;
+  assert.equal(g.type, 'topic');
+  assert.equal(g.description, 'Chia sẻ cảm nhận sau concert');
+  assert.equal((await call('POST', `/groups/${tid}/messages`, { body: 'hi' }, u.token)).status, 403);
+  assert.equal((await call('POST', `/groups/${tid}/join`, {}, u.token)).status, 200);
+  assert.equal((await call('POST', `/groups/${tid}/messages`, { body: 'chưa đồng ý quy tắc' }, u.token)).status, 403);
+  await call('POST', `/groups/${tid}/rules-ack`, {}, u.token);
+  const m = await call('POST', `/groups/${tid}/messages`, { body: 'Concert quá đỉnh!' }, u.token);
+  assert.equal(m.status, 201);
+  assert.ok((await call('GET', '/groups/mine', null, u.token)).data.groups.some((x) => x.id === tid && x.type === 'topic'));
+  // người tạo (Mod chủ đề) xóa được tin vi phạm trong chủ đề
+  assert.equal((await call('DELETE', `/messages/${m.data.message.id}`, { reason: 'thử' }, v.token)).status, 200);
+  // khách đọc được chủ đề
+  assert.ok((await (await fetch(BASE + '/public/groups')).json()).groups.some((x) => x.id === tid));
+  // sửa: người thường không được; người tạo được
+  assert.equal((await call('PATCH', `/topics/${tid}`, { name: 'Đổi tên' }, u.token)).status, 403);
+  assert.equal((await call('PATCH', `/topics/${tid}`, { name: 'Bàn về concert 2026' }, v.token)).data.topic.name, 'Bàn về concert 2026');
+  // đóng: người thường không được; Admin được; thành viên được báo
+  assert.equal((await call('DELETE', `/topics/${tid}`, {}, u.token)).status, 403);
+  assert.equal((await call('DELETE', `/topics/${tid}`, {}, adm.token)).status, 200);
+  assert.equal((await call('GET', `/groups/${tid}`, null, u.token)).status, 404);
+  assert.ok((await call('GET', '/notifications', null, u.token)).data.notifications.some((n) => n.text.includes('đã được đóng')));
+});
