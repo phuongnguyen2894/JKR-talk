@@ -511,6 +511,9 @@ test('tag @tên: người được tag nhận thông báo; không tag được A
   const hist = (await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages;
   const wel = hist.find((m) => m.body.includes('@tagged1'));
   assert.ok(wel && wel.mentions.some((u) => u.id === b.id));
+  // cũng được chào ở nhóm vùng và nhóm tỉnh/thành
+  for (const g of (await call('GET', '/groups/mine', null, b.token)).data.groups.filter((x) => x.type === 'region' || x.type === 'province'))
+    assert.ok((await call('GET', `/groups/${g.id}/messages`, null, b.token)).data.messages.some((m) => m.body.includes('@tagged1')), g.name);
   assert.ok((await call('GET', '/notifications', null, b.token)).data.notifications.some((n) => n.type === 'mention'));
   // tag người trong nhóm
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
@@ -518,7 +521,7 @@ test('tag @tên: người được tag nhận thông báo; không tag được A
   assert.equal(r.status, 201);
   assert.deepEqual(r.data.message.mentions.map((u) => u.id), [b.id]); // Admin hệ thống + chính mình bị bỏ
   const ns = (await call('GET', '/notifications', null, b.token)).data.notifications.filter((n) => n.type === 'mention');
-  assert.equal(ns.length, 2);
+  assert.equal(ns.length, 4); // 3 tin chào mừng (nước, vùng, tỉnh) + 1 lần được tag
   assert.equal((await call('GET', '/notifications', null, adm.token)).data.notifications.some((n) => n.type === 'mention'), false);
   // tìm gợi ý: không có Admin hệ thống, không có chính mình
   const s = await call('GET', `/groups/${vn.id}/mention-search?q=ta`, null, a.token);

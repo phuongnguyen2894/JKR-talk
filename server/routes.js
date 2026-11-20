@@ -71,6 +71,23 @@ const superOnly = (req, _res, next) => {
 // ============================================================================
 api.get('/geo', (_req, res) => res.json({ country: COUNTRY, regions: REGIONS, provinces: PROVINCES }));
 
+// Tin chào mừng tự động (đăng bởi tài khoản Admin hệ thống, tag người mới). Mỗi người chỉ được chào một lần ở mỗi nhóm.
+function welcomeUser(uid, displayName, g) {
+  try {
+    if (!g || !['country', 'region', 'province'].includes(g.type)) return;
+    const bot = db.prepare('SELECT id FROM users WHERE is_super = 1 ORDER BY id LIMIT 1').get();
+    if (!bot || bot.id === uid) return;
+    const tag = JSON.stringify([uid]);
+    if (db.prepare('SELECT 1 FROM messages WHERE group_id = ? AND user_id = ? AND mentions = ?').get(g.id, bot.id, tag)) return;
+    const where = g.type === 'country' ? 'JKR talks' : `nhóm ${g.name}`;
+    const body = `🎉 Chào mừng @${displayName} đã tham gia ${where}! Bạn bắt đầu đu LingOrm từ bao giờ vậy? Kể cho mọi người nghe nhé 💜`;
+    const mr = db.prepare('INSERT INTO messages (group_id, user_id, body, mentions, created_at) VALUES (?,?,?,?,?)').run(g.id, bot.id, body, tag, now());
+    const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(mr.lastInsertRowid), bot.id);
+    hub.sendMany(memberIds(g.id), { type: 'message', message: dto });
+    notify(uid, 'mention', `${getUser(bot.id).display_name} đã nhắc đến bạn trong "${g.name}"`);
+  } catch (e) { console.error('[welcome]', e.message); }
+}
+
 api.post(
   '/auth/register',
   wrap((req, res) => {
@@ -102,18 +119,7 @@ api.post(
       addMember(trendGroupId(), uid); // và nhóm Đẩy trend
       return uid;
     });
-    // tin chào mừng tự động ở nhóm quốc gia (đăng bởi tài khoản Admin hệ thống)
-    try {
-      const bot = db.prepare('SELECT id FROM users WHERE is_super = 1 ORDER BY id LIMIT 1').get();
-      const home = homeGroupIds(province).map((gid) => getGroup(gid)).find((x) => x?.type === 'country');
-      if (bot && home) {
-        const body = `🎉 Chào mừng @${displayName} đã tham gia JKR talks! Bạn bắt đầu đu LingOrm từ bao giờ vậy? Kể cho mọi người nghe nhé 💜`;
-        const mr = db.prepare('INSERT INTO messages (group_id, user_id, body, mentions, created_at) VALUES (?,?,?,?,?)').run(home.id, bot.id, body, JSON.stringify([id]), now());
-        const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(mr.lastInsertRowid), bot.id);
-        hub.sendMany(memberIds(home.id), { type: 'message', message: dto });
-        notify(id, 'mention', `${getUser(bot.id).display_name} đã nhắc đến bạn trong "${home.name}"`);
-      }
-    } catch (e) { console.error('[welcome]', e.message); }
+    for (const gid of homeGroupIds(province)) welcomeUser(id, displayName, getGroup(gid)); // chào ở cả 3 nhóm
     // không cần xác nhận email: đăng nhập luôn sau khi đăng ký
     const token = randomToken();
     db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, id, now());
@@ -444,7 +450,9 @@ api.post(
     const g = getGroup(int(req.params.id));
     if (!g || !PUBLIC_TYPES.includes(g.type)) throw notFound('Không tìm thấy nhóm công khai');
     if (db.prepare('SELECT 1 FROM bans WHERE group_id=? AND user_id=?').get(g.id, req.user.id)) throw forbidden('Bạn đã bị mời ra khỏi nhóm này');
+    const had = !!getMember(g.id, req.user.id);
     addMember(g.id, req.user.id); // vào ngay, không cần duyệt; không đổi vị trí home
+    if (!had) welcomeUser(req.user.id, req.user.display_name, g);
     res.json({ group: groupDto(g, req.user.id, getMember(g.id, req.user.id)) });
   })
 );
