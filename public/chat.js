@@ -1,4 +1,5 @@
 import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, roleOf, avatarR, roleClass, roleSr, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
+import { maybeAskPush } from './push.js';
 
 const PUBLIC = ['country', 'region', 'province', 'topic'];
 const EMOJI = ['😀','😂','🥹','😍','🥰','😭','😘','🤣','👍','🙏','👏','🔥','💜','💚','💙','💖','✨','🎉','😎','🤗','😅','🥺','😢','😡','🤔','🙌','💪','🌸','⭐','🎬','📺','🍿'];
@@ -169,6 +170,7 @@ function wireComposer() {
       C.replyTo = null; C.image = null; C.emoji = false;
       appendMsg(message);
       becameMember();
+      setTimeout(maybeAskPush, 1200);
       scrollBottom(true);
       redrawComposer();
       $('#msg').value = '';

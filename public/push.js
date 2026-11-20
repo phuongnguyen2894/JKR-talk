@@ -99,6 +99,38 @@ export async function pushSectionHtml() {
     <button class="btn" data-act="push-off">Tắt thông báo trên thiết bị này</button>`);
 }
 
+// ---- Xin bật thông báo đúng lúc, nhớ lựa chọn của người dùng ------------------
+// Hỏi tối đa 3 lần: lần 1 ngay, lần 2 sau 3 ngày, lần 3 sau 7 ngày. "Đừng hỏi nữa"/bị chặn/đã bật → thôi.
+const ASK_KEY = 'jkr_push_ask';
+const ASK_GAPS = [0, 3, 7].map((d) => d * 864e5);
+const askState = () => { try { return JSON.parse(localStorage.getItem(ASK_KEY)) || { n: 0, last: 0, never: false }; } catch { return { n: 0, last: 0, never: false }; } };
+const saveAsk = (s) => { try { localStorage.setItem(ASK_KEY, JSON.stringify(s)); } catch { /* bỏ qua */ } };
+
+export async function maybeAskPush() {
+  try {
+    if (document.getElementById('pushask') || !pushSupported() || (isIOS && !isStandalone())) return;
+    if (Notification.permission !== 'default') return;
+    const s = askState();
+    if (s.never || s.n >= ASK_GAPS.length || Date.now() - s.last < ASK_GAPS[s.n]) return;
+    if (await thisSub()) return;
+    const el = document.createElement('div');
+    el.id = 'pushask';
+    el.className = 'pushask';
+    el.innerHTML = `<div class="grow"><b>Bật thông báo?</b><div class="small">Biết ngay khi có người trả lời, nhắc đến hoặc nhắn tin riêng cho bạn.</div></div>
+      <div class="pushask-btns"><button class="btn primary" data-act="push-ask-yes">Bật</button><button class="btn" data-act="push-ask-later">Để sau</button><button class="linkbtn" data-act="push-ask-never">Đừng hỏi nữa</button></div>`;
+    document.body.appendChild(el);
+    saveAsk({ ...s, n: s.n + 1, last: Date.now() }); // tính là đã hỏi ngay khi hiện
+  } catch { /* không quan trọng */ }
+}
+const closeAsk = () => document.getElementById('pushask')?.remove();
+actions['push-ask-yes'] = async () => {
+  closeAsk();
+  try { await enablePush(); toast('Đã bật thông báo'); }
+  catch (e) { if (typeof Notification !== 'undefined' && Notification.permission === 'denied') saveAsk({ ...askState(), never: true }); fail(e); }
+};
+actions['push-ask-later'] = () => closeAsk();
+actions['push-ask-never'] = () => { saveAsk({ ...askState(), never: true }); closeAsk(); };
+
 async function refreshSection() {
   const el = document.getElementById('pushsec');
   if (!el) return;
