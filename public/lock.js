@@ -9,36 +9,50 @@
   // Máy tính: Ctrl + lăn chuột / Ctrl +, -, 0
   document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
   document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && ['+', '=', '-', '_', '0'].includes(e.key)) e.preventDefault(); });
-  // iOS: sau khi bàn phím đóng, trang đôi khi giữ khung hình nhỏ/lệch; đưa về đầu trang để bố cục tính lại
-  const reflow = () => setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 80);
-  document.addEventListener('focusout', reflow);
-  // iOS: bàn phím phủ lên trang (không co khung hiển thị), nên ô nhập bị che. Co khung app theo vùng nhìn thấy thật (visualViewport)
-  // và ẩn thanh tab khi bàn phím mở để ô nhập luôn nằm ngay trên bàn phím.
+
+  // ---- Bàn phím trên điện thoại ----------------------------------------------------
+  // iOS không co trang khi bàn phím mở (bàn phím phủ lên trên), và tùy phiên bản innerHeight có thể co hoặc không,
+  // nên KHÔNG so với innerHeight. Thay vào đó: khi đang gõ trong một ô nhập, co khung app đúng bằng vùng nhìn thấy
+  // (visualViewport) và đặt nó tại vị trí iOS đang cuộn tới, so với chiều cao lúc chưa mở bàn phím (base).
   const vv = window.visualViewport;
+  const root = document.documentElement;
+  const isField = (el) => !!el && (el.tagName === 'TEXTAREA' || el.isContentEditable ||
+    (el.tagName === 'INPUT' && !['checkbox', 'radio', 'file', 'button', 'submit', 'range', 'color'].includes(el.type)));
+  const typing = () => isField(document.activeElement);
+  // iOS 26: thanh nổi "lên / xuống / xong" nằm đè lên trang, ngay trên bàn phím; chừa chỗ cho nó
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const safari = Number((ua.match(/Version\/(\d+)/) || [])[1] || 0);
+  const kbExtra = isIOS && safari >= 26 ? 60 : 0;
+
+  let base = vv ? vv.height : window.innerHeight; // chiều cao vùng nhìn thấy khi không có bàn phím
+  let wasKb = false;
+  const fit = () => {
+    if (!vv) return;
+    if (!typing()) base = Math.max(vv.height, window.innerHeight);
+    const kb = typing() && base - vv.height > 120;
+    root.classList.toggle('kb', kb);
+    if (kb) {
+      root.style.setProperty('--app-h', Math.round(vv.height - kbExtra) + 'px');
+      root.style.setProperty('--app-top', Math.round(vv.offsetTop) + 'px');
+      if (!wasKb) setTimeout(() => { const m = document.getElementById('msgs'); if (m) m.scrollTop = m.scrollHeight; }, 60); // giữ tin mới nhất trong tầm nhìn
+    } else {
+      root.style.removeProperty('--app-h');
+      root.style.removeProperty('--app-top');
+    }
+    wasKb = kb;
+  };
+  // iOS báo thay đổi vùng nhìn thấy trễ và nhiều lần trong lúc bàn phím trượt lên: đo lại vài lần
+  const refit = () => { fit(); [80, 200, 400, 700].forEach((t) => setTimeout(fit, t)); };
   if (vv) {
-    const root = document.documentElement;
-    let wasKb = false;
-    // iOS 26: thanh nổi "lên / xuống / xong" của bàn phím nằm đè lên trang và không được tính vào visualViewport,
-    // nên chừa thêm chỗ để nó không che ô nhập (các bản iOS cũ: thanh này đã nằm trong vùng bàn phím)
-    const ua = navigator.userAgent || '';
-    const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const safari = Number((ua.match(/Version\/(\d+)/) || [])[1] || 0);
-    const kbExtra = isIOS && safari >= 26 ? 60 : 0;
-    const fit = () => {
-      const kb = window.innerHeight - vv.height > 120;
-      root.classList.toggle('kb', kb);
-      if (kb) {
-        root.style.setProperty('--app-h', Math.round(vv.height - kbExtra) + 'px');
-        root.style.setProperty('--app-top', Math.round(vv.offsetTop) + 'px');
-        if (!wasKb) setTimeout(() => { const m = document.getElementById('msgs'); if (m) m.scrollTop = m.scrollHeight; }, 50); // giữ tin mới nhất trong tầm nhìn
-      } else {
-        root.style.removeProperty('--app-h');
-        root.style.removeProperty('--app-top');
-      }
-      wasKb = kb;
-    };
     vv.addEventListener('resize', fit);
     vv.addEventListener('scroll', fit);
   }
-  if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (visualViewport.height >= innerHeight - 1) reflow(); });
+  document.addEventListener('focusin', (e) => { if (isField(e.target)) refit(); });
+  document.addEventListener('focusout', () => setTimeout(() => {
+    if (typing()) return; // chuyển sang ô nhập khác: giữ nguyên
+    fit();
+    window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; // trả trang về đúng chỗ sau khi bàn phím đóng
+  }, 80));
+  window.addEventListener('orientationchange', () => setTimeout(() => { if (vv && !typing()) base = vv.height; fit(); }, 300));
 })();
