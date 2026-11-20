@@ -446,3 +446,15 @@ html.kb .tabs-bar, html.kb .app .tabs-bar { display: none !important; }
 .topic-name { font-size: 16px; }
 .topic-desc { overflow-wrap: anywhere; }
 .topic-ic { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 12px; background: var(--soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+
+/* Chủ đề nổi bật (Admin đặt) */
+:root { --hl-bg: #FFF6D6; --hl-line: #F2B600; --hl-ink: #8F5F00; }
+@media (prefers-color-scheme: dark) { :root { --hl-bg: #33290C; --hl-line: #C99A1A; --hl-ink: #F2C94C; } }
+.hl-pill { display: inline-block; align-self: flex-start; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 1px 7px; background: var(--hl-line); color: #2B1D00; }
+.topic-card.hl { border: 1.5px solid var(--hl-line); background: linear-gradient(135deg, var(--hl-bg), var(--surface) 70%); box-shadow: 0 2px 10px rgba(242, 182, 0, .18); }
+.topic-card.hl .topic-name { font-size: 17px; }
+.topic-card.hl .topic-ic { background: var(--hl-line); color: #2B1D00; }
+.nav-item.hl-topic { color: var(--hl-ink); font-weight: 600; }
+.nav-item.hl-topic svg { color: var(--hl-line); fill: currentColor; }
+.chat-head .sub .hl-pill { padding: 0 6px; font-size: 11px; }
+.topic-card.hl .topic-ic svg { fill: currentColor; }

@@ -54,7 +54,7 @@ export async function renderChat(view, gid) {
 
 function subtitle(g) {
   if (g.type === 'trend') return `Nơi đăng các bài cần tương tác · chỉ admin/mod được đăng · ${g.memberCount} thành viên`;
-  if (g.type === 'topic') return `Chủ đề thảo luận${g.description ? ` · ${esc(g.description)}` : ''} · ${g.memberCount} thành viên`;
+  if (g.type === 'topic') return `${g.highlighted ? '<span class="hl-pill">★ Nổi bật</span> ' : ''}Chủ đề thảo luận${g.description ? ` · ${esc(g.description)}` : ''} · ${g.memberCount} thành viên`;
   if (isPublic(g)) return `Nhóm công khai · vào tự do, không cần duyệt · ${g.memberCount} thành viên`;
   if (g.type === 'private') return `Nhóm riêng · ${g.memberCount}/${g.memberLimit} thành viên`;
   const p = g.peer;

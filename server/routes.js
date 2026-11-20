@@ -206,9 +206,11 @@ function guestMsg(m, extra = {}) {
   };
 }
 api.get('/public/groups', guestLimit, wrap((_req, res) => {
-  const rows = db.prepare(`SELECT id, type, name FROM groups WHERE type IN ('trend','country','region','province','topic')`).all();
+  const rows = db.prepare(`SELECT id, type, name, highlighted FROM groups WHERE type IN ('trend','country','region','province','topic')`).all()
+    .map(({ highlighted, ...g }) => (g.type === 'topic' ? { ...g, highlighted: !!highlighted, hlAt: highlighted || 0 } : g));
   const order = { trend: 0, country: 1, region: 2, province: 3, topic: 4 };
-  rows.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name, 'vi'));
+  rows.sort((a, b) => order[a.type] - order[b.type] || (b.hlAt || 0) - (a.hlAt || 0) || a.name.localeCompare(b.name, 'vi'));
+  for (const g of rows) delete g.hlAt;
   res.json({ groups: rows });
 }));
 api.get('/public/groups/:id', guestLimit, wrap((req, res) => {
@@ -381,7 +383,7 @@ function groupDto(g, uid, member) {
     id: g.id, type: g.type, name: g.name, short: g.short, lang: g.lang, avatarUrl: g.avatar_url,
     memberLimit: g.member_limit, createdBy: g.created_by,
   };
-  if (g.type === 'topic') dto.description = g.description || '';
+  if (g.type === 'topic') { dto.description = g.description || ''; dto.highlighted = !!g.highlighted; }
   if (member) {
     dto.role = member.role;
     dto.mutedUntil = member.notif_muted_until;
@@ -410,7 +412,7 @@ api.get(
          FROM members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ?`
       )
       .all(req.user.id);
-    const order = { trend: -1, country: 0, region: 1, province: 2, private: 3, dm: 4 };
+    const order = { trend: -1, country: 0, region: 1, province: 2, topic: 3, private: 4, dm: 5 };
     const out = [];
     for (const r of rows) {
       const g = getGroup(r.gid);
@@ -421,7 +423,9 @@ api.get(
       out.push(dto);
     }
     out.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name, 'vi'));
-    res.json({ groups: out });
+    // chủ đề nổi bật: hiện cho mọi người ở đầu mục Chủ đề thảo luận, kể cả khi chưa tham gia
+    const highlights = db.prepare("SELECT id, name FROM groups WHERE type = 'topic' AND highlighted IS NOT NULL ORDER BY highlighted DESC").all();
+    res.json({ groups: out, highlights });
   })
 );
 
@@ -505,12 +509,24 @@ function topicDto(g, uid) {
     memberCount: db.prepare('SELECT COUNT(*) c FROM members WHERE group_id = ?').get(g.id).c,
     creator: g.created_by ? publicUser(getUser(g.created_by)) : null, joined: !!m,
     canManage: g.created_by === uid || isSystemAdmin(uid),
+    highlighted: !!g.highlighted, highlightedAt: g.highlighted || 0,
   };
 }
 api.get('/topics', wrap((req, res) => {
   const rows = db.prepare("SELECT * FROM groups WHERE type = 'topic'").all();
-  const topics = rows.map((g) => topicDto(g, req.user.id)).sort((a, b) => b.lastAt - a.lastAt);
-  res.json({ topics, canCreate: canCreateTopic(req.user.id) });
+  // chủ đề nổi bật lên đầu (mới đặt trước), sau đó theo hoạt động gần nhất
+  const topics = rows.map((g) => topicDto(g, req.user.id)).sort((a, b) => b.highlightedAt - a.highlightedAt || b.lastAt - a.lastAt);
+  res.json({ topics, canCreate: canCreateTopic(req.user.id), canHighlight: isSystemAdmin(req.user.id) });
+}));
+// Admin đặt / bỏ nổi bật một chủ đề
+api.post('/topics/:id/highlight', wrap((req, res) => {
+  if (!isSystemAdmin(req.user.id)) throw forbidden('Chỉ Admin được đặt chủ đề nổi bật');
+  const g = getGroup(int(req.params.id));
+  if (!g || g.type !== 'topic') throw notFound('Không tìm thấy chủ đề');
+  const on = req.body.on !== false;
+  db.prepare('UPDATE groups SET highlighted = ? WHERE id = ?').run(on ? now() : null, g.id);
+  log(req.user.id, on ? 'highlight_topic' : 'unhighlight_topic', { group: g.id, name: g.name });
+  res.json({ topic: topicDto(getGroup(g.id), req.user.id) });
 }));
 api.post('/topics', wrap((req, res) => {
   if (!canCreateTopic(req.user.id)) throw forbidden('Chỉ Admin và Mod được tạo chủ đề');

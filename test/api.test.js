@@ -851,6 +851,18 @@ test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, 
   assert.ok(html.includes(`url=/#/g/${tid}`));
   const notTopic = await fetch('http://localhost:3998/t/1', { redirect: 'manual' });
   assert.equal(notTopic.status, 302);
+  // nổi bật: chỉ Admin; chủ đề nổi bật lên đầu danh sách và hiện với cả người chưa tham gia
+  const t2 = (await call('POST', '/topics', { name: 'Chủ đề thứ hai' }, v.token)).data.topic;
+  assert.equal((await call('POST', `/topics/${tid}/highlight`, { on: true }, v.token)).status, 403);
+  assert.equal((await call('POST', `/topics/${tid}/highlight`, { on: true }, adm.token)).data.topic.highlighted, true);
+  const tl = (await call('GET', '/topics', null, u.token)).data;
+  assert.equal(tl.topics[0].id, tid);
+  assert.equal(tl.canHighlight, false);
+  assert.ok((await call('GET', '/groups/mine', null, adm.token)).data.highlights.some((h) => h.id === tid));
+  assert.ok((await (await fetch(BASE + '/public/groups')).json()).groups.find((x) => x.id === tid).highlighted);
+  assert.equal((await call('POST', `/topics/${tid}/highlight`, { on: false }, adm.token)).data.topic.highlighted, false);
+  assert.equal((await call('GET', '/groups/mine', null, adm.token)).data.highlights.length, 0);
+  await call('DELETE', `/topics/${t2.id}`, {}, adm.token);
   // đóng: người thường không được; Admin được; thành viên được báo
   assert.equal((await call('DELETE', `/topics/${tid}`, {}, u.token)).status, 403);
   assert.equal((await call('DELETE', `/topics/${tid}`, {}, adm.token)).status, 200);

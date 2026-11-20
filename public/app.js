@@ -24,6 +24,16 @@ const GROUP_ICON = { country: 'flag', region: 'grid', province: 'pin', private: 
 function renderSide() {
   const side = $('#side');
   if (!side || !S.me) return;
+  // Chủ đề nổi bật (Admin đặt) luôn hiện đầu mục, kể cả khi chưa tham gia; sau đó là các chủ đề đã tham gia
+  const topicItems = (item, activeId) => {
+    const hl = S.highlights || [];
+    const mine = S.groups.filter((g) => g.type === 'topic');
+    const hot = hl.map((h) => {
+      const g = mine.find((x) => x.id === h.id);
+      return `<a class="nav-item hl-topic" href="#/chat/${h.id}" ${h.id === activeId ? 'aria-current="page"' : ''}>${icon('star')}<span class="name">${esc(h.name)}<span class="sr-only"> (nổi bật)</span></span>${g?.unread ? `<span class="badge" aria-label="${g.unread} tin chưa đọc">${g.unread}</span>` : ''}</a>`;
+    }).join('');
+    return hot + mine.filter((g) => !hl.some((h) => h.id === g.id)).map(item).join('');
+  };
   const r = parseHash();
   const activeId = r.name === 'chat' ? Number(r.arg) : 0;
   const item = (g) => `<a class="nav-item" href="#/chat/${g.id}" ${g.id === activeId ? 'aria-current="page"' : ''}>
@@ -37,7 +47,7 @@ function renderSide() {
   const nav = (hash, name, label, ic, badge) => `<a class="nav-item" href="${hash}" ${r.name === name ? 'aria-current="page"' : ''}>${icon(ic)}<span class="name">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
   side.innerHTML = `<div class="brand"><span class="logo">JK</span>JKR talks</div><h1 class="mob-title">Nhóm của bạn</h1>
     ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}
-    <div class="sec">Chủ đề thảo luận</div>${S.groups.filter((g) => g.type === 'topic').map(item).join('')}
+    <div class="sec">Chủ đề thảo luận</div>${topicItems(item, activeId)}
     ${nav('#/topics', 'topics', 'Tất cả chủ đề', 'search')}
     ${sec('Nhóm riêng', 'private')}
     <button class="nav-item accent" data-act="create-private">${icon('plus')}<span class="name">Tạo nhóm riêng</span></button>

@@ -29,7 +29,7 @@ function buildGuestShell(root) {
 
 function renderGuestSide(r) {
   const activeId = r.name === 'g' ? Number(r.arg) : 0;
-  const item = (g) => `<a class="nav-item" href="#/g/${g.id}" ${g.id === activeId ? 'aria-current="page"' : ''}>${icon(GROUP_ICON[g.type] || 'chat')}<span class="name">${esc(g.name)}</span></a>`;
+  const item = (g) => `<a class="nav-item${g.highlighted ? ' hl-topic' : ''}" href="#/g/${g.id}" ${g.id === activeId ? 'aria-current="page"' : ''}>${icon(g.highlighted ? 'star' : GROUP_ICON[g.type] || 'chat')}<span class="name">${esc(g.name)}${g.highlighted ? '<span class="sr-only"> (nổi bật)</span>' : ''}</span></a>`;
   const sec = (title, type) => {
     const list = G.groups.filter((g) => g.type === type);
     return list.length ? `<div class="sec">${title}</div>${list.map(item).join('')}` : '';

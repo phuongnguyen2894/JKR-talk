@@ -62,6 +62,7 @@ const P = {
   trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
   tool: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L3.5 17.2a1.8 1.8 0 0 0 2.6 2.6l5.8-5.8a4 4 0 0 0 5.1-5.4l-2.6 2.6-2.3-.6-.6-2.3 2.6-2.6z"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
   share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/>',
   flame: '<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.2 2-4 0 2 1 3 2 3 0-3-1-5 1-9z"/>',
   heart: '<path d="M12 20s-7-4.4-9-9a4.8 4.8 0 0 1 9-2.5A4.8 4.8 0 0 1 21 11c-2 4.600-9 9-9 9z"/>',
@@ -163,8 +164,9 @@ export function lightbox(src) {
 
 // ---- tải dữ liệu dùng chung -----------------------------------------------------
 export async function refreshGroups() {
-  const { groups } = await api('GET', '/groups/mine');
+  const { groups, highlights = [] } = await api('GET', '/groups/mine');
   S.groups = groups;
+  S.highlights = highlights;
   S.hooks.renderSide?.();
 }
 export async function refreshCounters() {
