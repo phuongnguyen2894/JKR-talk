@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, toast, fail, openModal, closeModal, confirmBox, refreshGroups, refreshCounters, actions } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, toast, fail, openModal, closeModal, confirmBox, refreshGroups, refreshCounters, actions, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
 
 export async function renderFriends(view) {
   view.innerHTML = '<div class="page"><div class="page-inner muted">Đang tải…</div></div>';
@@ -59,14 +59,15 @@ actions['create-private'] = async () => {
   const { friends } = await api('GET', '/friends');
   openModal(`<form id="pgf" class="col"><h2>Tạo nhóm riêng</h2>
     <div class="field"><label for="pgname">Tên nhóm</label><input class="input" id="pgname" required minlength="2" maxlength="50" placeholder="Ví dụ: Hội bạn thân"></div>
-    <div><div class="label">Mời bạn bè (không bắt buộc)</div>${friends.map((f) => `<label class="check"><input type="checkbox" value="${f.id}"> ${esc(f.displayName)}</label>`).join('') || '<p class="small muted">Bạn chưa có bạn bè để mời. Có thể mời sau.</p>'}</div>
+    <div><div class="label">Thêm thành viên (không bắt buộc)</div>${memberPickerHtml(friends)}</div>
     <p class="small muted">Bạn sẽ là admin của nhóm. Nhóm riêng không xuất hiện trong tìm kiếm hay gợi ý. Giới hạn mặc định 100 thành viên.</p>
     <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Tạo nhóm</button></div></form>`);
   $('#modal [data-close]').onclick = closeModal;
+  wireMemberPicker();
   $('#pgf').onsubmit = async (e) => {
     e.preventDefault();
     try {
-      const { group } = await api('POST', '/private', { name: $('#pgname').value, memberIds: $$('#pgf input[type=checkbox]:checked').map((i) => Number(i.value)) });
+      const { group } = await api('POST', '/private', { name: $('#pgname').value, memberIds: pickedIds() });
       closeModal();
       await refreshGroups();
       go(`#/chat/${group.id}`);

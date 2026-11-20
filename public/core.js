@@ -183,6 +183,44 @@ export const mutedNow = (g) => g.muted && (g.mutedUntil === -1 || g.mutedUntil >
 // Bảng hành động cho các nút data-act (app.js gắn listener click toàn cục)
 export const actions = {};
 
+// Chọn người để thêm vào nhóm riêng: bạn bè; Admin hệ thống tìm được bất kỳ ai (theo tên hoặc email)
+export function memberPickerHtml(friends) {
+  const isAdmin = S.me?.role === 'admin';
+  return `<div class="col pick" style="gap:6px">
+    ${isAdmin ? `<label class="label" for="pick-q">Tìm người dùng bất kỳ (Admin)</label>
+      <input class="input" id="pick-q" type="search" placeholder="Tên hoặc email" autocomplete="off">
+      <div id="pick-res" class="col" style="gap:2px"></div>` : ''}
+    <div class="label" style="margin-top:4px">${isAdmin ? 'Đã chọn / bạn bè' : 'Bạn bè'}</div>
+    <div id="pick-list" class="col" style="gap:2px">${friends.map((f) => `<label class="check"><input type="checkbox" value="${f.id}"> ${esc(f.displayName)}</label>`).join('') || `<p class="small muted" id="pick-empty">${isAdmin ? 'Chưa chọn ai. Tìm ở ô phía trên.' : 'Bạn chưa có bạn bè để mời. Có thể mời sau.'}</p>`}</div></div>`;
+}
+export function wireMemberPicker(exclude = new Set()) {
+  const q = $('#pick-q');
+  if (!q) return;
+  let t;
+  const inList = (id) => !!$(`#pick-list input[value="${id}"]`);
+  q.oninput = () => {
+    clearTimeout(t);
+    t = setTimeout(async () => {
+      const term = q.value.trim();
+      if (term.length < 2) { $('#pick-res').innerHTML = ''; return; }
+      try {
+        const { users } = await api('GET', `/admin/users?q=${encodeURIComponent(term)}`);
+        const list = users.filter((u) => u.id !== S.me.id && u.status === 'active' && !exclude.has(u.id) && !inList(u.id)).slice(0, 8);
+        $('#pick-res').innerHTML = list.map((u) => `<label class="check"><input type="checkbox" value="${u.id}" data-name="${esc(u.displayName)}"> ${esc(u.displayName)} <span class="tiny muted">${esc(u.email)}</span></label>`).join('') || '<p class="small muted">Không tìm thấy (hoặc đã ở trong nhóm).</p>';
+      } catch (e) { fail(e); }
+    }, 250);
+  };
+  // tích chọn một kết quả → chuyển sang danh sách đã chọn (giữ lại khi tìm tiếp)
+  $('#pick-res').onchange = (e) => {
+    const cb = e.target.closest('input[type=checkbox]');
+    if (!cb?.checked) return;
+    $('#pick-empty')?.remove();
+    $('#pick-list').insertAdjacentHTML('afterbegin', `<label class="check"><input type="checkbox" value="${cb.value}" checked> ${esc(cb.dataset.name)}</label>`);
+    cb.closest('label').remove();
+  };
+}
+export const pickedIds = (root) => [...new Set($$('#pick-list input:checked', root).map((i) => Number(i.value)))];
+
 // Chia sẻ liên kết: điện thoại mở bảng chia sẻ của hệ thống, máy tính sao chép vào bộ nhớ tạm
 export async function shareLink(url, title) {
   if (navigator.share && matchMedia('(pointer: coarse)').matches) {

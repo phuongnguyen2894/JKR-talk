@@ -869,6 +869,13 @@ test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, 
   for (const k of ['reports', 'users', 'mods', 'admins']) assert.equal(typeof cnt.data[k], 'number');
   assert.ok(cnt.data.mods >= 1 && cnt.data.admins >= 1 && cnt.data.users >= 3);
   assert.equal((await call('GET', '/admin/counts', null, u.token)).status, 403);
+  // nhóm riêng: Admin thêm bất kỳ ai (không cần kết bạn); người thường chỉ thêm được bạn bè
+  const pvA = (await call('POST', '/private', { name: 'Nhóm của Admin', memberIds: [u.id] }, adm.token)).data.group;
+  assert.equal((await call('GET', `/groups/${pvA.id}`, null, u.token)).data.group.members.length, 2);
+  assert.equal((await call('POST', `/private/${pvA.id}/invite`, { userIds: [v.id] }, adm.token)).data.added, 1);
+  assert.ok((await call('GET', '/notifications', null, v.token)).data.notifications.some((x) => x.text.includes('Nhóm của Admin')));
+  const pvU = (await call('POST', '/private', { name: 'Nhóm của user' }, u.token)).data.group;
+  assert.equal((await call('POST', `/private/${pvU.id}/invite`, { userIds: [v.id] }, u.token)).status, 400);
   // đóng: người thường không được; Admin được; thành viên được báo
   assert.equal((await call('DELETE', `/topics/${tid}`, {}, u.token)).status, 403);
   assert.equal((await call('DELETE', `/topics/${tid}`, {}, adm.token)).status, 200);

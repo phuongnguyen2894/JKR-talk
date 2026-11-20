@@ -1166,6 +1166,13 @@ function requirePrivAdmin(gid, uid) {
   if (!isPrivAdmin(gid, uid)) throw forbidden('Chỉ admin của nhóm mới làm được');
   return g;
 }
+// Ai được thêm thẳng vào nhóm riêng: bạn bè; Admin hệ thống thêm được bất kỳ ai (không cần kết bạn / chấp nhận).
+// Luôn loại tài khoản không hoạt động và người đã chặn nhau.
+const canAddToPrivate = (uid, id) => {
+  if (id === uid || isBlockedEither(uid, id)) return false;
+  if (isSystemAdmin(uid)) return getUser(id)?.status === 'active';
+  return areFriends(uid, id);
+};
 const memberCount = (gid) => db.prepare('SELECT COUNT(*) c FROM members WHERE group_id = ?').get(gid).c;
 function assertRoom(g, extra) {
   if (memberCount(g.id) + extra > (g.member_limit || PRIVATE_LIMIT_DEFAULT)) throw bad('Nhóm đã đầy, không thể thêm thành viên');
@@ -1176,7 +1183,7 @@ api.post('/private', wrap((req, res) => {
   const name = str(req.body.name, 50);
   if (name.length < 2) throw bad('Tên nhóm cần ít nhất 2 ký tự');
   const avatar = req.body.avatarUrl ? checkUploadUrl(req.body.avatarUrl) : null;
-  const ids = [...new Set((req.body.memberIds || []).map(int))].filter((id) => areFriends(req.user.id, id) && !isBlockedEither(req.user.id, id));
+  const ids = [...new Set((req.body.memberIds || []).map(int))].filter((id) => canAddToPrivate(req.user.id, id));
   const gid = tx(() => {
     const r = db.prepare("INSERT INTO groups (type, name, avatar_url, member_limit, created_by, created_at) VALUES ('private',?,?,?,?,?)").run(name, avatar, PRIVATE_LIMIT_DEFAULT, req.user.id, now());
     const gid = Number(r.lastInsertRowid);
@@ -1206,11 +1213,11 @@ api.patch('/private/:id', wrap((req, res) => {
   res.json({ group: groupDto(getGroup(g.id), req.user.id, getMember(g.id, req.user.id)) });
 }));
 
-// Mời bạn bè: chỉ mời được người là bạn
+// Mời bạn bè (Admin hệ thống: bất kỳ ai) → vào nhóm ngay, không cần chấp nhận
 api.post('/private/:id/invite', wrap((req, res) => {
   const g = requirePrivAdmin(int(req.params.id), req.user.id);
-  const ids = [...new Set((req.body.userIds || []).map(int))].filter((id) => areFriends(req.user.id, id) && !isBlockedEither(req.user.id, id) && !getMember(g.id, id));
-  if (!ids.length) throw bad('Không có bạn bè hợp lệ để mời');
+  const ids = [...new Set((req.body.userIds || []).map(int))].filter((id) => canAddToPrivate(req.user.id, id) && !getMember(g.id, id));
+  if (!ids.length) throw bad(isSystemAdmin(req.user.id) ? 'Không có người dùng hợp lệ để thêm' : 'Không có bạn bè hợp lệ để mời');
   assertRoom(g, ids.length);
   for (const id of ids) {
     addMember(g.id, id);

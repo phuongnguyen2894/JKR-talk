@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, roleOf, avatarR, roleClass, roleSr } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, roleOf, avatarR, roleClass, roleSr, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
 
 const PUBLIC = ['country', 'region', 'province', 'topic'];
 const EMOJI = ['😀','😂','🥹','😍','🥰','😭','😘','🤣','👍','🙏','👏','🔥','💜','💚','💙','💖','✨','🎉','😎','🤗','😅','🥺','😢','😡','🤔','🙌','💪','🌸','⭐','🎬','📺','🍿'];
@@ -609,7 +609,7 @@ function infoHtml() {
       <div class="row" style="min-height:44px">${avatar(u)}<button class="who grow" style="background:none;border:0;text-align:left;font-weight:600;padding:0" data-act="profile" data-id="${u.id}">${esc(u.displayName)}${u.role === 'admin' ? ' <span class="pill">Admin</span>' : ''}${u.id === S.me.id ? ' <span class="muted">(bạn)</span>' : ''}</button>
         ${admin && u.id !== S.me.id ? `<button class="link-btn" data-act="pg-admin" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? 'Gỡ admin' : 'Làm admin'}</button><button class="link-btn" data-act="mod-kick" data-id="${u.id}" data-gid="${g.id}">Xóa</button>` : ''}</div>`).join('')}</div></section>`;
     if (admin) h += `<section class="col"><div class="h2">Quản lý nhóm</div>
-      <button class="btn sm" data-act="pg-invite">Mời bạn bè</button>
+      <button class="btn sm" data-act="pg-invite">${S.me.role === 'admin' ? 'Thêm thành viên' : 'Mời bạn bè'}</button>
       <button class="btn sm" data-act="pg-links">Liên kết mời</button>
       <button class="btn sm" data-act="pg-edit">Đổi tên / giới hạn</button>
       <button class="btn sm danger" data-act="pg-dissolve">Giải tán nhóm</button></section>`;
@@ -649,14 +649,16 @@ actions['pg-invite'] = async () => {
   const { friends } = await api('GET', '/friends');
   const ids = new Set(C.group.members.map((m) => m.id));
   const cands = friends.filter((f) => !ids.has(f.id));
-  if (!cands.length) return toast('Không còn bạn bè nào để mời');
-  openModal(`<form id="invf" class="col"><h2>Mời bạn bè</h2><p class="small muted">Chỉ mời được người là bạn bè.</p>
-    ${cands.map((f) => `<label class="check"><input type="checkbox" value="${f.id}"> ${esc(f.displayName)}</label>`).join('')}
-    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Mời</button></div></form>`);
+  const sysAdmin = S.me.role === 'admin';
+  if (!cands.length && !sysAdmin) return toast('Không còn bạn bè nào để mời');
+  openModal(`<form id="invf" class="col"><h2>${sysAdmin ? 'Thêm thành viên' : 'Mời bạn bè'}</h2><p class="small muted">${sysAdmin ? 'Admin thêm được bất kỳ ai, không cần kết bạn. Người được thêm vào nhóm ngay và nhận thông báo.' : 'Chỉ mời được người là bạn bè.'}</p>
+    ${memberPickerHtml(cands)}
+    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">${sysAdmin ? 'Thêm' : 'Mời'}</button></div></form>`);
   $('#modal [data-close]').onclick = closeModal;
+  wireMemberPicker(ids);
   $('#invf').onsubmit = async (e) => {
     e.preventDefault();
-    const userIds = $$('#invf input:checked').map((i) => Number(i.value));
+    const userIds = pickedIds();
     if (!userIds.length) return;
     try { await api('POST', `/private/${C.gid}/invite`, { userIds }); closeModal(); toast('Đã thêm thành viên'); await reloadGroup(); } catch (er) { fail(er); }
   };
