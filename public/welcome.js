@@ -4,7 +4,7 @@ import { $, esc, S, api, go, icon, avatar, toast, fail, actions } from './core.j
 const QUICK = [
   'Chào mừng bạn đến với nhóm! 💜',
   'Rất vui được gặp bạn, cùng nhau đu LingOrm nhé! 🎉',
-  'Welcome! Bạn bắt đầu đu LingOrm từ khi nào vậy?',
+  'Welcome to the LingOrm fam! 🌸',
 ];
 
 const ago = (t) => {

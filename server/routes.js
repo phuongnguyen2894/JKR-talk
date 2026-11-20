@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_welcomes_group_user ON welcomes(group_id, user_id
 const WELCOME_TYPES = ['country', 'region', 'province', 'private'];
 const NEWCOMER_MS = 7 * 86400_000; // "mới" = tham gia trong 7 ngày qua
 const WELCOME_PER_AUTHOR = 3;
-const autoWelcomeText = (g) => `🎉 Chào mừng bạn đến với ${g.type === 'country' ? 'JKR talks' : `nhóm ${g.name}`}! Bạn bắt đầu đu LingOrm từ bao giờ vậy? Kể cho mọi người nghe nhé 💜`;
+const autoWelcomeText = (g, name) => `🎉 Chào mừng ${name} đến với ${g.type === 'country' ? 'JKR talks' : `nhóm ${g.name}`}! Mọi người cùng chào đón thành viên mới của chúng ta nhé 💜`;
 
 // Lời chào tự động của tài khoản Admin hệ thống (nằm trong mục Chào mừng của nhóm, mỗi người một lần ở mỗi nhóm)
 function welcomeUser(uid, g) {
@@ -94,7 +94,7 @@ function welcomeUser(uid, g) {
     const bot = db.prepare('SELECT id FROM users WHERE is_super = 1 ORDER BY id LIMIT 1').get();
     if (!bot || bot.id === uid) return;
     if (db.prepare('SELECT 1 FROM welcomes WHERE group_id = ? AND user_id = ? AND author_id = ?').get(g.id, uid, bot.id)) return;
-    db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(g.id, uid, bot.id, autoWelcomeText(g), now());
+    db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(g.id, uid, bot.id, autoWelcomeText(g, getUser(uid).display_name), now());
     if (g.type === 'country') notify(uid, 'welcome', `Chào mừng bạn đến với JKR talks! Xem lời chào của mọi người ở mục Chào mừng của "${g.name}"`, { url: `/#/welcome/${g.id}`, tag: `welcome-${g.id}` });
   } catch (e) { console.error('[welcome]', e.message); }
 }
@@ -107,11 +107,23 @@ function welcomeUser(uid, g) {
       let target; try { target = JSON.parse(m.mentions)[0]; } catch { continue; }
       const g = getGroup(m.group_id);
       if (!target || !g) continue;
-      db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(g.id, target, bot.id, autoWelcomeText(g), m.created_at);
+      db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(g.id, target, bot.id, autoWelcomeText(g, getUser(target)?.display_name || 'bạn mới'), m.created_at);
       db.prepare('UPDATE messages SET deleted = 1 WHERE id = ?').run(m.id);
     }
   }
   db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('welcome_migrated', '1')").run();
+})();
+
+(function rewriteAutoWelcomes() {
+  if (db.prepare("SELECT 1 FROM app_kv WHERE key = 'welcome_text_v2'").get()) return;
+  const bot = db.prepare('SELECT id FROM users WHERE is_super = 1 ORDER BY id LIMIT 1').get();
+  if (bot) {
+    for (const w of db.prepare("SELECT id, group_id, user_id FROM welcomes WHERE author_id = ? AND body LIKE '%đu LingOrm%'").all(bot.id)) {
+      const g = getGroup(w.group_id), u = getUser(w.user_id);
+      if (g && u) db.prepare('UPDATE welcomes SET body = ? WHERE id = ?').run(autoWelcomeText(g, u.display_name), w.id);
+    }
+  }
+  db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('welcome_text_v2', '1')").run();
 })();
 
 // số thành viên mới chưa được mình chào

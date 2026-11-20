@@ -58,7 +58,7 @@ test('đăng ký mới: lời chào tự động nằm ở mục Chào mừng, k
   const w = await call('GET', `/groups/${vn.id}/welcome`, null, mai.token);
   assert.equal(w.status, 200);
   const me = w.data.newcomers.find((n) => n.isMe);
-  assert.ok(me && me.welcomes.length === 1 && me.welcomes[0].body.includes('đu LingOrm'));
+  assert.ok(me && me.welcomes.length === 1 && me.welcomes[0].body.includes('chào đón thành viên mới') && !me.welcomes[0].body.includes('đu LingOrm'));
 });
 test('chat: phải xác nhận quy tắc rồi mới gửi được; tin hiện trong lịch sử', async () => {
   const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups.find((x) => x.type === 'country');
