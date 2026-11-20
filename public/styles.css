@@ -85,7 +85,9 @@ textarea.input { padding: 12px 14px; min-height: 96px; resize: vertical; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #2BA37F; display: inline-block; }
 
 /* ---- shell --------------------------------------------------------------- */
-.app { display: flex; height: 100vh; height: 100dvh; }
+/* Chiều cao theo khung cố định của trang (body: position fixed) thay vì dvh, để iOS không giữ chiều cao cũ sau khi bàn phím đóng hoặc thanh trình duyệt đổi */
+#root { height: 100%; }
+.app { display: flex; height: 100%; }
 .side { flex: 0 0 272px; background: var(--surface); border-right: 1px solid var(--line); padding: 20px 12px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
 .mob-title { display: none; font-size: 24px; font-weight: 700; padding: 24px 8px 0; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 12px; font-weight: 700; font-size: 18px; }

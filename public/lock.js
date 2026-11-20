@@ -9,4 +9,8 @@
   // Máy tính: Ctrl + lăn chuột / Ctrl +, -, 0
   document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
   document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && ['+', '=', '-', '_', '0'].includes(e.key)) e.preventDefault(); });
+  // iOS: sau khi bàn phím đóng, trang đôi khi giữ khung hình nhỏ/lệch; đưa về đầu trang để bố cục tính lại
+  const reflow = () => setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }, 80);
+  document.addEventListener('focusout', reflow);
+  if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (visualViewport.height >= innerHeight - 1) reflow(); });
 })();

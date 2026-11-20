@@ -644,7 +644,9 @@ actions['pg-links'] = async () => {
 
 // Chế độ đọc: ẩn/hiện tiêu đề nhóm, ô nhập tin và menu để có thêm chỗ đọc
 function applyRead(on) {
-  document.querySelector('.app')?.classList.toggle('read-mode', on);
+  const app = document.querySelector('.app');
+  app?.classList.toggle('read-mode', on);
+  if (app) { void app.offsetHeight; requestAnimationFrame(() => window.scrollTo(0, 0)); } // buộc tính lại bố cục khi ẩn/hiện thanh
   const b = document.getElementById('readtoggle');
   if (b) {
     b.setAttribute('aria-pressed', String(on));
