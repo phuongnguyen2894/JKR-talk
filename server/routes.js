@@ -464,16 +464,8 @@ api.post(
 );
 
 api.post('/groups/:id/rules-ack', wrap((req, res) => {
-  const { g, m } = requireMember(int(req.params.id), req.user.id);
-  db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(g.id, req.user.id);
-  // Lần đầu xác nhận quy tắc ở nhóm quốc gia: tự gửi tin chào đầu tiên của người mới
-  if (g.type === 'country' && !m.rules_ack && !(m.mod_muted_until && m.mod_muted_until > now())) {
-    const r = db.prepare('INSERT INTO messages (group_id, user_id, body, created_at) VALUES (?,?,?,?)')
-      .run(g.id, req.user.id, 'Chào mọi người, mình mới tham gia! 👋 Mọi người bắt đầu đu LingOrm từ bao giờ vậy?', now());
-    const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), req.user.id);
-    db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, g.id, req.user.id);
-    hub.sendMany(memberIds(g.id), { type: 'message', message: dto });
-  }
+  requireMember(int(req.params.id), req.user.id);
+  db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(int(req.params.id), req.user.id);
   res.json({ ok: true });
 }));
 

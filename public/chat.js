@@ -263,7 +263,6 @@ function showRules() {
 }
 actions.rules = showRules;
 
-
 actions.join = async (el) => {
   try {
     await api('POST', `/groups/${el.dataset.id}/join`);
