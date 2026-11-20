@@ -380,3 +380,11 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .card .role-badge { border-color: var(--surface); }
 .role-admin { color: var(--role-admin) !important; font-weight: 700; }
 .role-mod { color: var(--role-mod) !important; font-weight: 700; }
+
+/* Trang Công cụ */
+.tool-card { display: flex; align-items: center; gap: 14px; padding: 16px; text-decoration: none; color: inherit; min-height: 72px; }
+.tool-card:hover { border-color: var(--accent); }
+.tool-card .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tool-card b { font-size: 16px; }
+.tool-ic { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 12px; background: var(--soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.tool-go { color: var(--muted); display: flex; }

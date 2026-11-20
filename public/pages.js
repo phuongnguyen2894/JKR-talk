@@ -367,3 +367,22 @@ async function adminLogs(body) {
   const { logs } = await api('GET', '/admin/logs');
   body.innerHTML = `<div class="list">${logs.map((l) => `<div class="card col" style="gap:2px"><div class="small"><b>${esc(LOG_LABEL[l.action] || l.action)}</b> · ${esc(l.actor)}${l.target ? ` → ${esc(l.target)}` : ''}${l.group ? ` · ${esc(l.group)}` : ''}</div>${l.reason ? `<div class="small muted">${esc(l.reason)}</div>` : ''}<div class="tiny muted">${fmtDateTime(l.createdAt)}</div></div>`).join('') || '<p class="muted">Chưa có hành động nào.</p>'}</div>`;
 }
+
+// ===========================================================================
+// Công cụ: liên kết tới các trang ngoài
+// ===========================================================================
+const TOOLS = [
+  { name: 'Tạo caption', url: 'https://vbots-caption.vercel.app', desc: 'Công cụ tạo caption.', ic: 'news' },
+  { name: 'Theo dõi trend', url: 'https://www.lingorm.site/lingorm_tagtrend', desc: 'Theo dõi trend của LingOrm.', ic: 'trend' },
+];
+export function renderTools(view) {
+  view.innerHTML = `<div class="page"><div class="page-inner">
+    <h1>Công cụ</h1>
+    <p class="small muted">Các trang hỗ trợ dành cho fan LingOrm. Mở ở tab mới.</p>
+    <div class="list">${TOOLS.map((t) => `<a class="card tool-card" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">
+      <span class="tool-ic">${icon(t.ic, 22)}</span>
+      <span class="grow"><b>${esc(t.name)}</b><span class="small muted tool-desc">${esc(t.desc)}</span><span class="tiny muted">${esc(new URL(t.url).host)}</span></span>
+      <span class="tool-go" aria-hidden="true">${icon('ext', 18)}</span>
+      <span class="sr-only">(mở tab mới)</span></a>`).join('')}</div>
+  </div></div>`;
+}

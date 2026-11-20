@@ -6,7 +6,7 @@ import { routeGuest } from './guest.js';
 import { renderWelcome } from './welcome.js';
 import { registerSW, syncPush, unsubscribeThisDevice } from './push.js';
 import { renderBugs } from './bugs.js';
-import { renderLogin, renderRegister, renderDiscover, renderNews, renderSettings, renderAdmin } from './pages.js';
+import { renderLogin, renderRegister, renderDiscover, renderNews, renderSettings, renderAdmin, renderTools } from './pages.js';
 
 const root = $('#root');
 const wide = () => matchMedia('(min-width: 900px)').matches;
@@ -44,6 +44,7 @@ function renderSide() {
     ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame')}
     ${nav('#/news', 'news', 'Bản tin', 'news', S.unreadNews)}
     ${nav('#/friends', 'friends', 'Bạn bè', 'friends')}
+    ${nav('#/tools', 'tools', 'Công cụ', 'tool')}
     ${S.me.role === 'admin' ? '' : `<button class="nav-item" data-act="report-bug">${icon('bug')}<span class="name">Báo lỗi</span></button>`}
     ${S.me.role === 'admin' ? nav('#/bugs', 'bugs', 'Danh sách lỗi', 'bug') : ''}
     ${isStaff() ? nav('#/admin', 'admin', S.me.role === 'admin' ? 'Quản trị' : 'Báo cáo', 'shield') : ''}
@@ -98,6 +99,7 @@ async function route() {
         }
         return await renderChat(view, Number(r.arg));
       case 'welcome': return await renderWelcome(view, Number(r.arg));
+      case 'tools': return renderTools(view);
       case 'discover': return await renderDiscover(view);
       case 'friends': return await renderFriends(view);
       case 'hot': return await renderHot(view);
