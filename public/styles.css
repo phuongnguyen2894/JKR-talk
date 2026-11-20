@@ -350,3 +350,6 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .msg.own .meta { display: none; }
 .msg.own.show-time .meta { display: flex; }
 .msg { cursor: default; }
+
+/* Mục Cài đặt trong danh sách: chỉ cho điện thoại (bản máy tính có sẵn ở chân thanh bên) */
+@media (min-width: 900px) { .only-mobile { display: none !important; } }
