@@ -280,7 +280,7 @@ const LOG_LABEL = { delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng', ki
 export async function renderAdmin(view, tab = 'reports') {
   const admin = S.me.role === 'admin';
   if (!admin) tab = 'reports';
-  const tabs = admin ? [['reports', 'Báo cáo'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
+  const tabs = admin ? [['reports', 'Báo cáo'], ['topics', 'Chủ đề chờ duyệt'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
   view.innerHTML = `<div class="page"><div class="page-inner"><h1>${admin ? 'Quản trị' : 'Báo cáo trong nhóm của bạn'}</h1>
     <div class="pillnav">${tabs.map(([k, n]) => `<button data-tab="${k}" aria-pressed="${k === tab}">${n}<span class="tab-cnt" data-cnt="${k}"></span></button>`).join('')}</div><div id="tabbody"></div></div></div>`;
   $$('[data-tab]', view).forEach((b) => (b.onclick = () => renderAdmin(view, b.dataset.tab)));
@@ -291,12 +291,30 @@ export async function renderAdmin(view, tab = 'reports') {
   const body = $('#tabbody');
   try {
     if (tab === 'reports') await adminReports(body);
+    if (tab === 'topics') await adminTopics(body);
     if (tab === 'users') await adminUsers(body);
     if (tab === 'mods') await adminMods(body);
     if (tab === 'admins' && S.me.isSuper) await adminAdmins(body);
     if (tab === 'logs') await adminLogs(body);
   } catch (e) { body.innerHTML = `<div class="error">${esc(e.message)}</div>`; }
 }
+
+async function adminTopics(body) {
+  const { topics } = await api('GET', '/topics/pending');
+  body.innerHTML = `<div class="list">${topics.map((t) => `<article class="card col">
+    <div class="row wrap"><span class="pill warn">Chờ duyệt</span><span class="tiny muted">${fmtDateTime(t.createdAt)}</span><span class="small">Đề xuất bởi <b>${esc(t.creator?.displayName || 'Người dùng đã xóa')}</b></span></div>
+    <h2 style="font-size:17px">${esc(t.name)}</h2>
+    ${t.description ? `<p class="small" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(t.description)}</p>` : ''}
+    <div class="row wrap" style="gap:8px"><button class="btn primary sm" data-act="topic-approve" data-id="${t.id}">Duyệt</button><button class="btn danger sm" data-act="topic-reject" data-id="${t.id}" data-name="${esc(t.name)}">Từ chối</button></div></article>`).join('') || '<p class="muted">Không có chủ đề nào đang chờ duyệt.</p>'}</div>`;
+}
+actions['topic-approve'] = async (el) => {
+  try { await api('POST', `/topics/pending/${el.dataset.id}/approve`); toast('Đã duyệt. Chủ đề hiện ở Chủ đề nóng.'); renderAdmin($('#view'), 'topics'); } catch (e) { fail(e); }
+};
+actions['topic-reject'] = async (el) => {
+  const v = await ask({ title: `Từ chối "${el.dataset.name}"?`, text: 'Chủ đề sẽ bị xóa và người đề xuất nhận được thông báo kèm lý do (nếu có).', fields: [{ name: 'reason', label: 'Lý do (không bắt buộc)', type: 'textarea', max: 300 }], ok: 'Từ chối' });
+  if (!v) return;
+  try { await api('POST', `/topics/pending/${el.dataset.id}/reject`, { reason: v.reason }); toast('Đã từ chối'); renderAdmin($('#view'), 'topics'); } catch (e) { fail(e); }
+};
 
 async function adminReports(body) {
   const { reports } = await api('GET', '/reports');

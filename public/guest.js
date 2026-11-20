@@ -1,6 +1,7 @@
 // Chế độ khách (chưa đăng ký): chỉ đọc nhóm công khai, Đẩy trend, Chủ đề nóng, Bản tin
 import { $, esc, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, actions, lightbox, linkify, newsGallery, roleOf, avatarR, roleClass, roleSr } from './core.js';
 import { previewHtml } from './chat.js';
+import { boardCard, HOT_TABS } from './hot.js';
 import { renderTools } from './pages.js';
 
 const G = { groups: null, trendId: 0 };
@@ -98,11 +99,12 @@ async function renderGuestGroup(view, gid) {
   try { if (g.type === 'topic') sessionStorage.setItem('jkr_next', `#/chat/${g.id}`); else sessionStorage.removeItem('jkr_next'); } catch { /* bỏ qua */ }
 }
 
-async function renderGuestHot(view) {
-  const { items, pinned = [] } = await api('GET', '/public/hot');
+let gtab = 'hot';
+async function renderGuestHot(view, tab = gtab) {
+  gtab = tab;
+  const [{ items, pinned = [] }, board] = await Promise.all([api('GET', '/public/hot'), tab === 'hearts' ? Promise.resolve(null) : api('GET', '/public/topic-board?tab=' + tab)]);
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>Chủ đề nóng</h1>
-    <p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua.</p>
     ${cta()}
     ${pinned.length ? `<h2 class="h2" style="margin:8px 0 0">Từ quản trị</h2><div class="list">${pinned.map((m) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill warn">Từ quản trị</span><span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div>
@@ -112,6 +114,8 @@ async function renderGuestHot(view) {
       ${previewHtml(m.preview)}
       <div class="row" style="gap:4px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
     </div>`).join('')}</div>` : ''}
+    <div class="pillnav" role="group" aria-label="Chọn mục">${HOT_TABS.map(([k, n]) => `<button data-htab="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
+    ${board ? `<div class="list">${board.topics.map((t) => boardCard(t, tab, true)).join('') || '<p class="muted">Chưa có chủ đề nào.</p>'}</div>` : `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua.</p>
     <div class="list">${items.map((m, i) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
         <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
@@ -119,8 +123,9 @@ async function renderGuestHot(view) {
       ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body)}</div>` : ''}
       ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}
-    </div>`).join('') || '<p class="muted">Chưa có chủ đề nóng nào.</p>'}</div>
+    </div>`).join('') || '<p class="muted">Chưa có chủ đề nóng nào.</p>'}</div>`}
   </div></div>`;
+  view.querySelectorAll('[data-htab]').forEach((b) => (b.onclick = () => renderGuestHot(view, b.dataset.htab).catch(() => {})));
 }
 
 async function renderGuestNews(view) {

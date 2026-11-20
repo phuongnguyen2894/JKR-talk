@@ -808,16 +808,73 @@ test('bình luận: bản tin và tin ở Chủ đề nóng; tác giả tin đư
   assert.equal((await call('GET', `/comments/news/${news.id}`, null, a.token)).data.comments.length, 0);
 });
 
+test('chủ đề do người dùng thường tạo: chờ Admin duyệt, duyệt xong lên tab Mới; tab Nổi bật theo thảo luận 24h hoặc Admin đặt', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('pendU', 1), w = await signup('pendW', 1), x = await signup('pendX', 1);
+  const r = await call('POST', '/topics', { name: 'Chủ đề chờ duyệt', description: 'mô tả' }, u.token);
+  assert.equal(r.status, 202);
+  assert.equal(r.data.pending, true);
+  const pid = r.data.topic.id;
+  // chưa hiện ở đâu cả, cũng không vào được
+  assert.ok(!(await call('GET', '/topics', null, w.token)).data.topics.some((t) => t.id === pid));
+  assert.ok(!(await call('GET', '/topic-board?tab=new', null, w.token)).data.topics.some((t) => t.id === pid));
+  assert.ok(!(await call('GET', '/public/topic-board?tab=new')).data.topics.some((t) => t.id === pid));
+  assert.ok(!(await call('GET', '/public/groups')).data.groups.some((g) => g.id === pid));
+  assert.equal((await call('GET', `/groups/${pid}`, null, u.token)).status, 403);
+  assert.equal((await call('POST', `/groups/${pid}/messages`, { body: 'hi' }, w.token)).status, 403);
+  // người tạo thấy ở "chờ duyệt"; Admin thấy trong hàng đợi và số lượng; người thường không duyệt được
+  assert.equal((await call('GET', '/topics', null, u.token)).data.mine[0].id, pid);
+  assert.equal((await call('GET', '/topics/pending', null, w.token)).status, 403);
+  assert.equal((await call('POST', `/topics/pending/${pid}/approve`, {}, u.token)).status, 403);
+  assert.ok((await call('GET', '/topics/pending', null, adm.token)).data.topics.some((t) => t.id === pid));
+  assert.ok((await call('GET', '/admin/counts', null, adm.token)).data.topics >= 1);
+  assert.ok((await call('GET', '/notifications', null, adm.token)).data.notifications.some((n) => n.text.includes('Chủ đề chờ duyệt')));
+  // giới hạn 3 chủ đề chờ duyệt cùng lúc
+  const extra = [];
+  for (const n of ['B', 'C']) extra.push((await call('POST', '/topics', { name: 'Chờ ' + n }, u.token)).data.topic.id);
+  assert.equal((await call('POST', '/topics', { name: 'Chờ D' }, u.token)).status, 400);
+  // rút lại / từ chối
+  assert.equal((await call('DELETE', `/topics/pending/${extra[0]}`, {}, w.token)).status, 404);
+  assert.equal((await call('DELETE', `/topics/pending/${extra[0]}`, {}, u.token)).status, 200);
+  assert.equal((await call('POST', `/topics/pending/${extra[1]}/reject`, { reason: 'Trùng lặp' }, adm.token)).status, 200);
+  assert.ok((await call('GET', '/notifications', null, u.token)).data.notifications.some((n) => n.text.includes('chưa được duyệt: Trùng lặp')));
+  // duyệt: lên tab Mới ở đầu, người tạo thành mod chủ đề
+  assert.equal((await call('POST', `/topics/pending/${pid}/approve`, {}, adm.token)).status, 200);
+  assert.equal((await call('POST', `/topics/pending/${pid}/approve`, {}, adm.token)).status, 404);
+  const nw = (await call('GET', '/topic-board?tab=new', null, w.token)).data.topics;
+  assert.equal(nw[0].id, pid);
+  assert.equal((await call('GET', '/topics', null, u.token)).data.mine.length, 0);
+  assert.equal((await call('GET', `/groups/${pid}`, null, w.token)).status, 200);
+  assert.ok((await call('GET', '/notifications', null, u.token)).data.notifications.some((n) => n.text.includes('đã được duyệt')));
+  // tab Nổi bật: chưa đủ thảo luận thì chưa có
+  assert.ok(!(await call('GET', '/topic-board?tab=hot', null, w.token)).data.topics.some((t) => t.id === pid));
+  await call('POST', `/groups/${pid}/messages`, { body: 'một' }, w.token);
+  await call('POST', `/groups/${pid}/messages`, { body: 'hai' }, w.token);
+  await call('POST', `/groups/${pid}/messages`, { body: 'ba' }, w.token);
+  await call('POST', `/groups/${pid}/messages`, { body: 'bốn' }, w.token);
+  assert.ok(!(await call('GET', '/topic-board?tab=hot', null, w.token)).data.topics.some((t) => t.id === pid), 'chỉ 1 người nói thì chưa nổi bật');
+  await call('POST', `/groups/${pid}/messages`, { body: 'năm' }, x.token);
+  const hot = (await call('GET', '/topic-board?tab=hot', null, w.token)).data.topics;
+  assert.ok(hot.some((t) => t.id === pid && t.msgs24h === 5 && t.users24h === 2));
+  assert.ok((await call('GET', '/public/topic-board?tab=hot')).data.topics.some((t) => t.id === pid));
+  // Admin đặt nổi bật một chủ đề ít thảo luận → lên đầu tab Nổi bật
+  const m = (await call('POST', '/topics', { name: 'Admin tạo trực tiếp' }, adm.token));
+  assert.equal(m.status, 201);
+  await call('POST', `/topics/${m.data.topic.id}/highlight`, { on: true }, adm.token);
+  assert.equal((await call('GET', '/topic-board?tab=hot', null, w.token)).data.topics[0].id, m.data.topic.id);
+  assert.equal((await call('GET', '/topic-board?tab=new', null, w.token)).data.topics[0].id, m.data.topic.id, 'Admin tạo thì lên tab Mới ngay');
+  for (const id of [pid, m.data.topic.id]) await call('DELETE', `/topics/${id}`, {}, adm.token);
+});
+
 test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, chat như nhóm; người tạo/Admin sửa, đóng', async () => {
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
   const u = await signup('topicUser', 1), v = await signup('topicMod', 1);
-  // người thường không tạo được
-  assert.equal((await call('GET', '/topics', null, u.token)).data.canCreate, false);
-  assert.equal((await call('POST', '/topics', { name: 'Chủ đề của user' }, u.token)).status, 403);
+  // người thường: tạo thì phải chờ duyệt (xem test riêng bên dưới)
+  assert.equal((await call('GET', '/topics', null, u.token)).data.needsApproval, true);
   // Mod của một nhóm công khai tạo được
   const vn = (await call('GET', '/groups/mine', null, v.token)).data.groups.find((x) => x.type === 'country');
   await call('POST', '/admin/mods', { groupId: vn.id, userId: v.id }, adm.token);
-  assert.equal((await call('GET', '/topics', null, v.token)).data.canCreate, true);
+  assert.equal((await call('GET', '/topics', null, v.token)).data.needsApproval, false);
   assert.equal((await call('POST', '/topics', { name: 'x' }, v.token)).status, 400);
   const t = await call('POST', '/topics', { name: 'Bàn về concert', description: 'Chia sẻ cảm nhận sau concert' }, v.token);
   assert.equal(t.status, 201);

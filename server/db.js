@@ -204,6 +204,9 @@ try { db.exec('ALTER TABLE messages ADD COLUMN mentions TEXT'); } catch { /* đ�
 try { db.exec('ALTER TABLE messages ADD COLUMN mention_all INTEGER NOT NULL DEFAULT 0'); } catch { /* đã có cột */ } // admin tag @everyone
 try { db.exec('ALTER TABLE groups ADD COLUMN description TEXT'); } catch { /* đã có cột */ } // mô tả của chủ đề thảo luận
 try { db.exec('ALTER TABLE groups ADD COLUMN highlighted INTEGER'); } catch { /* đã có cột */ } // chủ đề được Admin đặt nổi bật (thời điểm đặt)
+// Thời điểm chủ đề được duyệt (chủ đề chờ duyệt có type = 'topic_pending' nên không hiện ở đâu cả cho tới khi duyệt)
+try { db.exec('ALTER TABLE groups ADD COLUMN approved_at INTEGER'); } catch { /* đã có cột */ }
+db.exec("UPDATE groups SET approved_at = created_at WHERE type = 'topic' AND approved_at IS NULL");
 try { db.exec('ALTER TABLE groups ADD COLUMN pinned_message_id INTEGER'); } catch { /* đã có cột */ } // tin được ghim lên đầu nhóm
 // Bình luận cho bản tin (kind='news') và tin nhắn ở Chủ đề nóng (kind='msg')
 db.exec(`CREATE TABLE IF NOT EXISTS comments (

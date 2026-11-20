@@ -224,6 +224,7 @@ api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
   const pinned = hotPosts().map((m) => guestMsg(m, { hearts: messageDto(m, null).hearts, groupName: 'Chủ đề nóng' }));
   res.json({ pinned, items: rows.map((m) => guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name })) });
 }));
+api.get('/public/topic-board', guestLimit, wrap((req, res) => res.json({ topics: topicBoard(boardTab(req)).map(({ joined, creatorName, ...t }) => t) })));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
   res.json({ news: rows.map((n) => ({ id: n.id, title: n.title, body: n.body, imageUrl: newsImgs(n)[0] || null, imageUrls: newsImgs(n), pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at, hearts: newsHearts(n.id) })) });
@@ -523,11 +524,77 @@ function topicDto(g, uid) {
     highlighted: !!g.highlighted, highlightedAt: g.highlighted || 0,
   };
 }
+const pendingDto = (g) => ({ id: g.id, name: g.name, description: g.description || '', createdAt: g.created_at, creator: g.created_by ? publicUser(getUser(g.created_by)) : null });
 api.get('/topics', wrap((req, res) => {
   const rows = db.prepare("SELECT * FROM groups WHERE type = 'topic'").all();
   // chủ đề nổi bật lên đầu (mới đặt trước), sau đó theo hoạt động gần nhất
   const topics = rows.map((g) => topicDto(g, req.user.id)).sort((a, b) => b.highlightedAt - a.highlightedAt || b.lastAt - a.lastAt);
-  res.json({ topics, canCreate: canCreateTopic(req.user.id), canHighlight: isSystemAdmin(req.user.id) });
+  const mine = db.prepare("SELECT * FROM groups WHERE type = 'topic_pending' AND created_by = ? ORDER BY id DESC").all(req.user.id).map(pendingDto);
+  res.json({ topics, mine, needsApproval: !canCreateTopic(req.user.id), canHighlight: isSystemAdmin(req.user.id) });
+}));
+
+// Bảng "Chủ đề nóng": tab Mới (theo thời điểm được duyệt) và tab Nổi bật (Admin đặt, hoặc sôi nổi trong 24 giờ qua)
+const HOT_TOPIC_MIN_MSGS = 5, HOT_TOPIC_MIN_USERS = 2; // "nhiều thảo luận": ít nhất 5 tin từ 2 người khác nhau trong 24 giờ
+function topicBoard(tab, uid = null) {
+  const since = now() - 86400_000;
+  const stat = db.prepare('SELECT COUNT(*) n, COUNT(DISTINCT user_id) u, MAX(created_at) t FROM messages WHERE group_id = ? AND deleted = 0 AND created_at > ?');
+  const last = db.prepare('SELECT MAX(created_at) t FROM messages WHERE group_id = ? AND deleted = 0');
+  const mem = db.prepare('SELECT COUNT(*) c FROM members WHERE group_id = ?');
+  let items = db.prepare("SELECT * FROM groups WHERE type = 'topic'").all().map((g) => {
+    const s = stat.get(g.id, since);
+    return {
+      id: g.id, name: g.name, description: g.description || '', approvedAt: g.approved_at || g.created_at,
+      lastAt: last.get(g.id).t || g.created_at, memberCount: mem.get(g.id).c, msgs24h: s.n, users24h: s.u,
+      highlighted: !!g.highlighted, hlAt: g.highlighted || 0,
+      creatorName: g.created_by ? getUser(g.created_by)?.display_name || null : null,
+      joined: uid ? !!getMember(g.id, uid) : false,
+    };
+  });
+  if (tab === 'hot') {
+    items = items.filter((t) => t.highlighted || (t.msgs24h >= HOT_TOPIC_MIN_MSGS && t.users24h >= HOT_TOPIC_MIN_USERS))
+      .sort((a, b) => b.hlAt - a.hlAt || b.msgs24h - a.msgs24h || b.lastAt - a.lastAt);
+  } else items.sort((a, b) => b.approvedAt - a.approvedAt || b.id - a.id);
+  return items.slice(0, 50).map(({ hlAt, ...t }) => t);
+}
+const boardTab = (req) => (req.query.tab === 'hot' ? 'hot' : 'new');
+api.get('/topic-board', wrap((req, res) => res.json({
+  topics: topicBoard(boardTab(req), req.user.id), needsApproval: !canCreateTopic(req.user.id),
+  mine: db.prepare("SELECT * FROM groups WHERE type = 'topic_pending' AND created_by = ? ORDER BY id DESC").all(req.user.id).map(pendingDto),
+})));
+
+// Duyệt chủ đề (Admin)
+api.get('/topics/pending', adminOnly, wrap((_req, res) => {
+  res.json({ topics: db.prepare("SELECT * FROM groups WHERE type = 'topic_pending' ORDER BY id").all().map(pendingDto) });
+}));
+api.post('/topics/pending/:id/approve', adminOnly, wrap((req, res) => {
+  const g = getGroup(int(req.params.id));
+  if (!g || g.type !== 'topic_pending') throw notFound('Chủ đề này không còn chờ duyệt');
+  tx(() => {
+    db.prepare("UPDATE groups SET type = 'topic', approved_at = ?, key = ? WHERE id = ?").run(now(), `topic:${g.created_by}:${now()}:${randomToken(4)}`, g.id);
+    if (g.created_by && getUser(g.created_by)?.status === 'active') {
+      addMember(g.id, g.created_by, 'mod'); // người tạo quản lý chủ đề
+      db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(g.id, g.created_by);
+    }
+  });
+  log(req.user.id, 'approve_topic', { group: g.id, name: g.name });
+  if (g.created_by) notify(g.created_by, 'moderation', `Chủ đề "${g.name}" của bạn đã được duyệt và hiện ở mục Chủ đề nóng`, { url: `/#/chat/${g.id}`, tag: `topic-ok-${g.id}` });
+  res.json({ ok: true });
+}));
+api.post('/topics/pending/:id/reject', adminOnly, wrap((req, res) => {
+  const g = getGroup(int(req.params.id));
+  if (!g || g.type !== 'topic_pending') throw notFound('Chủ đề này không còn chờ duyệt');
+  const reason = str(req.body.reason, 300);
+  db.prepare('DELETE FROM groups WHERE id = ?').run(g.id);
+  log(req.user.id, 'reject_topic', { group: g.id, name: g.name, reason });
+  if (g.created_by) notify(g.created_by, 'moderation', `Chủ đề "${g.name}" chưa được duyệt${reason ? `: ${reason}` : ''}`, { tag: `topic-no-${g.id}` });
+  res.json({ ok: true });
+}));
+// Người tạo rút lại chủ đề đang chờ duyệt
+api.delete('/topics/pending/:id', wrap((req, res) => {
+  const g = getGroup(int(req.params.id));
+  if (!g || g.type !== 'topic_pending' || g.created_by !== req.user.id) throw notFound('Không tìm thấy chủ đề chờ duyệt');
+  db.prepare('DELETE FROM groups WHERE id = ?').run(g.id);
+  res.json({ ok: true });
 }));
 // Admin đặt / bỏ nổi bật một chủ đề
 api.post('/topics/:id/highlight', wrap((req, res) => {
@@ -540,14 +607,27 @@ api.post('/topics/:id/highlight', wrap((req, res) => {
   res.json({ topic: topicDto(getGroup(g.id), req.user.id) });
 }));
 api.post('/topics', wrap((req, res) => {
-  if (!canCreateTopic(req.user.id)) throw forbidden('Chỉ Admin và Mod được tạo chủ đề');
-  rateLimit(`topic:${req.user.id}`, 10, 3600_000);
+  const free = canCreateTopic(req.user.id); // Admin/Mod: tạo tuỳ ý; người dùng thường: chờ Admin duyệt
+  rateLimit(`topic:${req.user.id}`, free ? 10 : 5, free ? 3600_000 : 86400_000);
   const name = str(req.body.name, 60), description = str(req.body.description, 300);
   if (name.length < 2) throw bad('Tên chủ đề cần ít nhất 2 ký tự');
+  if (!free) {
+    if (db.prepare("SELECT COUNT(*) c FROM groups WHERE type = 'topic_pending' AND created_by = ?").get(req.user.id).c >= 3) throw bad('Bạn đang có 3 chủ đề chờ duyệt. Hãy đợi Admin duyệt rồi tạo tiếp.');
+    const key = `topic:${req.user.id}:${now()}:${randomToken(4)}`;
+    const r = db.prepare('INSERT INTO groups (type, key, name, description, created_by, created_at) VALUES (?,?,?,?,?,?)')
+      .run('topic_pending', key, name, description || null, req.user.id, now());
+    const gid = Number(r.lastInsertRowid);
+    log(req.user.id, 'submit_topic', { group: gid, name });
+    for (const a of db.prepare("SELECT id FROM users WHERE role = 'admin' AND status = 'active'").all()) {
+      notify(a.id, 'mod', `${req.user.display_name} đề xuất chủ đề "${name}" — đang chờ duyệt`, { url: '/#/admin', tag: 'topic-pending' });
+    }
+    return res.status(202).json({ pending: true, topic: pendingDto(getGroup(gid)) });
+  }
   const id = tx(() => {
     const r = db.prepare('INSERT INTO groups (type, key, name, description, created_by, created_at) VALUES (?,?,?,?,?,?)')
       .run('topic', `topic:${req.user.id}:${now()}:${randomToken(4)}`, name, description || null, req.user.id, now());
     const gid = Number(r.lastInsertRowid);
+    db.prepare('UPDATE groups SET approved_at = ? WHERE id = ?').run(now(), gid);
     addMember(gid, req.user.id, 'mod'); // người tạo quản lý chủ đề
     db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(gid, req.user.id);
     return gid;
@@ -1610,6 +1690,7 @@ api.get('/admin/counts', adminOnly, wrap((_req, res) => {
     users: c("SELECT COUNT(*) c FROM users WHERE status != 'deleted'"),
     mods: c("SELECT COUNT(DISTINCT m.user_id) c FROM members m JOIN groups g ON g.id = m.group_id WHERE m.role = 'mod' AND g.type IN ('country','region','province','topic')"),
     admins: c("SELECT COUNT(*) c FROM users WHERE role = 'admin' AND status != 'deleted'"),
+    topics: c("SELECT COUNT(*) c FROM groups WHERE type = 'topic_pending'"),
   });
 }));
 

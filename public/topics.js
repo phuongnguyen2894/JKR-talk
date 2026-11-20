@@ -1,7 +1,7 @@
 // Chủ đề thảo luận: Admin / Mod tạo, mọi người vào bàn luận như một nhóm chat
 import { $, esc, api, go, icon, fmtDateTime, toast, fail, ask, confirmBox, actions, refreshGroups, avatarR, roleOf, roleClass } from './core.js';
 
-const ago = (t) => {
+export const ago = (t) => {
   const m = Math.max(0, Math.floor((Date.now() - t) / 60000));
   if (m < 1) return 'vừa xong';
   if (m < 60) return `${m} phút trước`;
@@ -10,11 +10,19 @@ const ago = (t) => {
   return `${Math.floor(h / 24)} ngày trước`;
 };
 
+// Nút tạo chủ đề + danh sách chủ đề của tôi đang chờ duyệt (dùng ở trang Chủ đề nóng và Tất cả chủ đề)
+export const createTopicHtml = (needsApproval) => `<button class="btn primary" data-act="topic-new" data-approval="${needsApproval ? 1 : 0}">+ Tạo chủ đề</button>`;
+export const pendingMineHtml = (mine = []) => mine.length ? `<section class="card col" style="gap:6px" aria-label="Chủ đề đang chờ duyệt">
+  <div class="h2" style="margin:0">Đang chờ Admin duyệt</div>
+  ${mine.map((t) => `<div class="row wrap" style="gap:8px"><span class="pill warn">Chờ duyệt</span><b class="grow">${esc(t.name)}</b><span class="tiny muted">${ago(t.createdAt)}</span><button class="btn sm" data-act="topic-withdraw" data-id="${t.id}">Rút lại</button></div>`).join('')}
+  <p class="tiny muted" style="margin:0">Duyệt xong chủ đề sẽ hiện ở mục Chủ đề nóng và bạn nhận được thông báo.</p></section>` : '';
+
 export async function renderTopics(view) {
-  const { topics, canCreate, canHighlight } = await api('GET', '/topics');
-  view.innerHTML = `<div class="page"><div class="page-inner">
-    <div class="row between wrap"><h1>Chủ đề thảo luận</h1>${canCreate ? '<button class="btn primary" data-act="topic-new">Tạo chủ đề</button>' : ''}</div>
-    <p class="small muted">Các chủ đề do Admin và Mod mở để mọi người cùng bàn luận. Bấm vào một chủ đề để đọc, bấm "Tham gia" để cùng trò chuyện.</p>
+  const { topics, mine, needsApproval, canHighlight } = await api('GET', '/topics');
+  view.innerHTML = `<div class="page" id="topics-page"><div class="page-inner">
+    <div class="row between wrap"><h1>Chủ đề thảo luận</h1>${createTopicHtml(needsApproval)}</div>
+    <p class="small muted">Ai cũng có thể đề xuất chủ đề; chủ đề của người dùng sẽ hiện sau khi Admin duyệt. Bấm vào một chủ đề để đọc và cùng trò chuyện.</p>
+    ${pendingMineHtml(mine)}
     <div class="list">${topics.map((t) => {
       const r = roleOf(t.creator);
       return `<article class="card col topic-card${t.highlighted ? ' hl' : ''}">
@@ -34,16 +42,22 @@ const fields = (v = {}) => [
   { name: 'name', label: 'Tên chủ đề', value: v.name || '', required: true, max: 60 },
   { name: 'description', label: 'Mô tả ngắn (không bắt buộc)', type: 'textarea', value: v.description || '', max: 300 },
 ];
-actions['topic-new'] = async () => {
-  const v = await ask({ title: 'Tạo chủ đề thảo luận', text: 'Chủ đề hiện cho mọi người. Ai cũng có thể vào đọc và tham gia bàn luận, theo quy tắc cộng đồng.', fields: fields(), ok: 'Tạo' });
+actions['topic-new'] = async (el) => {
+  const approval = el?.dataset?.approval === '1';
+  const v = await ask({ title: 'Tạo chủ đề thảo luận', text: approval ? 'Chủ đề của bạn sẽ được gửi cho Admin duyệt. Sau khi được duyệt, nó hiện ở mục Chủ đề nóng cho mọi người cùng bàn luận.' : 'Chủ đề hiện cho mọi người. Ai cũng có thể vào đọc và tham gia bàn luận, theo quy tắc cộng đồng.', fields: fields(), ok: approval ? 'Gửi duyệt' : 'Tạo' });
   if (!v) return;
   try {
-    const { topic } = await api('POST', '/topics', v);
+    const r = await api('POST', '/topics', v);
+    if (r.pending) { toast('Đã gửi chủ đề cho Admin duyệt. Bạn sẽ nhận thông báo khi có kết quả.', 6000); document.dispatchEvent(new CustomEvent('topics-changed')); return; }
     await refreshGroups();
     toast('Đã tạo chủ đề');
-    go(`#/chat/${topic.id}`);
+    go(`#/chat/${r.topic.id}`);
   } catch (e) { fail(e); }
 };
+actions['topic-withdraw'] = async (el) => {
+  try { await api('DELETE', `/topics/pending/${el.dataset.id}`); toast('Đã rút lại chủ đề'); document.dispatchEvent(new CustomEvent('topics-changed')); } catch (e) { fail(e); }
+};
+document.addEventListener('topics-changed', () => { if ($('#topics-page')) renderTopics($('#view')).catch(() => {}); });
 actions['topic-edit'] = async (el) => {
   const v = await ask({ title: 'Sửa chủ đề', fields: fields({ name: el.dataset.name, description: el.dataset.desc }), ok: 'Lưu' });
   if (!v) return;

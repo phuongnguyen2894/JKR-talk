@@ -472,3 +472,5 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .msg .text, .msg.own .bubble, .cmt-text, .news-body, .quote { white-space: pre-line; }
 .bubble .mention, .bubble .mention.me { padding: 0; background: none; }
 .sec, .h2 { word-spacing: normal; }
+
+.topic-card .pill { align-self: flex-start; width: fit-content; }
