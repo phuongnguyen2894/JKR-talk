@@ -21,7 +21,7 @@ try { db.exec('ALTER TABLE users ADD COLUMN push_prefs TEXT'); } catch { /* đã
 export const PUSH_KINDS = ['mention', 'reply', 'heart', 'dm', 'social', 'system', 'news'];
 export const PUSH_TYPE_MAP = {
   mention: 'mention', reply: 'reply', heart: 'heart', dm: 'dm',
-  friend_request: 'social', friend_accept: 'social', group_invite: 'social', join_request: 'social', join_approved: 'social',
+  welcome: 'social', friend_request: 'social', friend_accept: 'social', group_invite: 'social', join_request: 'social', join_approved: 'social',
   moderation: 'system', report_done: 'system', mod: 'system', group_dissolved: 'system',
 };
 

@@ -72,21 +72,53 @@ const superOnly = (req, _res, next) => {
 // ============================================================================
 api.get('/geo', (_req, res) => res.json({ country: COUNTRY, regions: REGIONS, provinces: PROVINCES }));
 
-// Tin chào mừng tự động (đăng bởi tài khoản Admin hệ thống, tag người mới). Mỗi người chỉ được chào một lần ở mỗi nhóm.
-function welcomeUser(uid, displayName, g) {
+// ---- Chào mừng thành viên mới: giao diện riêng của từng nhóm, không đăng vào khung chat chung ----
+db.exec(`CREATE TABLE IF NOT EXISTS welcomes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  author_id INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_welcomes_group_user ON welcomes(group_id, user_id);`);
+const WELCOME_TYPES = ['country', 'region', 'province', 'private'];
+const NEWCOMER_MS = 7 * 86400_000; // "mới" = tham gia trong 7 ngày qua
+const WELCOME_PER_AUTHOR = 3;
+const autoWelcomeText = (g) => `🎉 Chào mừng bạn đến với ${g.type === 'country' ? 'JKR talks' : `nhóm ${g.name}`}! Bạn bắt đầu đu LingOrm từ bao giờ vậy? Kể cho mọi người nghe nhé 💜`;
+
+// Lời chào tự động của tài khoản Admin hệ thống (nằm trong mục Chào mừng của nhóm, mỗi người một lần ở mỗi nhóm)
+function welcomeUser(uid, g) {
   try {
     if (!g || !['country', 'region', 'province'].includes(g.type)) return;
     const bot = db.prepare('SELECT id FROM users WHERE is_super = 1 ORDER BY id LIMIT 1').get();
     if (!bot || bot.id === uid) return;
-    const tag = JSON.stringify([uid]);
-    if (db.prepare('SELECT 1 FROM messages WHERE group_id = ? AND user_id = ? AND mentions = ?').get(g.id, bot.id, tag)) return;
-    const where = g.type === 'country' ? 'JKR talks' : `nhóm ${g.name}`;
-    const body = `🎉 Chào mừng @${displayName} đã tham gia ${where}! Bạn bắt đầu đu LingOrm từ bao giờ vậy? Kể cho mọi người nghe nhé 💜`;
-    const mr = db.prepare('INSERT INTO messages (group_id, user_id, body, mentions, created_at) VALUES (?,?,?,?,?)').run(g.id, bot.id, body, tag, now());
-    const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(mr.lastInsertRowid), bot.id);
-    hub.sendMany(memberIds(g.id), { type: 'message', message: dto });
-    if (g.type === 'country') notify(uid, 'mention', `${getUser(bot.id).display_name} đã nhắc đến bạn trong "${g.name}"`, { url: `/#/chat/${g.id}` }); // chỉ báo ở nhóm quốc gia, các nhóm khác chỉ tag trong tin
+    if (db.prepare('SELECT 1 FROM welcomes WHERE group_id = ? AND user_id = ? AND author_id = ?').get(g.id, uid, bot.id)) return;
+    db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(g.id, uid, bot.id, autoWelcomeText(g), now());
+    if (g.type === 'country') notify(uid, 'welcome', `Chào mừng bạn đến với JKR talks! Xem lời chào của mọi người ở mục Chào mừng của "${g.name}"`, { url: `/#/welcome/${g.id}`, tag: `welcome-${g.id}` });
   } catch (e) { console.error('[welcome]', e.message); }
+}
+// Chuyển các tin chào mừng tự động cũ ra khỏi khung chat chung (một lần)
+(function migrateOldWelcomes() {
+  if (db.prepare("SELECT 1 FROM app_kv WHERE key = 'welcome_migrated'").get()) return;
+  const bot = db.prepare('SELECT id FROM users WHERE is_super = 1 ORDER BY id LIMIT 1').get();
+  if (bot) {
+    for (const m of db.prepare("SELECT id, group_id, mentions, created_at FROM messages WHERE user_id = ? AND deleted = 0 AND mentions IS NOT NULL AND body LIKE '🎉 Chào mừng @%'").all(bot.id)) {
+      let target; try { target = JSON.parse(m.mentions)[0]; } catch { continue; }
+      const g = getGroup(m.group_id);
+      if (!target || !g) continue;
+      db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(g.id, target, bot.id, autoWelcomeText(g), m.created_at);
+      db.prepare('UPDATE messages SET deleted = 1 WHERE id = ?').run(m.id);
+    }
+  }
+  db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('welcome_migrated', '1')").run();
+})();
+
+// số thành viên mới chưa được mình chào
+function newcomerCount(gid, uid) {
+  return db.prepare(`SELECT COUNT(*) c FROM members m JOIN users u ON u.id = m.user_id
+    WHERE m.group_id = ? AND m.joined_at > ? AND m.user_id != ? AND u.status = 'active' AND u.is_super = 0
+      AND NOT EXISTS (SELECT 1 FROM welcomes w WHERE w.group_id = m.group_id AND w.user_id = m.user_id AND w.author_id = ?)`).get(gid, now() - NEWCOMER_MS, uid, uid).c;
 }
 
 api.post(
@@ -120,7 +152,7 @@ api.post(
       addMember(trendGroupId(), uid); // và nhóm Đẩy trend
       return uid;
     });
-    for (const gid of homeGroupIds(province)) welcomeUser(id, displayName, getGroup(gid)); // chào ở cả 3 nhóm
+    for (const gid of homeGroupIds(province)) welcomeUser(id, getGroup(gid)); // lời chào tự động ở mục Chào mừng của 3 nhóm
     // không cần xác nhận email: đăng nhập luôn sau khi đăng ký
     const token = randomToken();
     db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, id, now());
@@ -343,6 +375,7 @@ function groupDto(g, uid, member) {
     dto.rulesAck = !!member.rules_ack;
     if (g.type === 'trend') dto.canPost = canPostTrend(uid);
     dto.modMutedUntil = member.mod_muted_until && member.mod_muted_until > now() ? member.mod_muted_until : null;
+    if (WELCOME_TYPES.includes(g.type)) dto.newcomers = newcomerCount(g.id, uid);
   }
   if (g.type === 'dm') {
     const other = memberIds(g.id).find((x) => x !== uid);
@@ -453,7 +486,7 @@ api.post(
     if (db.prepare('SELECT 1 FROM bans WHERE group_id=? AND user_id=?').get(g.id, req.user.id)) throw forbidden('Bạn đã bị mời ra khỏi nhóm này');
     const had = !!getMember(g.id, req.user.id);
     addMember(g.id, req.user.id); // vào ngay, không cần duyệt; không đổi vị trí home
-    if (!had) welcomeUser(req.user.id, req.user.display_name, g);
+    if (!had) welcomeUser(req.user.id, g);
     res.json({ group: groupDto(g, req.user.id, getMember(g.id, req.user.id)) });
   })
 );
@@ -499,6 +532,45 @@ api.get('/groups/:id/mention-search', wrap((req, res) => {
       ORDER BY (u.name_key LIKE ?) DESC, u.display_name LIMIT 20`).all(g.id, req.user.id, '%' + q + '%', q + '%');
   const users = rows.filter((r) => !isBlockedEither(req.user.id, r.id)).slice(0, 8).map((r) => { const p = publicUser(getUser(r.id)); return { id: p.id, displayName: p.displayName, avatarColor: p.avatarColor, avatarUrl: p.avatarUrl }; });
   res.json({ users });
+}));
+
+api.get('/groups/:id/welcome', wrap((req, res) => {
+  const { g } = requireMember(int(req.params.id), req.user.id);
+  if (!WELCOME_TYPES.includes(g.type)) throw bad('Nhóm này không có mục Chào mừng');
+  const rows = db.prepare(`SELECT m.user_id, m.joined_at FROM members m JOIN users u ON u.id = m.user_id
+      WHERE m.group_id = ? AND m.joined_at > ? AND u.status = 'active' AND u.is_super = 0 ORDER BY m.joined_at DESC LIMIT 60`).all(g.id, now() - NEWCOMER_MS);
+  const newcomers = rows
+    .filter((r) => r.user_id === req.user.id || !isBlockedEither(req.user.id, r.user_id))
+    .map((r) => {
+      const ws = db.prepare('SELECT * FROM welcomes WHERE group_id = ? AND user_id = ? ORDER BY id DESC LIMIT 30').all(g.id, r.user_id).reverse()
+        .filter((w) => w.author_id === req.user.id || !isBlockedEither(req.user.id, w.author_id));
+      return {
+        user: publicUser(getUser(r.user_id)), isMe: r.user_id === req.user.id, joinedAt: r.joined_at,
+        welcomes: ws.map((w) => ({ id: w.id, author: publicUser(getUser(w.author_id)), body: w.body, createdAt: w.created_at, mine: w.author_id === req.user.id })),
+        mineCount: ws.filter((w) => w.author_id === req.user.id).length,
+      };
+    })
+    .sort((a, b) => Number(b.isMe) - Number(a.isMe));
+  res.json({ group: { id: g.id, name: g.name, type: g.type }, newcomers, days: 7, perAuthor: WELCOME_PER_AUTHOR });
+}));
+api.post('/groups/:id/welcome/:uid', wrap((req, res) => {
+  rateLimit(`welcome:${req.user.id}`, 20, 60_000);
+  const gid = int(req.params.id), target = int(req.params.uid);
+  const { g, m } = requireMember(gid, req.user.id);
+  if (!WELCOME_TYPES.includes(g.type)) throw bad('Nhóm này không có mục Chào mừng');
+  if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi gửi lời chào');
+  if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
+  if (target === req.user.id) throw bad('Bạn không thể tự chào mừng mình');
+  const tm = getMember(gid, target), tu = getUser(target);
+  if (!tm || !tu || tu.status !== 'active' || tu.is_super || tm.joined_at <= now() - NEWCOMER_MS) throw notFound('Không tìm thấy thành viên mới này');
+  if (isBlockedEither(req.user.id, target)) throw forbidden('Không thể gửi lời chào cho người này');
+  const body = str(req.body.body, 300);
+  if (!body) throw bad('Hãy viết vài chữ chào mừng');
+  const mine = db.prepare('SELECT COUNT(*) c FROM welcomes WHERE group_id = ? AND user_id = ? AND author_id = ?').get(gid, target, req.user.id).c;
+  if (mine >= WELCOME_PER_AUTHOR) throw bad(`Bạn đã gửi đủ ${WELCOME_PER_AUTHOR} lời chào cho thành viên này`);
+  const r = db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(gid, target, req.user.id, body, now());
+  if (mine === 0) notify(target, 'welcome', `${req.user.display_name} đã gửi lời chào mừng bạn trong "${g.name}"`, { url: `/#/welcome/${gid}`, tag: `welcome-${gid}` });
+  res.status(201).json({ welcome: { id: Number(r.lastInsertRowid), author: publicUser(getUser(req.user.id)), body, createdAt: now(), mine: true } });
 }));
 
 api.post('/groups/:id/rules-ack', wrap((req, res) => {

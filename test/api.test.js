@@ -51,10 +51,14 @@ test('đăng ký: chọn Đà Nẵng -> Việt Nam, Miền Trung, Đà Nẵng', 
   const g = await call('GET', '/groups/mine', null, linh.token);
   assert.deepEqual(g.data.groups.filter((x) => x.type !== 'trend').map((x) => x.name), ['Việt Nam', 'Miền Trung', 'Đà Nẵng']);
 });
-test('đăng ký mới: tự đăng tin chào mừng ở nhóm quốc gia', async () => {
+test('đăng ký mới: lời chào tự động nằm ở mục Chào mừng, không đăng vào khung chat chung', async () => {
   const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups.find((x) => x.type === 'country');
   const h = await call('GET', `/groups/${vn.id}/messages`, null, mai.token);
-  assert.ok(h.data.messages.some((m) => m.body.includes('Chào mừng') && m.body.includes('đu LingOrm')));
+  assert.equal(h.data.messages.some((m) => m.body.includes('Chào mừng')), false);
+  const w = await call('GET', `/groups/${vn.id}/welcome`, null, mai.token);
+  assert.equal(w.status, 200);
+  const me = w.data.newcomers.find((n) => n.isMe);
+  assert.ok(me && me.welcomes.length === 1 && me.welcomes[0].body.includes('đu LingOrm'));
 });
 test('chat: phải xác nhận quy tắc rồi mới gửi được; tin hiện trong lịch sử', async () => {
   const vn = (await call('GET', '/groups/mine', null, mai.token)).data.groups.find((x) => x.type === 'country');
@@ -508,21 +512,15 @@ test('tag @tên: người được tag nhận thông báo; không tag được A
   const a = await signup('tagger1', 1), b = await signup('tagged1', 1);
   const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.type === 'country');
   await call('POST', `/groups/${vn.id}/rules-ack`, {}, a.token);
-  // tin chào mừng đã tag người mới và báo cho họ
-  const hist = (await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages;
-  const wel = hist.find((m) => m.body.includes('@tagged1'));
-  assert.ok(wel && wel.mentions.some((u) => u.id === b.id));
-  // cũng được chào ở nhóm vùng và nhóm tỉnh/thành
-  for (const g of (await call('GET', '/groups/mine', null, b.token)).data.groups.filter((x) => x.type === 'region' || x.type === 'province'))
-    assert.ok((await call('GET', `/groups/${g.id}/messages`, null, b.token)).data.messages.some((m) => m.body.includes('@tagged1')), g.name);
-  assert.ok((await call('GET', '/notifications', null, b.token)).data.notifications.some((n) => n.type === 'mention'));
+  // người mới được báo về mục Chào mừng (chỉ ở nhóm quốc gia)
+  assert.equal((await call('GET', '/notifications', null, b.token)).data.notifications.filter((n) => n.type === 'welcome').length, 1);
   // tag người trong nhóm
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
   let r = await call('POST', `/groups/${vn.id}/messages`, { body: 'chào @tagged1 và @Admin JKR và @tagger1', mentions: [b.id, adm.user.id, a.id] }, a.token);
   assert.equal(r.status, 201);
   assert.deepEqual(r.data.message.mentions.map((u) => u.id), [b.id]); // Admin hệ thống + chính mình bị bỏ
   const ns = (await call('GET', '/notifications', null, b.token)).data.notifications.filter((n) => n.type === 'mention');
-  assert.equal(ns.length, 2); // chào mừng chỉ báo ở nhóm quốc gia (1) + 1 lần được tag
+  assert.equal(ns.length, 1); // chỉ 1 lần được tag (thông báo chào mừng là loại riêng)
   assert.equal((await call('GET', '/notifications', null, adm.token)).data.notifications.some((n) => n.type === 'mention'), false);
   // tìm gợi ý: không có Admin hệ thống, không có chính mình
   const s = await call('GET', `/groups/${vn.id}/mention-search?q=ta`, null, a.token);
@@ -570,4 +568,38 @@ test('thông báo: trả lời và tim báo cho tác giả; đẩy ngoài app th
   assert.equal(pushLog.length, 0);
   assert.equal((await call('GET', '/push/config', null, b.token)).data.subscribed, false);
   assert.equal((await call('GET', '/push/config')).status, 401);
+});
+
+test('mục Chào mừng của nhóm: gửi lời chào cho người mới, giới hạn 3 lời/người, chặn tự chào, thông báo cho người mới', async () => {
+  const a = await signup('wlcA', 1), b = await signup('wlcB', 1), c = await signup('wlcC', 1);
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.type === 'country');
+  const url = (u) => `/groups/${vn.id}/welcome/${u}`;
+  // chưa xác nhận quy tắc -> chưa gửi được
+  assert.equal((await call('POST', url(b.id), { body: 'hi' }, a.token)).status, 403);
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, a.token);
+  // số người mới chưa được mình chào hiện ở nhóm
+  const before = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.id === vn.id).newcomers;
+  assert.ok(before >= 2);
+  assert.equal((await call('POST', url(a.id), { body: 'tự chào' }, a.token)).status, 400);
+  assert.equal((await call('POST', url(b.id), { body: '   ' }, a.token)).status, 400);
+  const r = await call('POST', url(b.id), { body: 'Chào mừng bạn nhé 💜' }, a.token);
+  assert.equal(r.status, 201);
+  const after = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((x) => x.id === vn.id).newcomers;
+  assert.equal(after, before - 1);
+  // người mới thấy lời chào và có thông báo; lời chào không vào khung chat chung
+  const wb = (await call('GET', `/groups/${vn.id}/welcome`, null, b.token)).data.newcomers.find((n) => n.isMe);
+  assert.ok(wb.welcomes.some((w) => w.body.includes('Chào mừng bạn nhé') && w.author.id === a.id));
+  assert.ok((await call('GET', '/notifications', null, b.token)).data.notifications.some((n) => n.type === 'welcome' && n.text.includes('wlcA')));
+  assert.equal((await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages.some((m) => m.body.includes('Chào mừng bạn nhé')), false);
+  // tối đa 3 lời chào / người
+  for (let i = 0; i < 2; i++) assert.equal((await call('POST', url(b.id), { body: 'lời ' + i }, a.token)).status, 201);
+  assert.equal((await call('POST', url(b.id), { body: 'lời thứ 4' }, a.token)).status, 400);
+  // người ngoài nhóm không xem/gửi được; không chào được người không phải thành viên mới
+  const out = await signup('wlcOut', 45);
+  const dn = (await call('GET', '/groups/mine', null, out.token)).data.groups.find((x) => x.type === 'province');
+  assert.equal((await call('GET', `/groups/${dn.id}/welcome`, null, a.token)).status, 403);
+  assert.equal((await call('POST', `/groups/${vn.id}/welcome/99999`, { body: 'x' }, a.token)).status, 404);
+  // admin hệ thống không nằm trong danh sách người mới
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  assert.equal((await call('GET', `/groups/${vn.id}/welcome`, null, c.token)).data.newcomers.some((n) => n.user.id === adm.user.id), false);
 });

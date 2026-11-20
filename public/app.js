@@ -3,6 +3,7 @@ import { renderChat, onSocket } from './chat.js';
 import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
 import { routeGuest } from './guest.js';
+import { renderWelcome } from './welcome.js';
 import { registerSW, syncPush, unsubscribeThisDevice } from './push.js';
 import { renderBugs } from './bugs.js';
 import { renderLogin, renderRegister, renderDiscover, renderNews, renderSettings, renderAdmin } from './pages.js';
@@ -96,6 +97,7 @@ async function route() {
           return;
         }
         return await renderChat(view, Number(r.arg));
+      case 'welcome': return await renderWelcome(view, Number(r.arg));
       case 'discover': return await renderDiscover(view);
       case 'friends': return await renderFriends(view);
       case 'hot': return await renderHot(view);

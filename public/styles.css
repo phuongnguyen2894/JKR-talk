@@ -353,3 +353,17 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 
 /* Mục Cài đặt trong danh sách: chỉ cho điện thoại (bản máy tính có sẵn ở chân thanh bên) */
 @media (min-width: 900px) { .only-mobile { display: none !important; } }
+
+/* Mục Chào mừng thành viên mới */
+.welcome-btn { position: relative; font-size: 20px; line-height: 1; }
+.welcome-btn .badge { position: absolute; top: 2px; right: 0; }
+.back-wl { flex: 0 0 auto; }
+.wl-card { gap: 8px; }
+.wl-list { display: flex; flex-direction: column; gap: 4px; }
+.wl-msg { background: color-mix(in srgb, currentColor 7%, transparent); border-radius: 4px 12px 12px 12px; padding: 6px 10px; font-size: 14px; overflow-wrap: anywhere; align-self: flex-start; max-width: 92%; }
+.wl-msg.mine { background: var(--soft); align-self: flex-end; border-radius: 12px 4px 12px 12px; }
+.wl-who { font-weight: 600; font-size: 12.5px; color: var(--muted); }
+.wl-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.wl-quick .chip { min-height: 32px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); font-size: 12.5px; color: var(--text); text-align: left; }
+.wl-form { display: flex; gap: 8px; }
+.wl-form .input { flex: 1; min-width: 0; }
