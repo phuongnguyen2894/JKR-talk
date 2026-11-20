@@ -258,10 +258,32 @@ function showRules() {
       C.group.rulesAck = true;
       closeModal();
       redrawComposer();
+      if (C.group.type === 'country') showIntro();
     } catch (e) { fail(e); }
   };
 }
 actions.rules = showRules;
+// Lần đầu vào nhóm quốc gia: mời giới thiệu bản thân bằng một tin nhắn đầu tiên
+function showIntro() {
+  const gid = C.gid;
+  openModal(`<form id="introf" class="col"><h2>Chào mừng bạn! 👋</h2>
+    <p class="muted small">Cho mọi người biết bạn bắt đầu đu LingOrm từ bao giờ nhé. Tin này sẽ là tin nhắn đầu tiên của bạn trong nhóm.</p>
+    <div class="field"><label for="introt">Bạn bắt đầu đu LingOrm từ bao giờ?</label>
+    <textarea class="input" id="introt" maxlength="500" rows="3" placeholder="VD: Từ Affair 2023, cày đi cày lại cả series..."></textarea></div>
+    <div class="btns"><button type="button" class="btn" data-close>Để sau</button><button class="btn primary">Gửi lời chào</button></div></form>`);
+  $('#modal [data-close]').onclick = closeModal;
+  $('#introf').onsubmit = async (e) => {
+    e.preventDefault();
+    const t = $('#introt').value.trim();
+    if (!t) return fail(new Error('Hãy viết vài chữ trước khi gửi'));
+    try {
+      const { message } = await api('POST', `/groups/${gid}/messages`, { body: `👋 Chào mọi người, mình mới tham gia! Mình bắt đầu đu LingOrm từ: ${t}` });
+      closeModal();
+      if (C?.gid === gid) { appendMsg(message); scrollBottom(true); }
+    } catch (er) { fail(er); }
+  };
+}
+
 
 actions.join = async (el) => {
   try {
