@@ -1,7 +1,7 @@
 import { previewHtml } from './chat.js';
 import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify } from './core.js';
 
-// Chủ đề nóng: 38 tin nhắn nhiều tim nhất ở các nhóm công khai trong 24 giờ qua
+// Chủ đề nóng: tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua (tối đa 38 tin)
 const SCOPES = [['', 'Tất cả'], ['country', 'Quốc gia'], ['region', 'Khu vực'], ['province', 'Tỉnh thành']];
 const SHOW_FILTER = false; // tạm ẩn bộ lọc; đặt true để bật lại
 let scope = '';
@@ -11,7 +11,7 @@ export async function renderHot(view, sc = scope) {
   const { items } = await api('GET', '/hot' + (sc ? '?scope=' + sc : ''));
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>Chủ đề nóng</h1>
-    <p class="small muted">38 tin nhắn nhận được nhiều tim nhất ở các nhóm công khai trong 24 giờ qua. Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
+    <p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua. Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
     ${SHOW_FILTER ? `<div class="pillnav" role="group" aria-label="Lọc theo phạm vi">${SCOPES.map(([k, n]) => `<button data-sc="${k}" aria-pressed="${sc === k}">${n}</button>`).join('')}</div>` : ''}
     <div class="list">${items.map((m, i) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>

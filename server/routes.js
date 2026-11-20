@@ -741,7 +741,8 @@ api.post(
 );
 
 // Chủ đề nóng: 38 tin nhắn nhận được nhiều tim nhất trong 24 giờ qua, ở các group công khai
-const HOT_LIMIT = 38;
+const HOT_LIMIT = 38; // tối đa 38 tin
+const hotMinHearts = () => Number(process.env.HOT_MIN_HEARTS || 38); // chỉ tin đạt ít nhất 38 tim (trong 24 giờ qua) mới vào Chủ đề nóng
 // Chống trùng: cùng một liên kết (bỏ phần query/#) hoặc cùng nội dung chữ thì chỉ giữ tin nhiều tim nhất (đã xếp trước)
 function hotKey(m) {
   const u = firstUrl(m.body || '');
@@ -763,9 +764,9 @@ async function hotRows(viewerId, scope, backfill = true) {
          JOIN reactions r ON r.message_id = m.id AND r.created_at > ?
          JOIN groups g ON g.id = m.group_id
          WHERE g.type IN (${types.map(() => '?').join(',')}) AND m.deleted = 0 AND m.fwd_id IS NULL AND m.fwd IS NULL
-         GROUP BY m.id ORDER BY hc DESC, m.id DESC LIMIT ?`
+         GROUP BY m.id HAVING hc >= ? ORDER BY hc DESC, m.id DESC LIMIT ?`
       )
-      .all(now() - DAY, ...types, HOT_LIMIT * 4) // lấy dư để còn lọc tin của người bị chặn và tin trùng
+      .all(now() - DAY, ...types, hotMinHearts(), HOT_LIMIT * 4) // lấy dư để còn lọc tin của người bị chặn và tin trùng
       .filter((m) => !viewerId || !isBlockedEither(viewerId, m.user_id))
       .filter(dedupeHot())
       .slice(0, HOT_LIMIT);

@@ -7,6 +7,7 @@ process.env.DB_FILE = ':memory:';
 process.env.PORT = '3998';
 process.env.AUTO_VERIFY = '1';
 process.env.PUSH_DRY_RUN = '1';
+process.env.HOT_MIN_HEARTS = '1'; // các test cũ chỉ cần 1 tim; ngưỡng thật (38) được kiểm tra riêng ở cuối
 process.env.REGISTER_RATE_LIMIT = '1000';
 process.env.LOGIN_RATE_LIMIT = '1000';
 process.env.UPLOAD_DIR = path.join(os.tmpdir(), 'jkr-test-uploads');
@@ -602,4 +603,28 @@ test('mục Chào mừng của nhóm: gửi lời chào cho người mới, gi�
   // admin hệ thống không nằm trong danh sách người mới
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
   assert.equal((await call('GET', `/groups/${vn.id}/welcome`, null, c.token)).data.newcomers.some((n) => n.user.id === adm.user.id), false);
+});
+
+test('chủ đề nóng: chỉ hiện tin đạt đủ số tim tối thiểu (mặc định 38)', async () => {
+  const author = await signup('hotMinAuthor', 1);
+  const voters = [];
+  for (let i = 0; i < 3; i++) voters.push(await signup('hotMinVoter' + i, 1));
+  const vn = (await call('GET', '/groups/mine', null, author.token)).data.groups.find((x) => x.type === 'country');
+  for (const u of [author, ...voters]) await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  const m = (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin cần đủ tim mới nóng ' + Date.now() }, author.token)).data.message;
+  const pubJson = async (u) => (await fetch(BASE + u)).json();
+  const inHot = async (tok) => (await call('GET', '/hot', null, tok)).data.items.some((x) => x.id === m.id);
+  const prev = process.env.HOT_MIN_HEARTS;
+  try {
+    process.env.HOT_MIN_HEARTS = '3';
+    await call('POST', `/messages/${m.id}/heart`, {}, voters[0].token);
+    await call('POST', `/messages/${m.id}/heart`, {}, voters[1].token);
+    assert.equal(await inHot(voters[0].token), false); // mới 2 tim < 3
+    assert.equal((await pubJson('/public/hot')).items.some((x) => x.id === m.id), false);
+    await call('POST', `/messages/${m.id}/heart`, {}, voters[2].token);
+    assert.equal(await inHot(voters[0].token), true); // đủ 3 tim
+    assert.equal((await pubJson('/public/hot')).items.some((x) => x.id === m.id), true);
+    delete process.env.HOT_MIN_HEARTS; // mặc định 38: 3 tim không đủ
+    assert.equal(await inHot(voters[0].token), false);
+  } finally { process.env.HOT_MIN_HEARTS = prev; }
 });

@@ -97,7 +97,7 @@ async function renderGuestHot(view) {
   const { items } = await api('GET', '/public/hot');
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>Chủ đề nóng</h1>
-    <p class="small muted">38 tin nhắn nhận được nhiều tim nhất ở các nhóm công khai trong 24 giờ qua.</p>
+    <p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tim ở các nhóm công khai trong 24 giờ qua.</p>
     ${cta()}
     <div class="list">${items.map((m, i) => `<div class="card col" style="gap:6px">
       <div class="row wrap"><span class="pill">#${i + 1}</span><a class="pill warn" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
