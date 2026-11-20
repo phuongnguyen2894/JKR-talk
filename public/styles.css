@@ -402,3 +402,9 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 .thumb-row .th { position: relative; width: 72px; }
 .thumb-row .th img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; display: block; }
 .thumb-row .th label { font-size: 12px; display: flex; gap: 4px; align-items: center; margin-top: 2px; }
+
+/* Khung chính không bao giờ tự cuộn (chỉ danh sách tin / trang bên trong mới cuộn). Trước đây overflow-x:hidden khiến các khung này
+   thành vùng cuộn, nên trên iOS khi kéo ở cuối danh sách cả khung bị đẩy lên và để lại khoảng trống. */
+.app, .main, .chat-body, .chat-col { overflow: hidden; overflow: clip; }
+.chat-body, .chat-col, .msgs { min-height: 0; }
+.msgs { overscroll-behavior: contain; }
