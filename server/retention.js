@@ -20,7 +20,7 @@ function referencedFiles() {
   for (const [table, col] of [['users', 'avatar_url'], ['groups', 'avatar_url'], ['messages', 'image_url'], ['reports', 'snapshot_image'], ['news', 'image_url'], ['bug_reports', 'screenshot_url']]) {
     for (const r of db.prepare(`SELECT ${col} AS u FROM ${table} WHERE ${col} IS NOT NULL`).all()) add(r.u);
   }
-  for (const r of db.prepare('SELECT images FROM news WHERE images IS NOT NULL').all()) {
+  for (const r of db.prepare('SELECT images FROM news WHERE images IS NOT NULL UNION ALL SELECT images FROM messages WHERE images IS NOT NULL').all()) {
     try { for (const u of JSON.parse(r.images)) add(u); } catch { /* bỏ qua */ }
   }
   for (const r of db.prepare('SELECT preview FROM messages WHERE preview IS NOT NULL AND preview != \'0\'').all()) {
@@ -32,11 +32,12 @@ function referencedFiles() {
 
 export function purgeOldMessages(uploadDir, days = RETENTION_DAYS) {
   const cutoff = now() - days * DAY;
-  const old = db.prepare('SELECT id, image_url, preview FROM messages WHERE created_at < ?').all(cutoff);
+  const old = db.prepare('SELECT id, image_url, images, preview FROM messages WHERE created_at < ?').all(cutoff);
   if (!old.length) return { messages: 0, files: 0 };
   const candidates = new Set();
   for (const m of old) {
     const a = fileOf(m.image_url), b = previewImage(m.preview);
+    try { for (const u of JSON.parse(m.images || '[]')) { const f = fileOf(u); if (f) candidates.add(f); } } catch { /* bỏ qua */ }
     if (a) candidates.add(a);
     if (b) candidates.add(b);
   }

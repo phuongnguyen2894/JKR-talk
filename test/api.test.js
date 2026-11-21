@@ -1077,3 +1077,32 @@ test('cấp bậc: xu vào app mỗi ngày chỉ một lần, chuỗi 7 ngày +2
   await call('POST', `/topics/pending/${t.id}/approve`, {}, adm.token);
   assert.equal((await call('GET', '/me/level', null, u.token)).data.level.coins, 53);
 });
+
+test('tin nhắn gửi kèm tối đa 4 ảnh; tin cũ một ảnh vẫn hiển thị; chuyển tiếp giữ đủ ảnh', async () => {
+  const u = await signup('multiImg', 1);
+  const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((g) => g.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const urls = [];
+  for (let i = 0; i < 5; i++) urls.push((await call('POST', '/upload', { dataUrl: png }, u.token)).data.url);
+  const tooMany = await call('POST', `/groups/${vn.id}/messages`, { body: 'quá nhiều ảnh', imageUrls: urls }, u.token);
+  assert.equal(tooMany.status, 400);
+  const ok = await call('POST', `/groups/${vn.id}/messages`, { body: 'bốn ảnh kèm theo', imageUrls: urls.slice(0, 4) }, u.token);
+  assert.equal(ok.status, 201, JSON.stringify(ok.data));
+  assert.deepEqual(ok.data.message.imageUrls, urls.slice(0, 4));
+  assert.equal(ok.data.message.imageUrl, urls[0]);
+  // chỉ có ảnh, không có chữ vẫn gửi được; imageUrl cũ vẫn dùng được
+  assert.equal((await call('POST', `/groups/${vn.id}/messages`, { imageUrls: [urls[0], urls[1]] }, u.token)).status, 201);
+  const old = await call('POST', `/groups/${vn.id}/messages`, { imageUrl: urls[2] }, u.token);
+  assert.deepEqual(old.data.message.imageUrls, [urls[2]]);
+  // lịch sử trả đủ ảnh; khách cũng thấy đủ ảnh
+  const hist = (await call('GET', `/groups/${vn.id}/messages`, null, u.token)).data.messages.find((m) => m.id === ok.data.message.id);
+  assert.equal(hist.imageUrls.length, 4);
+  const guest = await call('GET', `/public/groups/${vn.id}`);
+  assert.equal(guest.data.messages.find((m) => m.id === ok.data.message.id).imageUrls.length, 4);
+  // chuyển tiếp giữ đủ ảnh
+  const v = await signup('multiImg2', 1);
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, v.token);
+  const fw = await call('POST', `/messages/${ok.data.message.id}/forward`, { groupId: vn.id }, v.token);
+  assert.equal(fw.data.message.imageUrls.length, 4);
+});

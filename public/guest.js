@@ -62,7 +62,7 @@ function msgHtml(m) {
   return `<div class="msg" data-mid="${m.id}">${avatarR(m.user, rr)}
     <div class="body">
       <div class="meta"><span class="who${roleClass(rr)}">${esc(m.user.displayName)}${roleSr(rr)}</span><span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
-      ${fwd}${quote}${m.body ? `<div class="text">${linkify(m.body)}</div>` : ''}${m.imageUrl ? `<img class="pic" data-act="guest-zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}
+      ${fwd}${quote}${m.body ? `<div class="text">${linkify(m.body)}</div>` : ''}${(m.imageUrls?.length || m.imageUrl) ? `<div class="bmedia">${newsGallery(m.imageUrls?.length ? m.imageUrls : [m.imageUrl], 'guest-zoom')}</div>` : ''}
       ${previewHtml(m.preview)}
       <div class="row" style="gap:4px;margin-top:2px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
     </div></div>`;

@@ -198,6 +198,7 @@ export function homeGroupIds(province) {
 export const nameKey = (s) => String(s).normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
 try { db.exec('ALTER TABLE users ADD COLUMN name_key TEXT'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN preview TEXT'); } catch { /* đã có cột */ }
+try { db.exec('ALTER TABLE messages ADD COLUMN images TEXT'); } catch { /* đã có cột */ } // JSON: tối đa 4 ảnh; image_url giữ ảnh đầu tiên
 try { db.exec('ALTER TABLE messages ADD COLUMN fwd TEXT'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN fwd_id INTEGER'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE messages ADD COLUMN mentions TEXT'); } catch { /* đã có cột */ }

@@ -206,6 +206,11 @@ export function pushOnly(uid, kind, payload) {
 }
 
 // ---- tin nhắn ---------------------------------------------------------------
+// Danh sách ảnh của tin (tối đa 4); tin cũ chỉ có image_url
+export function msgImages(m) {
+  try { if (m.images) { const a = JSON.parse(m.images); if (Array.isArray(a) && a.length) return a; } } catch { /* dùng cột cũ */ }
+  return m.image_url ? [m.image_url] : [];
+}
 export function messageDto(m, viewerId) {
   const author = getUser(m.user_id);
   let reply = null;
@@ -237,6 +242,7 @@ export function messageDto(m, viewerId) {
     modRole: member?.role === 'mod' ? 'mod' : member?.role === 'admin' ? 'admin' : null,
     body: m.deleted ? '' : m.body,
     imageUrl: m.deleted ? null : m.image_url,
+    imageUrls: m.deleted ? [] : msgImages(m),
     preview: m.deleted || !m.preview || m.preview === '0' ? null : JSON.parse(m.preview),
     deleted: !!m.deleted,
     fwd: m.fwd ? JSON.parse(m.fwd) : null,

@@ -8,7 +8,7 @@ import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
   isSystemAdmin, isSuper, canPostTrend, locationOf, log, hub, isOnline, notify, pushOnly, messageDto, areFriends, isBlockedEither, shareGroup, pair,
-  AVATAR_COUNT,
+  AVATAR_COUNT, msgImages,
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
@@ -199,7 +199,7 @@ const guestLimit = (req, _res, next) => { rateLimit(`guest:${req.ip}`, 120, 60_0
 function guestMsg(m, extra = {}) {
   const d = messageDto(m, null);
   return {
-    id: d.id, groupId: d.groupId, body: d.body, imageUrl: d.imageUrl, preview: d.preview, fwd: d.fwd,
+    id: d.id, groupId: d.groupId, body: d.body, imageUrl: d.imageUrl, imageUrls: d.imageUrls, preview: d.preview, fwd: d.fwd,
     hearts: extra.hearts ?? d.hearts, createdAt: d.createdAt, modRole: d.modRole,
     user: { displayName: d.user.displayName, avatarColor: d.user.avatarColor, avatarUrl: d.user.avatarUrl, deleted: d.user.deleted, staff: d.user.staff },
     reply: d.reply && !d.reply.deleted ? { displayName: d.reply.displayName, body: d.reply.body, hasImage: d.reply.hasImage } : null,
@@ -919,7 +919,11 @@ api.post(
     autoJoinTopic(gid, req.user.id);
     const { g, m } = requireMember(gid, req.user.id);
     const body = str(req.body.body, 2000);
-    const imageUrl = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
+    // tối đa 4 ảnh mỗi tin (imageUrls); imageUrl (cũ): một ảnh
+    const rawImgs = Array.isArray(req.body.imageUrls) ? req.body.imageUrls : req.body.imageUrl ? [req.body.imageUrl] : [];
+    if (rawImgs.length > 4) throw bad('Mỗi tin nhắn gửi kèm tối đa 4 ảnh');
+    const imageUrls = [...new Set(rawImgs.map(checkUploadUrl))];
+    const imageUrl = imageUrls[0] || null;
     if (!body && !imageUrl) throw bad('Tin nhắn trống');
     if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin, mod và người dùng từ cấp Tím Mộng Mơ mới được đăng trong Đẩy trend');
     if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
@@ -937,8 +941,8 @@ api.post(
     // @everyone: chỉ Admin (toàn hệ thống), không dùng trong tin nhắn riêng
     const mentionAll = /(^|\s)@everyone(?![\p{L}\p{N}_])/iu.test(body) && isSystemAdmin(req.user.id) && g.type !== 'dm';
     const r = db
-      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, reply_to, mentions, mention_all, created_at) VALUES (?,?,?,?,?,?,?,?)')
-      .run(gid, req.user.id, body, imageUrl, replyTo, mentionIds.length ? JSON.stringify(mentionIds) : null, mentionAll ? 1 : 0, now());
+      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, images, reply_to, mentions, mention_all, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(gid, req.user.id, body, imageUrl, imageUrls.length ? JSON.stringify(imageUrls) : null, replyTo, mentionIds.length ? JSON.stringify(mentionIds) : null, mentionAll ? 1 : 0, now());
     const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), req.user.id);
     db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
     hub.sendMany(memberIds(gid), { type: 'message', message: dto });
@@ -1007,8 +1011,8 @@ api.post(
     // tin gốc đã là tin chuyển tiếp thì giữ nguồn gốc ban đầu
     const fwd = src.fwd || JSON.stringify({ name: publicUser(getUser(src.user_id)).displayName, group: sg.type === 'dm' || sg.type === 'private' ? null : sg.name });
     const r = db
-      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, preview, fwd, fwd_id, created_at) VALUES (?,?,?,?,?,?,?,?)')
-      .run(gid, req.user.id, src.body, src.image_url, src.preview, fwd, src.fwd_id || src.id, now());
+      .prepare('INSERT INTO messages (group_id, user_id, body, image_url, images, preview, fwd, fwd_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(gid, req.user.id, src.body, src.image_url, src.images, src.preview, fwd, src.fwd_id || src.id, now());
     const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), req.user.id);
     db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
     hub.sendMany(memberIds(gid), { type: 'message', message: dto });

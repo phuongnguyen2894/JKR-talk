@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, roleOf, avatarR, roleClass, roleSr, lvBadge, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, newsGallery, roleOf, avatarR, roleClass, roleSr, lvBadge, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
 import { maybeAskPush } from './push.js';
 
 const PUBLIC = ['country', 'region', 'province', 'topic'];
@@ -33,7 +33,7 @@ export async function renderChat(view, gid) {
   // Nhóm công khai chưa tham gia: vẫn xem được tin (chỉ đọc), muốn chat/thả tim thì bấm Tham gia
   const joined = group.role !== undefined;
   // Chủ đề thảo luận: chat / thả tim ngay, không cần bấm Tham gia (máy chủ tự thêm khi tương tác lần đầu)
-  C = { gid: group.id, group, joined, open: group.type === 'topic', seen: new Set(), first: null, last: null, hasMore: false, replyTo: null, image: null, emoji: false };
+  C = { gid: group.id, group, joined, open: group.type === 'topic', seen: new Set(), first: null, last: null, hasMore: false, replyTo: null, images: [], emoji: false };
   let first;
   try { first = await api('GET', `/groups/${gid}/messages?limit=40`); } catch (e) { C = null; view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">Quay lại</a></div>`; return; }
   C.hasMore = first.hasMore;
@@ -133,10 +133,10 @@ function composerHtml() {
     return `<div class="notice">Bạn đang bị tắt tiếng trong nhóm này đến ${fmtTime(g.modMutedUntil)} ${fmtDate(g.modMutedUntil)}.</div>`;
   return `
     ${C.replyTo ? `<div class="replybar"><span class="grow small">Trả lời <b>${esc(C.replyTo.name)}</b>: ${esc(C.replyTo.text)}</span><button class="link-btn" data-act="cancel-reply" aria-label="Hủy trả lời">${icon('x', 14)}</button></div>` : ''}
-    ${C.image ? `<div class="preview"><img src="${esc(C.image)}" alt="Ảnh sẽ gửi"><button data-act="remove-image" aria-label="Bỏ ảnh">${icon('x', 14)}</button></div>` : ''}
+    ${C.images.length ? `<div class="preview-row">${C.images.map((u, i) => `<div class="preview"><img src="${esc(u)}" alt="Ảnh sẽ gửi ${i + 1}"><button type="button" data-act="remove-image" data-i="${i}" aria-label="Bỏ ảnh ${i + 1}">${icon('x', 14)}</button></div>`).join('')}</div>` : ''}
     ${C.emoji ? `<div class="emoji-panel">${EMOJI.map((e) => `<button type="button" data-act="emoji" data-e="${e}" aria-label="${e}">${e}</button>`).join('')}</div>` : ''}
     <form id="msgform" autocomplete="off">
-      <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+      <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
       <button type="button" class="icon-btn" data-act="pick-image" aria-label="Gửi ảnh">${icon('image', 22)}</button>
       <button type="button" class="icon-btn" data-act="emoji-toggle" aria-label="Chọn emoji" aria-expanded="${C.emoji}">${icon('smile', 22)}</button>
       <label for="msg" class="sr-only">Tin nhắn</label>
@@ -160,14 +160,14 @@ function wireComposer() {
     e.preventDefault();
     const input = $('#msg');
     const body = input.value.trim();
-    if (!body && !C.image) return;
+    if (!body && !C.images.length) return;
     input.disabled = true;
     try {
       const low = body.toLowerCase();
       const mentions = Object.entries(C.mentionMap || {}).filter(([n]) => low.includes('@' + n)).map(([, id]) => id);
-      const { message } = await api('POST', `/groups/${C.gid}/messages`, { body, imageUrl: C.image, replyTo: C.replyTo?.id, mentions });
+      const { message } = await api('POST', `/groups/${C.gid}/messages`, { body, imageUrls: C.images, replyTo: C.replyTo?.id, mentions });
       C.mentionMap = {};
-      C.replyTo = null; C.image = null; C.emoji = false;
+      C.replyTo = null; C.images = []; C.emoji = false;
       appendMsg(message);
       becameMember();
       setTimeout(maybeAskPush, 1200);
@@ -181,13 +181,14 @@ function wireComposer() {
   };
   wireMention();
   $('#file').onchange = async (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
+    const files = [...e.target.files];
+    e.target.value = '';
+    if (!files.length) return;
     try {
-      const dataUrl = await imageToDataUrl(f);
-      C.image = (await api('POST', '/upload', { dataUrl })).url;
+      if (C.images.length + files.length > 4) throw new Error(`Mỗi tin nhắn gửi kèm tối đa 4 ảnh (đã chọn ${C.images.length})`);
+      for (const f of files) C.images.push((await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url);
       redrawComposer();
-    } catch (err) { fail(err); }
+    } catch (err) { redrawComposer(); fail(err); }
   };
 }
 
@@ -268,7 +269,9 @@ function msgHtml(m) {
   const quote = m.reply && !m.reply.deleted ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
   const text = m.deleted
     ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
-    : `${m.body ? (own ? `<div class="bubble">${linkify(m.body, mentionsOf(m))}</div>` : `<div class="text">${linkify(m.body, mentionsOf(m))}</div>`) : ''}${m.imageUrl ? `<img class="pic" data-act="zoom" data-src="${esc(m.imageUrl)}" src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" loading="lazy" decoding="async">` : ''}`;
+    : (m.body ? (own ? `<div class="bubble">${linkify(m.body, mentionsOf(m))}</div>` : `<div class="text">${linkify(m.body, mentionsOf(m))}</div>`) : '');
+  // ảnh (tối đa 4, dạng lưới) và xem trước link nằm dưới chữ
+  const media = m.deleted ? '' : `${newsGallery(m.imageUrls?.length ? m.imageUrls : m.imageUrl ? [m.imageUrl] : [], 'zoom')}${m.preview ? previewHtml(m.preview) : ''}`;
   const rr = roleOf(m.user, m.modRole);
   const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !canAct() ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
   const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
@@ -289,7 +292,7 @@ function msgHtml(m) {
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
-      ${fwdTag}${quote}${m.preview && !m.deleted ? `${text}<div class="bline">${previewHtml(m.preview)}<div class="row">${heartBtn}${acts}</div></div>` : `<div class="bline">${text}<div class="row">${heartBtn}${acts}</div></div>`}
+      ${fwdTag}${quote}${media ? `${text}<div class="bline"><div class="bmedia">${media}</div><div class="row">${heartBtn}${acts}</div></div>` : `<div class="bline">${text}<div class="row">${heartBtn}${acts}</div></div>`}
     </div></div>`;
 }
 
@@ -342,11 +345,15 @@ export function onSocket(ev) {
   } else if (ev.type === 'message_preview' && C && C.gid === ev.groupId) {
     const el = $(`.msg[data-mid="${ev.messageId}"] .body`);
     if (el && !$('.lp', el)) {
-      const line = $('.bline', el);
-      const row = line && $('.row', line);
-      if (row) { // có xem trước link: link ở trên, khung xem trước và nút tim/⋯ nằm cùng hàng bên dưới
-        line.insertAdjacentHTML('afterend', `<div class="bline">${previewHtml(ev.preview)}</div>`);
-        line.nextElementSibling.appendChild(row);
+      const row = $('.row', el);
+      const line = row?.parentElement; // dòng chứa nút tim và ⋯
+      if (line?.classList.contains('bline')) {
+        const media = $('.bmedia', line);
+        if (media) media.insertAdjacentHTML('beforeend', previewHtml(ev.preview)); // đã có ảnh: xem trước nằm dưới ảnh
+        else { // tin chỉ có chữ: khung xem trước và nút tim/⋯ nằm cùng một hàng bên dưới
+          line.insertAdjacentHTML('afterend', `<div class="bline"><div class="bmedia">${previewHtml(ev.preview)}</div></div>`);
+          line.nextElementSibling.appendChild(row);
+        }
       }
     }
   } else if (ev.type === 'message_deleted' && C && C.gid === ev.groupId) {
@@ -493,7 +500,7 @@ actions.reply = (el) => {
 };
 actions['cancel-reply'] = () => { C.replyTo = null; redrawComposer(); };
 actions['pick-image'] = () => $('#file').click();
-actions['remove-image'] = () => { C.image = null; redrawComposer(); };
+actions['remove-image'] = (el) => { C.images.splice(Number(el.dataset.i), 1); redrawComposer(); };
 actions['emoji-toggle'] = () => { C.emoji = !C.emoji; redrawComposer(); };
 actions.emoji = (el) => { const i = $('#msg'); i.value += el.dataset.e; i.focus(); };
 actions.zoom = (el) => lightbox(el.dataset.src);
