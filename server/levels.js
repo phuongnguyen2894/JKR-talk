@@ -56,7 +56,8 @@ const startCounts = (uid) => ({
   push: hasSubscription(uid),
 });
 export const START_NEED = { msgs: 5, hearts: 3 };
-export const trendLinks = (uid) => q1("SELECT COUNT(*) c FROM messages WHERE user_id = ? AND group_id = ? AND deleted = 0 AND (body LIKE '%http://%' OR body LIKE '%https://%')", uid, trendGroupId()).c;
+// số link đã gửi vào Đẩy trend (mỗi link khác nhau một lần); đếm theo nhật ký xu nên không mất khi tin hết hạn sau 38 giờ
+export const trendLinks = (uid) => q1("SELECT COUNT(*) c FROM coin_log WHERE user_id = ? AND kind = 'tlink'", uid).c;
 export const newsPosts = (uid) => q1('SELECT COUNT(*) c FROM news WHERE author_id = ?', uid).c;
 export const topicsWithPeople = (uid) => q1(
   `SELECT COUNT(*) c FROM groups g WHERE g.type = 'topic' AND g.created_by = ?
@@ -182,7 +183,7 @@ export function onHeart(giverId, ownerId, messageId) {
 export function onNewsPost(uid, newsId) {
   award(uid, 'news', 3, { ref: String(newsId) });
 }
-function normalizeLink(raw) {
+export function normalizeLink(raw) {
   try {
     const u = new URL(String(raw).replace(/[),.;!?]+$/, ''));
     if (!['http:', 'https:'].includes(u.protocol)) return null;
@@ -321,3 +322,15 @@ export function pendingLevelUp(u) {
   });
   for (const u of db.prepare("SELECT id FROM users WHERE status != 'deleted'").all()) recompute(u.id, { silent: true });
 })();
+
+// ---- Đẩy trend: link không được trùng và chỉ tồn tại 38 giờ ----------------------------
+export const TREND_LINK_HOURS = Number(process.env.TREND_LINK_HOURS || 38);
+export const linksIn = (text) => [...new Set((String(text || '').match(/https?:\/\/[^\s]+/gi) || []).map(normalizeLink).filter(Boolean))];
+// Trả về link đã có trong Đẩy trend (còn tồn tại) nếu tin mới chứa link trùng, ngược lại null
+export function duplicateTrendLink(text) {
+  const mine = linksIn(text);
+  if (!mine.length) return null;
+  const have = new Set();
+  for (const r of db.prepare("SELECT body FROM messages WHERE group_id = ? AND deleted = 0 AND body LIKE '%http%'").all(trendGroupId())) for (const k of linksIn(r.body)) have.add(k);
+  return mine.find((k) => have.has(k)) || null;
+}

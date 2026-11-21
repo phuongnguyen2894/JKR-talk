@@ -2,7 +2,8 @@
 // tim của các tin đó (ON DELETE CASCADE) và các tệp ảnh không còn được dùng ở đâu.
 import fs from 'node:fs';
 import path from 'node:path';
-import { db, now } from './db.js';
+import { db, now, trendGroupId } from './db.js';
+import { hub, memberIds } from './lib.js';
 
 export const RETENTION_DAYS = Number(process.env.RETENTION_DAYS) || 38;
 const DAY = 24 * 3600 * 1000;
@@ -30,19 +31,15 @@ function referencedFiles() {
   return used;
 }
 
-export function purgeOldMessages(uploadDir, days = RETENTION_DAYS) {
-  const cutoff = now() - days * DAY;
-  const old = db.prepare('SELECT id, image_url, images, preview FROM messages WHERE created_at < ?').all(cutoff);
-  if (!old.length) return { messages: 0, files: 0 };
+// Xóa các tệp ảnh của những tin vừa bị xóa nếu không còn nơi nào dùng
+function dropFiles(rows, uploadDir) {
   const candidates = new Set();
-  for (const m of old) {
+  for (const m of rows) {
     const a = fileOf(m.image_url), b = previewImage(m.preview);
     try { for (const u of JSON.parse(m.images || '[]')) { const f = fileOf(u); if (f) candidates.add(f); } } catch { /* bỏ qua */ }
     if (a) candidates.add(a);
     if (b) candidates.add(b);
   }
-  db.prepare('DELETE FROM messages WHERE created_at < ?').run(cutoff);
-  db.prepare("DELETE FROM comments WHERE kind = 'msg' AND target_id NOT IN (SELECT id FROM messages)").run();
   let files = 0;
   if (candidates.size) {
     const used = referencedFiles();
@@ -51,7 +48,30 @@ export function purgeOldMessages(uploadDir, days = RETENTION_DAYS) {
       try { fs.unlinkSync(path.join(uploadDir, path.basename(url))); files++; } catch { /* đã mất */ }
     }
   }
-  return { messages: old.length, files };
+  return files;
+}
+
+export function purgeOldMessages(uploadDir, days = RETENTION_DAYS) {
+  const cutoff = now() - days * DAY;
+  const old = db.prepare('SELECT id, image_url, images, preview FROM messages WHERE created_at < ?').all(cutoff);
+  if (!old.length) return { messages: 0, files: 0 };
+  db.prepare('DELETE FROM messages WHERE created_at < ?').run(cutoff);
+  db.prepare("DELETE FROM comments WHERE kind = 'msg' AND target_id NOT IN (SELECT id FROM messages)").run();
+  return { messages: old.length, files: dropFiles(old, uploadDir) };
+}
+
+// Đẩy trend: tin có link chỉ tồn tại TREND_LINK_HOURS giờ (mặc định 38), quá hạn thì xóa và báo cho các máy đang mở
+export function purgeTrendLinks(uploadDir, hours = Number(process.env.TREND_LINK_HOURS || 38)) {
+  const gid = trendGroupId();
+  const cutoff = now() - hours * 3600_000;
+  const old = db.prepare("SELECT id, image_url, images, preview FROM messages WHERE group_id = ? AND created_at < ? AND (body LIKE '%http://%' OR body LIKE '%https://%')").all(gid, cutoff);
+  if (!old.length) return { messages: 0, files: 0 };
+  const del = db.prepare('DELETE FROM messages WHERE id = ?');
+  for (const m of old) del.run(m.id);
+  db.prepare("DELETE FROM comments WHERE kind = 'msg' AND target_id NOT IN (SELECT id FROM messages)").run();
+  const members = memberIds(gid);
+  for (const m of old) hub.sendMany(members, { type: 'message_deleted', groupId: gid, messageId: m.id });
+  return { messages: old.length, files: dropFiles(old, uploadDir) };
 }
 
 export function startRetention(uploadDir) {
@@ -63,4 +83,12 @@ export function startRetention(uploadDir) {
   };
   setTimeout(run, 30_000).unref();
   setInterval(run, 6 * 3600_000).unref();
+  const runTrend = () => {
+    try {
+      const r = purgeTrendLinks(uploadDir);
+      if (r.messages) console.log(`[trend] đã xóa ${r.messages} tin có link quá hạn trong Đẩy trend`);
+    } catch (e) { console.error('[trend] lỗi', e.message); }
+  };
+  setTimeout(runTrend, 20_000).unref();
+  setInterval(runTrend, 10 * 60_000).unref(); // kiểm tra mỗi 10 phút
 }

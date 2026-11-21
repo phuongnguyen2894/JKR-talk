@@ -1219,9 +1219,12 @@ test('kiếm xu: gửi link vào Đẩy trend +1 (mỗi link một lần), đăn
   const c0 = await coins(u.token);
   assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/earn/status/5' }, u.token)).status, 201);
   assert.equal(await coins(u.token), c0 + 5); // +3 vào app lần đầu trong ngày, +1 tin nhắn, +1 link
-  // cùng link (khác tham số ?s=) gửi lại: chỉ còn +1 của tin nhắn
-  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'lại link https://x.com/earn/status/5?s=20' }, u.token)).status, 201);
-  assert.equal(await coins(u.token), c0 + 6);
+  // cùng link (khác tham số ?s=) gửi lại khi link cũ còn tồn tại: bị từ chối, không cộng xu
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'lại link https://x.com/earn/status/5?s=20' }, u.token)).status, 409);
+  assert.equal(await coins(u.token), c0 + 5);
+  // link khác gửi được
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'link mới https://x.com/earn/status/6' }, u.token)).status, 201);
+  assert.equal(await coins(u.token), c0 + 7);
   // đăng bản tin +3 xu
   const before = await coins(u.token);
   assert.equal((await call('POST', '/news', { title: 'Bản tin kiếm xu', body: 'Nội dung' }, u.token)).status, 201);
@@ -1234,4 +1237,41 @@ test('kiếm xu: gửi link vào Đẩy trend +1 (mỗi link một lần), đăn
   const h0 = await coins(u.token);
   for (const m of mine) await call('POST', `/messages/${m.id}/heart`, {}, o.token);
   assert.equal(await coins(u.token), h0 + 24); // 12 tim x 2 xu, không bị chặn
+});
+
+test('Đẩy trend: link trùng bị từ chối (kể cả chuyển tiếp), tin có link chỉ tồn tại 38 giờ rồi tự xóa', async () => {
+  const { db } = await import('../server/db.js');
+  const { purgeTrendLinks } = await import('../server/retention.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('trendTtl', 1);
+  db.prepare('UPDATE users SET start_done = 1, lvl = 3, lvl_seen = 3 WHERE id = ?').run(u.id);
+  const trend = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((g) => g.type === 'trend');
+  const post = (t, body) => call('POST', `/groups/${trend.id}/messages`, { body }, t);
+  const first = await post(adm.token, 'Hot: https://x.com/ttl/status/100');
+  assert.equal(first.status, 201);
+  // người khác gửi lại cùng link (kể cả viết hoa, thêm www, tham số) đều bị từ chối
+  for (const dup of ['https://x.com/ttl/status/100', 'link này nè HTTPS://www.X.com/TTL/status/100/?s=20#top']) {
+    const r = await post(u.token, dup);
+    assert.equal(r.status, 409, dup);
+    assert.ok(r.data.error.includes('38'));
+  }
+  assert.equal((await post(u.token, 'https://x.com/ttl/status/101')).status, 201); // link khác thì được
+  assert.equal((await post(adm.token, 'Tin không có link vẫn đăng bình thường')).status, 201);
+  // chuyển tiếp tin có link trùng vào Đẩy trend cũng bị chặn
+  const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((g) => g.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  const inVn = await call('POST', `/groups/${vn.id}/messages`, { body: 'https://x.com/ttl/status/100' }, u.token);
+  assert.equal((await call('POST', `/messages/${inVn.data.message.id}/forward`, { groupId: trend.id }, u.token)).status, 409);
+  // quá 38 giờ: tin có link bị xóa, tin không có link được giữ; sau đó gửi lại link cũ được
+  db.prepare("UPDATE messages SET created_at = ? WHERE id = ?").run(Date.now() - 39 * 3600_000, first.data.message.id);
+  const r = purgeTrendLinks(process.env.UPLOAD_DIR);
+  assert.equal(r.messages, 1);
+  const list = (await call('GET', `/groups/${trend.id}/messages`, null, u.token)).data.messages.map((m) => m.body);
+  assert.ok(!list.some((b) => b.includes('status/100')));
+  assert.ok(list.some((b) => b.includes('status/101')));
+  assert.ok(list.some((b) => b.includes('không có link')));
+  assert.equal((await post(u.token, 'https://x.com/ttl/status/100')).status, 201);
+  // tin cũ hơn 38 giờ nhưng không có link thì không bị xóa
+  db.prepare("UPDATE messages SET created_at = ? WHERE body LIKE '%không có link%'").run(Date.now() - 100 * 3600_000);
+  assert.equal(purgeTrendLinks(process.env.UPLOAD_DIR).messages, 0);
 });

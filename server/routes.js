@@ -12,7 +12,7 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
-import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
+import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
 
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
@@ -943,6 +943,7 @@ api.post(
     const imageUrl = imageUrls[0] || null;
     if (!body && !imageUrl) throw bad('Tin nhắn trống');
     if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin, mod và người dùng từ cấp Tím Mộng Mơ mới được đăng trong Đẩy trend');
+    if (g.type === 'trend' && duplicateTrendLink(body)) throw new HttpError(409, `Link này đã có trong Đẩy trend. Link chỉ tồn tại ${TREND_LINK_HOURS} giờ, hết hạn mới gửi lại được.`);
     if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
     if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
     if (g.type === 'dm') {
@@ -1019,6 +1020,7 @@ api.post(
     autoJoinTopic(gid, req.user.id);
     const { g, m } = requireMember(gid, req.user.id);
     if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin, mod và người dùng từ cấp Tím Mộng Mơ mới được đăng trong Đẩy trend');
+    if (g.type === 'trend' && duplicateTrendLink(src.body)) throw new HttpError(409, `Link này đã có trong Đẩy trend. Link chỉ tồn tại ${TREND_LINK_HOURS} giờ, hết hạn mới gửi lại được.`);
     if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
     if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
     if (g.type === 'dm') {
