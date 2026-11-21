@@ -289,7 +289,7 @@ function msgHtml(m) {
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
-      ${fwdTag}${quote}<div class="bline">${text}<div class="row">${heartBtn}${acts}</div></div>${m.deleted ? '' : previewHtml(m.preview)}
+      ${fwdTag}${quote}${m.preview && !m.deleted ? `${text}${previewHtml(m.preview)}<div class="row">${heartBtn}${acts}</div>` : `<div class="bline">${text}<div class="row">${heartBtn}${acts}</div></div>`}
     </div></div>`;
 }
 
@@ -342,8 +342,13 @@ export function onSocket(ev) {
   } else if (ev.type === 'message_preview' && C && C.gid === ev.groupId) {
     const el = $(`.msg[data-mid="${ev.messageId}"] .body`);
     if (el && !$('.lp', el)) {
-      const box = $('.actions', el)?.parentElement;
-      if (box) box.insertAdjacentHTML('beforebegin', previewHtml(ev.preview));
+      const line = $('.bline', el);
+      if (line) {
+        line.insertAdjacentHTML('afterend', previewHtml(ev.preview));
+        const row = $('.row', line); // có xem trước link: nút tim và ⋯ xuống dưới khung xem trước như cũ
+        const lp = line.nextElementSibling;
+        if (row && lp) { lp.insertAdjacentElement('afterend', row); line.replaceWith(...line.childNodes); }
+      }
     }
   } else if (ev.type === 'message_deleted' && C && C.gid === ev.groupId) {
     const el = $(`.msg[data-mid="${ev.messageId}"]`);
