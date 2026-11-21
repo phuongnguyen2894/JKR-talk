@@ -113,9 +113,9 @@ function tagBarHtml() {
   if (C?.group?.type !== 'trend') return '';
   const admin = S.me?.role === 'admin';
   if (!C.tags?.length && !admin) return '';
-  return `<div class="tagbar"><span class="tiny muted">Hashtag hôm nay</span>
-    <div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Top">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div>
-    ${admin ? `<button class="btn sm" data-act="tags-edit">Sửa</button>` : ''}</div>`;
+  return `<div class="tagbar"><span class="tiny muted grow">Hashtag hôm nay</span>
+    ${admin ? `<button class="btn sm" data-act="tags-edit">Sửa</button>` : ''}
+    <div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Top">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div></div>`;
 }
 actions['tags-edit'] = () => {
   const m = openModal(`<form id="tagf" class="col"><h2>Hashtag hôm nay</h2>

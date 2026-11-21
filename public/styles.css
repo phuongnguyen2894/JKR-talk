@@ -421,9 +421,9 @@ input, textarea, select { font-size: 16px; } /* tránh iOS tự phóng to khi b�
 html.kb .tabs-bar, html.kb .app .tabs-bar { display: none !important; }
 
 /* Tin được ghim lên đầu nhóm */
-.tagbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+.tagbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 12px 8px; border-bottom: 1px solid var(--line); }
 .tagbar:empty { display: none; }
-.tag-row { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.tag-row { display: flex; flex-wrap: wrap; gap: 6px; flex: 0 0 100%; min-width: 0; }
 .tag-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--soft); color: var(--brand, #7c3aed); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
 .pinbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px 4px 12px; background: var(--soft); border-bottom: 1px solid var(--line); }
 .pin-go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 40px; background: none; border: 0; text-align: left; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
