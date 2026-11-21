@@ -289,7 +289,7 @@ function msgHtml(m) {
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
-      ${fwdTag}${quote}${text}${m.deleted ? '' : previewHtml(m.preview)}<div class="row" style="gap:4px;margin-top:2px">${heartBtn}${acts}</div>
+      ${fwdTag}${quote}<div class="bline">${text}<div class="row">${heartBtn}${acts}</div></div>${m.deleted ? '' : previewHtml(m.preview)}
     </div></div>`;
 }
 

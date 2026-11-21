@@ -474,3 +474,14 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .sec, .h2 { word-spacing: normal; }
 
 .topic-card .pill { align-self: flex-start; width: fit-content; }
+
+/* nút tim và ⋯ nằm cạnh tin nhắn (bên phải tin người khác, bên trái tin của mình) */
+.msg .bline { display: flex; align-items: center; gap: 2px; max-width: 100%; }
+.msg.own .bline { flex-direction: row-reverse; }
+.msg .bline > .text, .msg .bline > .bubble { min-width: 0; flex: 0 1 auto; }
+.msg .bline > .pic { flex: 0 1 auto; min-width: 0; }
+.msg .bline > .row { flex: none; display: flex; align-items: center; gap: 0 !important; margin: 0 !important; }
+.msg .bline > .row .actions { margin-top: 0; }
+.msg:not(.own) .bline > .text { align-self: flex-start; }
+.msg .bline:has(> .pic) { align-items: flex-end; }
+
