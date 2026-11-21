@@ -1239,7 +1239,7 @@ test('kiếm xu: gửi link vào Đẩy trend +1 (mỗi link một lần), đăn
   assert.equal(await coins(u.token), h0 + 24); // 12 tim x 2 xu, không bị chặn
 });
 
-test('Đẩy trend: link trùng bị từ chối (kể cả chuyển tiếp), tin có link chỉ tồn tại 38 giờ rồi tự xóa', async () => {
+test('Đẩy trend: link trùng bị từ chối (kể cả chuyển tiếp), mọi tin chỉ tồn tại 38 giờ rồi tự xóa', async () => {
   const { db } = await import('../server/db.js');
   const { purgeTrendLinks } = await import('../server/retention.js');
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
@@ -1269,11 +1269,12 @@ test('Đẩy trend: link trùng bị từ chối (kể cả chuyển tiếp), ti
   const list = (await call('GET', `/groups/${trend.id}/messages`, null, u.token)).data.messages.map((m) => m.body);
   assert.ok(!list.some((b) => b.includes('status/100')));
   assert.ok(list.some((b) => b.includes('status/101')));
-  assert.ok(list.some((b) => b.includes('không có link')));
+  assert.ok(list.some((b) => b.includes('không có link'))); // tin chưa quá 38 giờ vẫn còn
   assert.equal((await post(u.token, 'https://x.com/ttl/status/100')).status, 201);
-  // tin cũ hơn 38 giờ nhưng không có link thì không bị xóa
-  db.prepare("UPDATE messages SET created_at = ? WHERE body LIKE '%không có link%'").run(Date.now() - 100 * 3600_000);
-  assert.equal(purgeTrendLinks(process.env.UPLOAD_DIR).messages, 0);
+  // tin không có link cũng tự xóa khi quá 38 giờ
+  db.prepare("UPDATE messages SET created_at = ? WHERE body LIKE '%không có link%'").run(Date.now() - 39 * 3600_000);
+  assert.equal(purgeTrendLinks(process.env.UPLOAD_DIR).messages, 1);
+  assert.ok(!(await call('GET', `/groups/${trend.id}/messages`, null, u.token)).data.messages.some((m) => m.body.includes('không có link')));
 });
 
 test('Đẩy trend: dọn các tin có link trùng có từ trước, giữ tin đăng sớm nhất', async () => {

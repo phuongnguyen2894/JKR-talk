@@ -134,7 +134,7 @@ function composerHtml() {
   if (g.modMutedUntil && g.modMutedUntil > Date.now())
     return `<div class="notice">Bạn đang bị tắt tiếng trong nhóm này đến ${fmtTime(g.modMutedUntil)} ${fmtDate(g.modMutedUntil)}.</div>`;
   return `
-    ${g.type === 'trend' ? '<div class="tiny muted" style="padding:4px 12px 0">Link trong Đẩy trend tự xóa sau 38 giờ. Link đã có sẽ không được gửi lại.</div>' : ''}
+    ${g.type === 'trend' ? '<div class="tiny muted" style="padding:4px 12px 0">Tin trong Đẩy trend tự xóa sau 38 giờ. Link đã có sẽ không được gửi lại.</div>' : ''}
     ${C.replyTo ? `<div class="replybar"><span class="grow small">Trả lời <b>${esc(C.replyTo.name)}</b>: ${esc(C.replyTo.text)}</span><button class="link-btn" data-act="cancel-reply" aria-label="Hủy trả lời">${icon('x', 14)}</button></div>` : ''}
     ${C.images.length ? `<div class="preview-row">${C.images.map((u, i) => `<div class="preview"><img src="${esc(u)}" alt="Ảnh sẽ gửi ${i + 1}"><button type="button" data-act="remove-image" data-i="${i}" aria-label="Bỏ ảnh ${i + 1}">${icon('x', 14)}</button></div>`).join('')}</div>` : ''}
     ${C.emoji ? `<div class="emoji-panel">${EMOJI.map((e) => `<button type="button" data-act="emoji" data-e="${e}" aria-label="${e}">${e}</button>`).join('')}</div>` : ''}

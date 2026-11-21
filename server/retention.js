@@ -61,11 +61,11 @@ export function purgeOldMessages(uploadDir, days = RETENTION_DAYS) {
   return { messages: old.length, files: dropFiles(old, uploadDir) };
 }
 
-// Đẩy trend: tin có link chỉ tồn tại TREND_LINK_HOURS giờ (mặc định 38), quá hạn thì xóa và báo cho các máy đang mở
+// Đẩy trend: mọi tin (có link hoặc không) chỉ tồn tại TREND_LINK_HOURS giờ (mặc định 38), quá hạn thì xóa và báo cho các máy đang mở
 export function purgeTrendLinks(uploadDir, hours = Number(process.env.TREND_LINK_HOURS || 38)) {
   const gid = trendGroupId();
   const cutoff = now() - hours * 3600_000;
-  const old = db.prepare("SELECT id, image_url, images, preview FROM messages WHERE group_id = ? AND created_at < ? AND (body LIKE '%http://%' OR body LIKE '%https://%')").all(gid, cutoff);
+  const old = db.prepare("SELECT id, image_url, images, preview FROM messages WHERE group_id = ? AND created_at < ?").all(gid, cutoff);
   if (!old.length) return { messages: 0, files: 0 };
   const del = db.prepare('DELETE FROM messages WHERE id = ?');
   for (const m of old) del.run(m.id);
@@ -108,7 +108,7 @@ export function startRetention(uploadDir) {
   const runTrend = () => {
     try {
       const r = purgeTrendLinks(uploadDir);
-      if (r.messages) console.log(`[trend] đã xóa ${r.messages} tin có link quá hạn trong Đẩy trend`);
+      if (r.messages) console.log(`[trend] đã xóa ${r.messages} tin quá hạn trong Đẩy trend`);
       const d = dedupeTrendLinks(uploadDir);
       if (d.messages) console.log(`[trend] đã xóa ${d.messages} tin có link trùng trong Đẩy trend`);
     } catch (e) { console.error('[trend] lỗi', e.message); }
