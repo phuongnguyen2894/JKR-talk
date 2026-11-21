@@ -107,21 +107,21 @@ function groupMsgs(box) {
   }
 }
 
-// Hashtag của ngày ở đầu Đẩy trend: bấm mở tab "Mới nhất" trên X (app X nếu đã cài)
-const xTagUrl = (t) => `https://x.com/search?q=${encodeURIComponent('#' + t)}&f=live`;
+// Hashtag của ngày ở đầu Đẩy trend: bấm mở tab "Top" trên X (app X nếu đã cài)
+const xTagUrl = (t) => `https://x.com/search?q=${encodeURIComponent('#' + t)}`;
 function tagBarHtml() {
   if (C?.group?.type !== 'trend') return '';
   const admin = S.me?.role === 'admin';
   if (!C.tags?.length && !admin) return '';
   return `<div class="tagbar"><span class="tiny muted">Hashtag hôm nay</span>
-    <div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Mới nhất">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div>
+    <div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Top">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div>
     ${admin ? `<button class="btn sm" data-act="tags-edit">Sửa</button>` : ''}</div>`;
 }
 actions['tags-edit'] = () => {
   const m = openModal(`<form id="tagf" class="col"><h2>Hashtag hôm nay</h2>
     <div class="field"><label for="tagin">Mỗi dòng một hashtag (tối đa 5)</label>
     <textarea class="input" id="tagin" rows="5" placeholder="#usmilePajamaPartyWithOrm">${esc((C.tags || []).map((t) => '#' + t).join('\n'))}</textarea></div>
-    <p class="tiny muted">Bấm vào hashtag sẽ mở tab Mới nhất trên X. App không tự lấy bài từ X.</p>
+    <p class="tiny muted">Bấm vào hashtag sẽ mở tab Top trên X. App không tự lấy bài từ X.</p>
     <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Lưu</button></div></form>`);
   $('[data-close]', m).onclick = closeModal;
   $('#tagf', m).onsubmit = async (e) => {
