@@ -652,6 +652,7 @@ api.post('/topics/pending/:id/approve', adminOnly, wrap((req, res) => {
   });
   log(req.user.id, 'approve_topic', { group: g.id, name: g.name });
   if (g.created_by) award(g.created_by, 'topic', 30, { ref: String(g.id) });
+  tellHotNew(g.created_by);
   if (g.created_by) notify(g.created_by, 'moderation', `Chủ đề "${g.name}" của bạn đã được duyệt và hiện ở mục Chủ đề nóng`, { url: `/#/chat/${g.id}`, tag: `topic-ok-${g.id}` });
   res.json({ ok: true });
 }));
@@ -680,6 +681,7 @@ api.post('/topics/:id/highlight', wrap((req, res) => {
   db.prepare('UPDATE groups SET highlighted = ? WHERE id = ?').run(on ? now() : null, g.id);
   log(req.user.id, on ? 'highlight_topic' : 'unhighlight_topic', { group: g.id, name: g.name });
   if (on && g.created_by) award(g.created_by, 'hl', 50, { ref: String(g.id) });
+  if (on) tellHotNew(req.user.id);
   res.json({ topic: topicDto(getGroup(g.id), req.user.id) });
 }));
 api.post('/topics', wrap((req, res) => {
@@ -710,6 +712,7 @@ api.post('/topics', wrap((req, res) => {
   });
   log(req.user.id, 'create_topic', { group: id, name });
   award(req.user.id, 'topic', 30, { ref: String(id) });
+  tellHotNew(req.user.id);
   res.status(201).json({ topic: topicDto(getGroup(id), req.user.id) });
 }));
 api.patch('/topics/:id', wrap((req, res) => {
@@ -1198,6 +1201,17 @@ function dedupeHot() {
   return (m) => { const k = hotKey(m); if (seen.has(k)) return false; seen.add(k); return true; };
 }
 // Bài do Admin đăng thẳng lên Chủ đề nóng (giống Đẩy trend: chỉ admin đăng, mọi người đọc và thả tim)
+// Số "tin mới" ở Chủ đề nóng kể từ lần người dùng mở mục này: bài Admin đăng, chủ đề mới được duyệt hoặc mới được đặt nổi bật (không tính của chính mình)
+function hotUnread(uid) {
+  const seen = db.prepare('SELECT hot_seen FROM users WHERE id = ?').get(uid)?.hot_seen || 0;
+  if (!seen) { db.prepare('UPDATE users SET hot_seen = ? WHERE id = ?').run(now(), uid); return 0; } // lần đầu: không đếm tin cũ
+  const posts = db.prepare('SELECT COUNT(*) c FROM messages WHERE group_id = ? AND deleted = 0 AND user_id != ? AND created_at > ?').get(hotGroupId(), uid, seen).c;
+  const topics = db.prepare("SELECT COUNT(*) c FROM groups WHERE type = 'topic' AND COALESCE(created_by, 0) != ? AND (COALESCE(approved_at, 0) > ? OR COALESCE(highlighted, 0) > ?)").get(uid, seen, seen).c;
+  return posts + topics;
+}
+const tellHotNew = (exceptId) => hub.sendMany(db.prepare("SELECT id FROM users WHERE status = 'active' AND id != ?").all(exceptId || 0).map((u) => u.id), { type: 'hot_new' });
+api.get('/hot/unread', wrap((req, res) => res.json({ unread: hotUnread(req.user.id) })));
+api.post('/hot/seen', wrap((req, res) => { db.prepare('UPDATE users SET hot_seen = ? WHERE id = ?').run(now(), req.user.id); res.json({ unread: 0 }); }));
 const HOT_POSTS_SHOWN = 10;
 const hotPosts = () => db.prepare('SELECT * FROM messages WHERE group_id = ? AND deleted = 0 ORDER BY id DESC LIMIT ?').all(hotGroupId(), HOT_POSTS_SHOWN);
 api.post('/hot/posts', adminOnly, wrap((req, res) => {
@@ -1208,6 +1222,7 @@ api.post('/hot/posts', adminOnly, wrap((req, res) => {
   const r = db.prepare('INSERT INTO messages (group_id, user_id, body, image_url, created_at) VALUES (?,?,?,?,?)').run(hotGroupId(), req.user.id, body, imageUrl, now());
   const m = db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid);
   res.status(201).json({ post: { ...messageDto(m, req.user.id), groupName: 'Chủ đề nóng' } });
+  tellHotNew(req.user.id);
   const link = firstUrl(body);
   if (link) buildPreview(link, UPLOAD_DIR).then((p) => { if (p) db.prepare('UPDATE messages SET preview = ? WHERE id = ?').run(JSON.stringify(p), m.id); }).catch(() => {});
 }));

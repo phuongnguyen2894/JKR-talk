@@ -11,6 +11,7 @@ export const S = {
   geo: null,
   groups: [],
   unreadNews: 0,
+  unreadHot: 0,
   unreadNotif: 0,
   hooks: {}, // renderSide, onMessage... do app.js gắn vào
 };
@@ -186,8 +187,9 @@ export async function refreshGroups() {
   S.hooks.renderSide?.();
 }
 export async function refreshCounters() {
-  const [n, nt] = await Promise.all([api('GET', '/news'), api('GET', '/notifications')]);
+  const [n, nt, h] = await Promise.all([api('GET', '/news'), api('GET', '/notifications'), api('GET', '/hot/unread').catch(() => ({ unread: 0 }))]);
   S.unreadNews = n.unread;
+  S.unreadHot = location.hash.startsWith('#/hot') ? 0 : h.unread;
   S.unreadNotif = nt.unread;
   S.hooks.renderSide?.();
 }

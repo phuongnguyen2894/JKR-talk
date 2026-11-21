@@ -60,7 +60,7 @@ function renderSide() {
     <div class="sec">Khác</div>
     ${tg ? `<a class="nav-item" href="#/chat/${tg.id}" ${tg.id === activeId ? 'aria-current="page"' : ''}>${icon('trend')}<span class="name">Đẩy trend</span>${tg.unread ? `<span class="badge">${tg.unread}</span>` : ''}</a>` : ''}
     ${nav('#/discover', 'discover', 'Khám phá nhóm khác', 'search')}
-    ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame')}
+    ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame', S.unreadHot)}
     ${nav('#/news', 'news', 'Bản tin', 'news', S.unreadNews)}
     ${nav('#/friends', 'friends', 'Bạn bè', 'friends')}
     <a class="nav-item" href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${coinIcon(20)}<span class="name">Thăng cấp</span></a>
@@ -77,8 +77,8 @@ function renderSide() {
   const chatUnread = S.groups.reduce((n, g) => n + (g.type === 'trend' ? 0 : g.unread || 0), 0);
   const trendTab = tg ? `<a href="#/chat/${tg.id}" ${tg.id === activeId ? 'aria-current="page"' : ''}>${icon('trend', 22)}Đẩy trend${tg.unread ? `<span class="badge">${tg.unread}</span>` : ''}</a>` : '';
   const tab = (hash, name, label, ic, badge) => `<a href="${hash}" ${(r.name === name && !(name === 'chat' && tg && activeId === tg.id)) ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
-  $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread + S.unreadNotif) + trendTab + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/hot', 'hot', 'Chủ đề nóng', 'flame') + `<a href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${S.me.level ? lvBadge(S.me.level, 24) : coinIcon(24)}Thăng cấp</a>`;
-  const total = chatUnread + S.unreadNews + S.unreadNotif;
+  $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread + S.unreadNotif) + trendTab + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/hot', 'hot', 'Chủ đề nóng', 'flame', S.unreadHot) + `<a href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${S.me.level ? lvBadge(S.me.level, 24) : coinIcon(24)}Thăng cấp</a>`;
+  const total = chatUnread + S.unreadNews + S.unreadNotif + S.unreadHot;
   document.title = total ? `(${total}) JKR talks` : 'JKR talks';
 }
 S.hooks.renderSide = renderSide;
@@ -125,7 +125,10 @@ async function route() {
       case 'tools': return renderTools(view);
       case 'discover': return await renderDiscover(view);
       case 'friends': return await renderFriends(view);
-      case 'hot': return await renderHot(view);
+      case 'hot':
+        if (S.unreadHot) { S.unreadHot = 0; renderSide(); }
+        api('POST', '/hot/seen').catch(() => {});
+        return await renderHot(view);
       case 'bugs': return await renderBugs(view);
       case 'news': await refreshCounters().catch(() => {}); return await renderNews(view);
       case 'settings': return renderSettings(view);
@@ -164,6 +167,7 @@ function connectWs() {
       if (ev.notification.type === 'friend_accept' && parseHash().name === 'friends') route();
     } else if (ev.type === 'news') { S.unreadNews++; renderSide(); toast(`Bản tin mới: ${ev.news.title}`, 7000); }
     else if (ev.type === 'news_silent') { S.unreadNews++; renderSide(); }
+    else if (ev.type === 'hot_new') { if (parseHash().name === 'hot') api('POST', '/hot/seen').catch(() => {}); else { S.unreadHot++; renderSide(); } }
     else if (ev.type === 'bug_new') { toast('Có báo lỗi mới'); if (parseHash().name === 'bugs') route(); }
     else if (ev.type === 'report_new') { toast('Có báo cáo mới cần xử lý'); if (parseHash().name === 'admin') route(); }
     else if (ev.type === 'locked') logout(true);
@@ -205,7 +209,7 @@ async function logout(silent) {
   if (!silent) await unsubscribeThisDevice().catch(() => {}); // thiết bị này thôi nhận thông báo của tài khoản cũ
   if (!silent) await api('POST', '/auth/logout').catch(() => {});
   setToken(null);
-  S.me = null; S.groups = []; S.unreadNews = 0; S.unreadNotif = 0;
+  S.me = null; S.groups = []; S.unreadNews = 0; S.unreadNotif = 0; S.unreadHot = 0;
   clearTimeout(wsTimer); ws?.close(); ws = null;
   root.innerHTML = '';
   document.title = 'JKR talks';

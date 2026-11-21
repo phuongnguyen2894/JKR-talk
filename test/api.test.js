@@ -1294,6 +1294,21 @@ test('Đẩy trend: dọn các tin có link trùng có từ trước, giữ tin 
   assert.ok(left.includes(c)); // link khác được giữ
 });
 
+test('Chủ đề nóng: đếm tin mới kể từ lần xem cuối (bài Admin, chủ đề mới duyệt/nổi bật), không tính của mình', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('hotUnread', 1);
+  assert.equal((await call('GET', '/hot/unread', null, u.token)).data.unread, 0); // lần đầu không đếm tin cũ
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal((await call('POST', '/hot/posts', { body: 'Thông báo mới cho Chủ đề nóng' }, adm.token)).status, 201);
+  assert.equal((await call('GET', '/hot/unread', null, u.token)).data.unread, 1);
+  assert.equal((await call('GET', '/hot/unread', null, adm.token)).data.unread, 0); // bài của chính admin không tính
+  const t = await call('POST', '/topics', { name: 'Chủ đề đếm tin', description: '' }, adm.token);
+  assert.equal(t.status, 201);
+  assert.equal((await call('GET', '/hot/unread', null, u.token)).data.unread, 2);
+  assert.equal((await call('POST', '/hot/seen', null, u.token)).data.unread, 0);
+  assert.equal((await call('GET', '/hot/unread', null, u.token)).data.unread, 0);
+});
+
 test('hashtag Đẩy trend: chỉ Admin đặt, kiểm tra định dạng, tối đa 5, ai cũng xem', async () => {
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
   const u = await signup('tagUser', 1);
