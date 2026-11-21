@@ -216,7 +216,8 @@ const refreshAdmin = () => { const b = $('#tabbody'); if (b) adminEmoji(b).catch
 actions['emoji-add'] = () => {
   let url = null;
   const m = openModal(`<form id="emf" class="col"><h2>Thêm emoji</h2>
-    <div class="field"><label for="emfile">Ảnh (PNG, GIF hoặc WebP, tối đa 256 KB)</label><input id="emfile" type="file" accept="image/png,image/gif,image/webp"></div>
+    <div class="field"><label for="emfile">Ảnh (PNG, JPG, GIF hoặc WebP)</label><input id="emfile" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+      <div class="tiny muted">Ảnh tĩnh được tự cắt vuông và thu về 128 × 128. Ảnh GIF động giữ nguyên, tối đa 256 KB.</div></div>
     <div id="emprev" class="row" style="min-height:72px"></div>
     <div class="field"><label for="emname">Tên emoji</label><div class="row" style="gap:4px"><span>:</span><input class="input grow" id="emname" maxlength="32" autocomplete="off" placeholder="cuoi_lan"><span>:</span></div>
       <div class="tiny muted">Chữ thường không dấu, số và dấu gạch dưới, 2 đến 32 ký tự. Người dùng gõ :tên: để dùng.</div></div>
@@ -231,12 +232,22 @@ actions['emoji-add'] = () => {
     url = null; err('');
     $('#emprev', m).innerHTML = '';
     if (!f) return sync();
-    if (!/^image\/(png|gif|webp)$/.test(f.type)) { err('Emoji chỉ nhận ảnh PNG, GIF hoặc WebP'); return sync(); }
-    if (f.size > 256 * 1024) { err(`Ảnh nặng ${Math.ceil(f.size / 1024)} KB, vượt mức 256 KB. Hãy chọn ảnh nhỏ hơn.`); return sync(); }
+    if (!/^image\/(png|jpe?g|gif|webp)$/.test(f.type)) { err('Emoji chỉ nhận ảnh PNG, JPG, GIF hoặc WebP'); return sync(); }
     try {
-      const dataUrl = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
+      let dataUrl, kb = Math.ceil(f.size / 1024);
+      if (f.type === 'image/gif') { // GIF động giữ nguyên
+        if (f.size > 256 * 1024) { err(`Ảnh nặng ${kb} KB, vượt mức 256 KB. Hãy chọn ảnh nhỏ hơn.`); return sync(); }
+        dataUrl = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
+      } else { // ảnh tĩnh: cắt vuông, thu về 128 x 128, lưu PNG
+        const bmp = await createImageBitmap(f);
+        const side = Math.min(bmp.width, bmp.height);
+        const c = document.createElement('canvas'); c.width = c.height = 128;
+        c.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 128, 128);
+        dataUrl = c.toDataURL('image/png');
+        kb = Math.ceil((dataUrl.length * 3) / 4 / 1024);
+      }
       url = (await api('POST', '/upload', { dataUrl })).url;
-      $('#emprev', m).innerHTML = `<img class="cemoji" src="${esc(url)}" alt="Xem trước" style="width:72px;height:72px"><span class="small" style="color:#135A48;font-weight:600">${Math.ceil(f.size / 1024)} KB, hợp lệ</span>`;
+      $('#emprev', m).innerHTML = `<img class="cemoji" src="${esc(url)}" alt="Xem trước" style="width:72px;height:72px"><span class="small" style="color:#135A48;font-weight:600">${kb} KB, hợp lệ</span>`;
       if (!$('#emname', m).value) $('#emname', m).value = f.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32);
     } catch (er) { err(er.message); }
     sync();

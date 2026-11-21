@@ -43,7 +43,7 @@ export function countCustomTokens(body) {
 
 // Kiểm tra tệp ảnh đã tải lên cho emoji: PNG, GIF hoặc WebP, tối đa 256 KB
 export function checkEmojiFile(url, uploadDir) {
-  if (typeof url !== 'string' || !/^\/uploads\/[A-Za-z0-9_-]+\.(png|gif|webp)$/.test(url)) return 'Emoji chỉ nhận ảnh PNG, GIF hoặc WebP';
+  if (typeof url !== 'string' || !/^\/uploads\/[A-Za-z0-9_-]+\.(png|jpg|gif|webp)$/.test(url)) return 'Emoji chỉ nhận ảnh PNG, JPG, GIF hoặc WebP';
   try {
     const size = fs.statSync(path.join(uploadDir, path.basename(url))).size;
     if (size > EMOJI_MAX_BYTES) return `Ảnh nặng ${Math.ceil(size / 1024)} KB, vượt mức 256 KB`;

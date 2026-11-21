@@ -1305,7 +1305,8 @@ test('emoji tùy chỉnh: chỉ Admin thêm, kiểm tra tên và ảnh, ẩn, đ
   for (const name of ['a', 'Cuoi Lan', 'có_dấu', 'x'.repeat(33)]) assert.equal((await call('POST', '/admin/emoji', { name, imageUrl: up }, adm.token)).status, 400, name);
   assert.equal((await call('POST', '/admin/emoji', { name: 'anh_loi', imageUrl: '/uploads/khong-co.png' }, adm.token)).status, 400);
   const jpg = (await call('POST', '/upload', { dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=' }, adm.token)).data.url;
-  assert.equal((await call('POST', '/admin/emoji', { name: 'anh_jpg', imageUrl: jpg }, adm.token)).status, 400); // chỉ PNG, GIF, WebP
+  assert.equal((await call('POST', '/admin/emoji', { name: 'anh_jpg', imageUrl: jpg }, adm.token)).status, 201); // nhận cả JPG
+  assert.equal((await call('POST', '/admin/emoji', { name: 'anh_svg', imageUrl: '/uploads/abc.svg' }, adm.token)).status, 400); // định dạng khác thì không
   // thêm thành công, tên trùng bị từ chối
   const add = await call('POST', '/admin/emoji', { name: 'cuoi_lan', imageUrl: up }, adm.token);
   assert.equal(add.status, 201, JSON.stringify(add.data));
