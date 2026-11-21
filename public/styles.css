@@ -507,3 +507,5 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .lvl-modal { align-items: center; text-align: center; }
 .lvl-big { width: 88px; height: 88px; border-radius: 99px; display: flex; align-items: center; justify-content: center; background: var(--soft); margin: 4px auto; }
 .lvl-big .lvb { margin: 0; }
+.tabs-bar .lvb { margin: 0; vertical-align: baseline; }
+.tabs-bar .coin { vertical-align: baseline; }

@@ -71,7 +71,7 @@ function renderSide() {
   const chatUnread = S.groups.reduce((n, g) => n + (g.type === 'trend' ? 0 : g.unread || 0), 0);
   const trendTab = tg ? `<a href="#/chat/${tg.id}" ${tg.id === activeId ? 'aria-current="page"' : ''}>${icon('trend', 22)}Đẩy trend${tg.unread ? `<span class="badge">${tg.unread}</span>` : ''}</a>` : '';
   const tab = (hash, name, label, ic, badge) => `<a href="${hash}" ${(r.name === name && !(name === 'chat' && tg && activeId === tg.id)) ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
-  $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread) + trendTab + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/hot', 'hot', 'Chủ đề nóng', 'flame') + `<a href="#/notifications" data-act="notifs" role="button">${icon('bell', 22)}Thông báo${S.unreadNotif ? `<span class="badge">${S.unreadNotif}</span>` : ''}</a>`;
+  $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread + S.unreadNotif) + trendTab + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/hot', 'hot', 'Chủ đề nóng', 'flame') + `<a href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${S.me.level ? lvBadge(S.me.level, 24) : coinIcon(24)}Thăng cấp</a>`;
   const total = chatUnread + S.unreadNews + S.unreadNotif;
   document.title = total ? `(${total}) JKR talks` : 'JKR talks';
 }
