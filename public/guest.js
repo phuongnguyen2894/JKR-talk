@@ -121,12 +121,12 @@ async function renderGuestHot(view, tab = gtab) {
     </div>`;
   let body;
   if (tab === 'all') {
-    body = `${board.topics.length ? `${sectionHead('Chủ đề nổi bật', 'hot')}<div class="list">${board.topics.slice(0, ALL_N).map((t) => boardCard(t, 'hot', true)).join('')}</div>` : ''}
-      ${pinned.length ? `${sectionHead('Từ quản trị', 'admin')}<div class="list">${pinned.slice(0, ALL_N).map(adminCard).join('')}</div>` : ''}
+    body = `${pinned.length ? `${sectionHead('Đáng chú ý', 'admin')}<div class="list">${pinned.slice(0, ALL_N).map(adminCard).join('')}</div>` : ''}
+      ${board.topics.length ? `${sectionHead('Chủ đề nổi bật', 'hot')}<div class="list">${board.topics.slice(0, ALL_N).map((t) => boardCard(t, 'hot', true)).join('')}</div>` : ''}
       ${items.length ? `${sectionHead('Tin nhiều tương tác', 'hearts')}<div class="list">${items.slice(0, ALL_N).map(heartCard).join('')}</div>` : ''}
       ${boardNew.topics.length ? `${sectionHead('Chủ đề mới được duyệt', 'new')}<div class="list">${boardNew.topics.slice(0, ALL_N).map((t) => boardCard(t, 'new', true)).join('')}</div>` : ''}
       ${!board.topics.length && !pinned.length && !items.length && !boardNew.topics.length ? '<p class="muted">Chưa có gì nổi bật.</p>' : ''}`;
-  } else if (tab === 'admin') body = `<div class="list">${pinned.map(adminCard).join('') || '<p class="muted">Chưa có bài nào từ quản trị.</p>'}</div>`;
+  } else if (tab === 'admin') body = `<div class="list">${pinned.map(adminCard).join('') || '<p class="muted">Chưa có bài đáng chú ý.</p>'}</div>`;
   else if (board) body = `<div class="list">${board.topics.map((t) => boardCard(t, tab, true)).join('') || '<p class="muted">Chưa có chủ đề nào.</p>'}</div>`;
   else body = `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tương tác (tim, bình luận, trả lời) ở các nhóm công khai trong 24 giờ qua.</p><div class="list">${items.map(heartCard).join('') || '<p class="muted">Chưa có chủ đề nóng nào.</p>'}</div>`;
   view.innerHTML = `<div class="page"><div class="page-inner">

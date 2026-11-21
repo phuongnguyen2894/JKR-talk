@@ -6,10 +6,10 @@ import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR
 // Chủ đề nóng gồm 3 tab:
 //  - Mới: chủ đề thảo luận mới được duyệt, mới nhất trước
 //  - Nổi bật: chủ đề Admin đặt nổi bật hoặc có nhiều thảo luận trong 24 giờ qua
-//  - Từ quản trị: bài do Admin đăng
+//  - Đáng chú ý: bài do Admin đăng
 //  - Tin nhiều tương tác: tin nhắn đạt ít nhất 38 tương tác (tim + bình luận + trả lời) ở các nhóm công khai trong 24 giờ qua (tối đa 38 tin)
-export const HOT_TABS = [['all', 'Tổng hợp'], ['hot', 'Nổi bật'], ['new', 'Mới'], ['admin', 'Từ quản trị'], ['hearts', 'Tin nhiều tương tác']];
-export const ALL_N = 5; // tab Tổng hợp: 5 chủ đề nổi bật > 5 bài từ quản trị > 5 tin nhiều tương tác > 5 chủ đề mới được duyệt
+export const HOT_TABS = [['all', 'Tổng hợp'], ['hot', 'Nổi bật'], ['new', 'Mới'], ['admin', 'Đáng chú ý'], ['hearts', 'Tin nhiều tương tác']];
+export const ALL_N = 5; // tab Tổng hợp: 5 bài đáng chú ý > 5 chủ đề nổi bật > 5 tin nhiều tương tác > 5 chủ đề mới được duyệt
 let htab = 'all';
 
 // Tiêu đề từng khối trong tab Tổng hợp, kèm nút "Xem tất cả" sang tab tương ứng
@@ -50,8 +50,8 @@ export async function renderHot(view, tab = htab) {
   const needsApproval = board ? board.needsApproval : !isAdmin;
   let body;
   if (tab === 'all') {
-    body = `${board.topics.length ? `${sectionHead('Chủ đề nổi bật', 'hot')}<div class="list">${board.topics.slice(0, ALL_N).map((t) => boardCard(t, 'hot')).join('')}</div>` : ''}
-      ${pinned.length ? `${sectionHead('Từ quản trị', 'admin')}<div class="list">${pinned.slice(0, ALL_N).map((m) => pinnedCard(m, isAdmin)).join('')}</div>` : ''}
+    body = `${pinned.length ? `${sectionHead('Đáng chú ý', 'admin')}<div class="list">${pinned.slice(0, ALL_N).map((m) => pinnedCard(m, isAdmin)).join('')}</div>` : ''}
+      ${board.topics.length ? `${sectionHead('Chủ đề nổi bật', 'hot')}<div class="list">${board.topics.slice(0, ALL_N).map((t) => boardCard(t, 'hot')).join('')}</div>` : ''}
       ${items.length ? `${sectionHead('Tin nhiều tương tác', 'hearts')}<div class="list">${items.slice(0, ALL_N).map(heartCard).join('')}</div>` : ''}
       ${boardNew.topics.length ? `${sectionHead('Chủ đề mới được duyệt', 'new')}<div class="list">${boardNew.topics.slice(0, ALL_N).map((t) => boardCard(t, 'new')).join('')}</div>` : ''}
       ${!board.topics.length && !pinned.length && !items.length && !boardNew.topics.length ? '<p class="muted">Chưa có gì nổi bật. Hãy vào bàn luận hoặc thả tim cho những tin bạn thích!</p>' : ''}`;
@@ -59,8 +59,8 @@ export async function renderHot(view, tab = htab) {
     body = `<p class="small muted">${tab === 'new' ? 'Chủ đề mới được duyệt, mới nhất ở trên cùng.' : 'Chủ đề được Admin đặt nổi bật, hoặc đang có nhiều thảo luận trong 24 giờ qua.'}</p>
       <div class="list">${board.topics.map((t) => boardCard(t, tab)).join('') || `<p class="muted">${tab === 'new' ? 'Chưa có chủ đề nào.' : 'Chưa có chủ đề nổi bật. Hãy vào bàn luận để chủ đề lên đây!'}</p>`}</div>`;
   } else if (tab === 'admin') {
-    body = `<p class="small muted">Thông báo và bài đăng từ đội quản trị.</p>
-      <div class="list">${pinned.map((m) => pinnedCard(m, isAdmin)).join('') || '<p class="muted">Chưa có bài nào từ quản trị.</p>'}</div>`;
+    body = `<p class="small muted">Thông báo và bài đăng đáng chú ý từ đội quản trị.</p>
+      <div class="list">${pinned.map((m) => pinnedCard(m, isAdmin)).join('') || '<p class="muted">Chưa có bài đáng chú ý.</p>'}</div>`;
   } else {
     body = `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tương tác (tim, bình luận, trả lời) ở các nhóm công khai trong 24 giờ qua. Thả tim bằng nút trái tim dưới mỗi tin nhắn.</p>
       <div class="list">${items.map(heartCard).join('') || '<p class="muted">Chưa có tin nào đạt ngưỡng. Hãy thả tim cho những tin nhắn bạn thích!</p>'}</div>`;

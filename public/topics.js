@@ -53,7 +53,7 @@ function adminCompose() {
       <div class="field"><label for="cp-img">Ảnh đính kèm (không bắt buộc)</label><input type="file" id="cp-img" accept="image/png,image/jpeg,image/gif,image/webp"></div></div>
     <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary" id="cp-ok">Tạo chủ đề</button></div></form>`);
   let kind = 'topic';
-  const hints = { topic: 'Chủ đề hiện ở Chủ đề nóng, mọi người vào bàn luận như một nhóm chat.', post: 'Bài hiện ở tab "Từ quản trị" của Chủ đề nóng cho mọi người.' };
+  const hints = { topic: 'Chủ đề hiện ở Chủ đề nóng, mọi người vào bàn luận như một nhóm chat.', post: 'Bài hiện ở tab "Đáng chú ý" của Chủ đề nóng cho mọi người.' };
   const setKind = (k) => {
     kind = k;
     m.querySelectorAll('[data-kind]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.kind === k)));
