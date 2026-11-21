@@ -237,6 +237,8 @@ api.post('/public/track', wrap((req, res) => {
   rateLimit(`gtrack:${event}:${vid}`, event === 'ping' ? 12 : 90, 60_000);
   res.json({ ok: track({ kind: 'g', id: vid }, { page: String(req.body.page || ''), target: req.body.target, event, seconds: req.body.seconds }) });
 }));
+const readTagsPub = () => readTags();
+api.get('/public/trend-tags', guestLimit, wrap((_req, res) => res.json({ tags: readTagsPub() })));
 api.get('/public/emoji', guestLimit, wrap((_req, res) => res.json({ emoji: activeEmoji().map(emojiDto) })));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
@@ -1115,6 +1117,22 @@ api.get('/messages/:id/reactions', wrap((req, res) => {
 }));
 
 // ---- Emoji tùy chỉnh: ai cũng xem và dùng được; chỉ Admin thêm, đổi tên, ẩn, xóa ----
+// Hashtag của ngày hiển thị ở đầu Đẩy trend: bấm vào mở tab "Mới nhất" của X. Chỉ admin chỉnh; không lấy dữ liệu từ X
+const TAG_MAX = 5;
+const TAG_RE = /^[\p{L}\p{N}_]{1,60}$/u;
+const readTags = () => { try { const a = JSON.parse(db.prepare("SELECT value FROM app_kv WHERE key = 'trend_tags'").get()?.value || '[]'); return Array.isArray(a) ? a.filter((t) => TAG_RE.test(t)).slice(0, TAG_MAX) : []; } catch { return []; } };
+api.get('/trend/tags', wrap((_req, res) => res.json({ tags: readTags(), max: TAG_MAX })));
+api.put('/admin/trend/tags', adminOnly, wrap((req, res) => {
+  rateLimit(`ttags:${req.user.id}`, 30, 60_000);
+  if (!Array.isArray(req.body.tags)) throw bad('Danh sách hashtag không hợp lệ');
+  const tags = [...new Set(req.body.tags.map((t) => String(t).trim().replace(/^[#＃]+/, '')).filter(Boolean))];
+  if (tags.length > TAG_MAX) throw bad(`Tối đa ${TAG_MAX} hashtag`);
+  const badTag = tags.find((t) => !TAG_RE.test(t));
+  if (badTag) throw bad(`Hashtag "${badTag}" không hợp lệ: chỉ gồm chữ, số, gạch dưới, không có dấu cách`);
+  db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('trend_tags', ?)").run(JSON.stringify(tags));
+  log(req.user.id, 'set_trend_tags', { reason: tags.join(' ') });
+  res.json({ tags });
+}));
 const emojiDto = (e) => ({ id: e.id, name: e.name, url: e.url, hidden: !!e.hidden });
 const tellEmojiChanged = () => hub.sendMany(db.prepare("SELECT id FROM users WHERE status = 'active'").all().map((u) => u.id), { type: 'emoji_changed' });
 // trả cả emoji đã ẩn (cờ hidden) để tin cũ vẫn hiển thị hình; bảng chọn chỉ liệt kê emoji không ẩn

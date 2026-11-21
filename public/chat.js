@@ -39,6 +39,8 @@ export async function renderChat(view, gid) {
   let first;
   try { first = await api('GET', `/groups/${gid}/messages?limit=40`); } catch (e) { C = null; view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">Quay lại</a></div>`; return; }
   C.hasMore = first.hasMore;
+  C.tags = [];
+  if (group.type === 'trend') { try { C.tags = (await api('GET', '/trend/tags')).tags; } catch {} }
   drawChat(view);
   wireSwipe();
   for (const m of first.messages) appendMsg(m, true);
@@ -79,6 +81,7 @@ function drawChat(view) {
     ${g.type !== 'trend' && g.type !== 'country' ? `<button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">Rời nhóm</button>` : ''}` : ''}
   </div>
   <div id="pinbar">${pinBarHtml()}</div>
+  <div id="tagbar">${tagBarHtml()}</div>
   <div class="chat-body">
     <div class="chat-col">
       <div class="msgs" id="msgs" aria-live="off"><div id="more" ${C.hasMore ? '' : 'hidden'} style="text-align:center"><button class="btn sm" data-act="load-more">Tải tin cũ hơn</button></div></div>
@@ -103,6 +106,30 @@ function groupMsgs(box) {
     prev = el;
   }
 }
+
+// Hashtag của ngày ở đầu Đẩy trend: bấm mở tab "Mới nhất" trên X (app X nếu đã cài)
+const xTagUrl = (t) => `https://x.com/search?q=${encodeURIComponent('#' + t)}&f=live`;
+function tagBarHtml() {
+  if (C?.group?.type !== 'trend') return '';
+  const admin = S.me?.role === 'admin';
+  if (!C.tags?.length && !admin) return '';
+  return `<div class="tagbar"><span class="tiny muted">Hashtag hôm nay</span>
+    <div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Mới nhất">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div>
+    ${admin ? `<button class="btn sm" data-act="tags-edit">Sửa</button>` : ''}</div>`;
+}
+actions['tags-edit'] = () => {
+  const m = openModal(`<form id="tagf" class="col"><h2>Hashtag hôm nay</h2>
+    <div class="field"><label for="tagin">Mỗi dòng một hashtag (tối đa 5)</label>
+    <textarea class="input" id="tagin" rows="5" placeholder="#usmilePajamaPartyWithOrm">${esc((C.tags || []).map((t) => '#' + t).join('\n'))}</textarea></div>
+    <p class="tiny muted">Bấm vào hashtag sẽ mở tab Mới nhất trên X. App không tự lấy bài từ X.</p>
+    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Lưu</button></div></form>`);
+  $('[data-close]', m).onclick = closeModal;
+  $('#tagf', m).onsubmit = async (e) => {
+    e.preventDefault();
+    const tags = $('#tagin', m).value.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+    try { C.tags = (await api('PUT', '/admin/trend/tags', { tags })).tags; closeModal(); const el = $('#tagbar'); if (el) el.innerHTML = tagBarHtml(); toast('Đã lưu hashtag'); } catch (er) { fail(er); }
+  };
+};
 
 function pinBarHtml() {
   const p = C?.group?.pinned;

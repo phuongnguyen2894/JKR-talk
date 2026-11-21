@@ -1294,6 +1294,19 @@ test('Đẩy trend: dọn các tin có link trùng có từ trước, giữ tin 
   assert.ok(left.includes(c)); // link khác được giữ
 });
 
+test('hashtag Đẩy trend: chỉ Admin đặt, kiểm tra định dạng, tối đa 5, ai cũng xem', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('tagUser', 1);
+  assert.equal((await call('PUT', '/admin/trend/tags', { tags: ['abc'] }, u.token)).status, 403);
+  assert.equal((await call('PUT', '/admin/trend/tags', { tags: ['có dấu cách'] }, adm.token)).status, 400);
+  assert.equal((await call('PUT', '/admin/trend/tags', { tags: ['a', 'b', 'c', 'd', 'e', 'f'] }, adm.token)).status, 400);
+  const ok = await call('PUT', '/admin/trend/tags', { tags: ['#usmilePajamaPartyWithOrm', 'usmilePajamaPartyWithOrm', '＃LingOrm'] }, adm.token);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.data.tags, ['usmilePajamaPartyWithOrm', 'LingOrm']);
+  assert.deepEqual((await call('GET', '/trend/tags', null, u.token)).data.tags, ['usmilePajamaPartyWithOrm', 'LingOrm']);
+  assert.deepEqual((await call('GET', '/public/trend-tags')).data.tags, ['usmilePajamaPartyWithOrm', 'LingOrm']);
+});
+
 test('emoji tùy chỉnh: chỉ Admin thêm, kiểm tra tên và ảnh, ẩn, đổi tên, xóa; ai cũng xem và dùng được', async () => {
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
   const u = await signup('emojiUser', 1);
