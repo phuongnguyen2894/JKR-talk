@@ -1,4 +1,5 @@
 // Trang "Cấp bậc của tôi", hộp chúc mừng lên cấp
+import { nameCls } from './frames.js';
 import { $, S, api, esc, icon, avatar, actions, fail, openModal, closeModal, lvBadge, coinIcon, LEVEL_NAMES } from './core.js';
 
 const fmt = (n) => Number(n).toLocaleString('vi-VN');
@@ -53,10 +54,12 @@ export async function renderLevel(view) {
     <h1>Cấp bậc của tôi</h1>
     <section class="card col lvl-hero" style="padding-top:20px">
       ${avatar({ ...u, level: u.level }, 'lg')}
-      <div class="row" style="justify-content:center;margin-top:6px"><b style="font-size:20px">${esc(u.displayName)}</b>${lvBadge(u.level, 26)}</div>
+      <div class="row" style="justify-content:center;margin-top:6px"><b class="${nameCls(u).trim()}" style="font-size:20px">${esc(u.displayName)}</b>${lvBadge(u.level, 26)}</div>
       ${u.level ? `<div class="small" style="font-weight:600;color:var(--accent)">${esc(LEVEL_NAMES[u.level])} · Cấp ${u.level}</div>` : ''}
       <div class="row" style="justify-content:center;font-weight:700;font-size:22px">${coinIcon(26)}${fmt(st.coins)}<span class="small muted" style="font-weight:400">xu tím đã kiếm</span></div>
       ${st.streak ? `<div class="small muted">Chuỗi ${st.streak} ngày liên tiếp</div>` : ''}
+      <div class="small muted">Số dư có thể tiêu: <b>${fmt(st.balance)}</b> xu tím</div>
+      <div class="row wrap" style="justify-content:center;gap:8px;margin-top:4px"><a class="btn primary" href="#/shop">Cửa hàng xu tím</a><a class="btn" href="#/titles">Danh hiệu và phần thưởng</a></div>
     </section>
     ${progress}
     <section class="card col"><div class="h2" style="margin:0">Số liệu</div>

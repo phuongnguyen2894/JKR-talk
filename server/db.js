@@ -241,3 +241,12 @@ CREATE TABLE IF NOT EXISTS user_titles (
   user_id INTEGER NOT NULL, title TEXT NOT NULL, granted_at INTEGER NOT NULL, PRIMARY KEY (user_id, title)
 );
 `);
+
+// ---- Cửa hàng xu tím và khung avatar / màu tên ------------------------------
+// coins_spent: tổng xu đã tiêu (số dư = coins - coins_spent); frame, name_color: đồ đang dùng ('shop:3', 'title:1'...)
+for (const c of ['coins_spent INTEGER NOT NULL DEFAULT 0', 'frame TEXT', 'name_color TEXT']) { try { db.exec(`ALTER TABLE users ADD COLUMN ${c}`); } catch { /* đã có cột */ } }
+db.exec(`
+CREATE TABLE IF NOT EXISTS user_items (
+  user_id INTEGER NOT NULL, item TEXT NOT NULL, price INTEGER NOT NULL, acquired_at INTEGER NOT NULL, PRIMARY KEY (user_id, item)
+);
+`);

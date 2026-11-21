@@ -10,6 +10,30 @@ export const TITLES = {
   bot_trend_huyen_thoai: 'Bot trend huyền thoại',
 };
 
+// Danh hiệu Bot trend: tự trao khi đủ điều kiện (số link X đã bấm trong Đẩy trend, số link đã gửi vào Đẩy trend), phải đạt lần lượt
+export const TITLE_DEFS = [
+  { n: 1, key: 'bot_trend', clicks: 100 },
+  { n: 2, key: 'bot_trend_cao_thu', clicks: 500, links: 300, needs: 'bot_trend' },
+  { n: 3, key: 'bot_trend_huyen_thoai', clicks: 2000, links: 1000, needs: 'bot_trend_cao_thu' },
+];
+// Phần thưởng của danh hiệu (không bán): khung avatar và màu tên
+export const TITLE_REWARDS = {
+  1: { frame: 'Khung Bot trend', color: 'Xanh ngọc Bot trend' },
+  2: { frame: 'Khung Bot trend cao thủ', color: 'Xanh dương cao thủ' },
+  3: { frame: 'Khung Bot trend huyền thoại', color: 'Lửa huyền thoại' },
+};
+// Đồ bán bằng xu tím
+export const SHOP = {
+  frame: [
+    { id: 1, name: 'Viền tím', price: 300 }, { id: 2, name: 'Vòng hoa', price: 600 }, { id: 3, name: 'Hạt ngọc', price: 600 },
+    { id: 4, name: 'Ánh sao', price: 900 }, { id: 5, name: 'Pha lê', price: 1500 },
+  ],
+  color: [
+    { id: 1, name: 'Hồng đào', price: 200 }, { id: 2, name: 'Bạc hà', price: 200 }, { id: 3, name: 'Vàng nắng', price: 400 },
+    { id: 4, name: 'Tím mộng', price: 600 }, { id: 5, name: 'Hoàng hôn', price: 800 },
+  ],
+};
+
 // Mỗi cấp: mốc xu tím cộng thêm điều kiện riêng (nếu có) và đặc quyền mới
 export const LEVELS = [
   { lvl: 1, name: 'Tím Mầm Non', min: 0, perk: 'Huy hiệu Tím Mầm Non cạnh tên.' },
@@ -61,9 +85,25 @@ function eligibleLevel(u) {
 }
 
 // Tính lại: xong việc khởi đầu thì nhận cấp 1, đủ điều kiện thì lên cấp (không bao giờ tụt cấp)
+export const xLinkClicks = (uid) => q1("SELECT COUNT(*) c FROM coin_log WHERE user_id = ? AND kind = 'xlink'", uid).c;
+
+// Tự trao danh hiệu Bot trend khi đủ điều kiện (lần lượt từng danh hiệu)
+function grantTitles(uid, silent) {
+  const clicks = xLinkClicks(uid);
+  const links = trendLinks(uid);
+  for (const d of TITLE_DEFS) {
+    if (hasTitle(uid, d.key)) continue;
+    if (d.needs && !hasTitle(uid, d.needs)) break;
+    if (clicks < d.clicks || (d.links && links < d.links)) break;
+    db.prepare('INSERT OR IGNORE INTO user_titles (user_id, title, granted_at) VALUES (?,?,?)').run(uid, d.key, now());
+    if (!silent) notify(uid, 'title', `Bạn đã nhận danh hiệu ${TITLES[d.key]}. Khung avatar và màu tên mới đang chờ bạn trong mục Danh hiệu.`, { url: '/#/titles', tag: `title-${d.key}` });
+  }
+}
+
 export function recompute(uid, { silent = false } = {}) {
   let u = getUser(uid);
   if (!u || u.status === 'deleted') return null;
+  grantTitles(uid, silent);
   if (!u.start_done) {
     const t = startCounts(uid);
     if (u.role === 'admin' || (t.msgs >= START_NEED.msgs && t.hearts >= START_NEED.hearts && t.push)) {
@@ -152,6 +192,85 @@ export function onTrendClick(uid, url) {
   return key ? award(uid, 'xlink', 1, { ref: key }) : 0;
 }
 
+// ---- danh hiệu, cửa hàng, khung avatar và màu tên ----------------------------------
+export const balanceOf = (u) => Math.max(0, (u.coins || 0) - (u.coins_spent || 0));
+const ownedShop = (uid) => new Set(db.prepare('SELECT item FROM user_items WHERE user_id = ?').all(uid).map((r) => r.item));
+const titleN = (uid) => TITLE_DEFS.filter((d) => hasTitle(uid, d.key)).map((d) => d.n);
+
+// Trạng thái từng danh hiệu: điều kiện, tiến độ, phần thưởng
+export function titlesStatus(uid) {
+  const u = getUser(uid);
+  const clicks = xLinkClicks(uid), links = trendLinks(uid);
+  const out = TITLE_DEFS.map((d) => {
+    const has = hasTitle(uid, d.key);
+    const conditions = [{ key: 'clicks', label: 'Bấm link X trong Đẩy trend', have: has ? Math.max(clicks, d.clicks) : clicks, need: d.clicks, ok: has || clicks >= d.clicks }];
+    if (d.links) conditions.push({ key: 'links', label: 'Gửi link vào Đẩy trend', have: has ? Math.max(links, d.links) : links, need: d.links, ok: has || links >= d.links });
+    const prevOk = !d.needs || hasTitle(uid, d.needs);
+    return { n: d.n, key: d.key, name: TITLES[d.key], state: has ? 'done' : prevOk ? 'doing' : 'locked', conditions, reward: { frame: `title:${d.n}`, frameName: TITLE_REWARDS[d.n].frame, color: `title:${d.n}`, colorName: TITLE_REWARDS[d.n].color }, needs: d.needs ? TITLES[d.needs] : null };
+  });
+  return { titles: out, equipped: { frame: u.frame || null, color: u.name_color || null } };
+}
+
+// Cửa hàng: số dư, đồ bán, đồ đã sở hữu (kể cả phần thưởng danh hiệu)
+export function shopStatus(uid) {
+  const u = getUser(uid);
+  const mine = ownedShop(uid);
+  const tn = titleN(uid);
+  const list = (kind, cur) => SHOP[kind].map((it) => ({ id: `shop:${it.id}`, name: it.name, price: it.price, owned: mine.has(`${kind}:${it.id}`), equipped: cur === `shop:${it.id}` }));
+  return {
+    balance: balanceOf(u), coins: u.coins,
+    frames: list('frame', u.frame), colors: list('color', u.name_color),
+    mine: {
+      frames: [...SHOP.frame.filter((it) => mine.has(`frame:${it.id}`)).map((it) => ({ id: `shop:${it.id}`, name: it.name, source: 'shop' })), ...tn.map((n) => ({ id: `title:${n}`, name: TITLE_REWARDS[n].frame, source: 'title' }))],
+      colors: [...SHOP.color.filter((it) => mine.has(`color:${it.id}`)).map((it) => ({ id: `shop:${it.id}`, name: it.name, source: 'shop' })), ...tn.map((n) => ({ id: `title:${n}`, name: TITLE_REWARDS[n].color, source: 'title' }))],
+    },
+    equipped: { frame: u.frame || null, color: u.name_color || null },
+  };
+}
+
+// Mua đồ bằng xu tím (đồ vĩnh viễn, không hoàn xu; mua không làm giảm tổng xu đã kiếm nên không tụt cấp)
+export function buyItem(uid, kind, id) {
+  const it = SHOP[kind]?.find((x) => x.id === Number(id));
+  if (!it) return { error: 'Vật phẩm không tồn tại' };
+  const key = `${kind}:${it.id}`;
+  return tx(() => {
+    const u = getUser(uid);
+    if (ownedShop(uid).has(key)) return { error: 'Bạn đã sở hữu vật phẩm này' };
+    if (balanceOf(u) < it.price) return { error: 'Bạn chưa đủ xu tím để mua vật phẩm này' };
+    db.prepare('UPDATE users SET coins_spent = coins_spent + ? WHERE id = ?').run(it.price, uid);
+    db.prepare('INSERT INTO user_items (user_id, item, price, acquired_at) VALUES (?,?,?,?)').run(uid, key, it.price, now());
+    return { ok: true, item: { kind, id: `shop:${it.id}`, name: it.name, price: it.price }, balance: balanceOf(getUser(uid)) };
+  });
+}
+
+// Chọn khung avatar / màu tên đang dùng (chỉ chọn được đồ đã sở hữu hoặc phần thưởng danh hiệu đã đạt); null = bỏ chọn
+export function setAppearance(uid, body) {
+  const mine = ownedShop(uid), tn = titleN(uid);
+  const ok = (kind, v) => {
+    const [src, n] = String(v).split(':');
+    if (src === 'shop') return mine.has(`${kind}:${Number(n)}`) && SHOP[kind].some((x) => x.id === Number(n));
+    if (src === 'title') return tn.includes(Number(n));
+    return false;
+  };
+  const sets = [], vals = [];
+  for (const [field, col, kind] of [['frame', 'frame', 'frame'], ['color', 'name_color', 'color']]) {
+    if (body[field] === undefined) continue;
+    if (body[field] === null || body[field] === '') { sets.push(`${col} = NULL`); continue; }
+    if (!ok(kind, body[field])) return { error: 'Bạn chưa sở hữu vật phẩm này' };
+    sets.push(`${col} = ?`); vals.push(String(body[field]));
+  }
+  if (sets.length) db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, uid);
+  return { ok: true };
+}
+// Thu hồi danh hiệu: bỏ khung/màu tên của danh hiệu đó nếu đang dùng
+export function dropTitleRewards(uid) {
+  const tn = titleN(uid);
+  const u = getUser(uid);
+  const bad = (v) => v && v.startsWith('title:') && !tn.includes(Number(v.split(':')[1]));
+  if (bad(u.frame)) db.prepare('UPDATE users SET frame = NULL WHERE id = ?').run(uid);
+  if (bad(u.name_color)) db.prepare('UPDATE users SET name_color = NULL WHERE id = ?').run(uid);
+}
+
 // ---- trạng thái cho giao diện ------------------------------------------------------
 export function statusOf(uid) {
   const u = getUser(uid);
@@ -162,7 +281,7 @@ export function statusOf(uid) {
     { key: 'push', label: 'Bật thông báo đẩy', have: t.push ? 1 : 0, need: 1 },
   ]; })() : null;
   return {
-    level: u.lvl, name: u.lvl ? levelName(u.lvl) : '', coins: u.coins, streak: u.streak,
+    level: u.lvl, name: u.lvl ? levelName(u.lvl) : '', coins: u.coins, balance: balanceOf(u), streak: u.streak,
     tasks,
     next: next && u.start_done ? { level: next.lvl, name: next.name, conditions: conditionsFor(next, u) } : null,
     titles: userTitles(uid),

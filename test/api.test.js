@@ -1129,3 +1129,80 @@ test('cấp 5 Tím Thủy Tổ: thêm ngay bất kỳ ai vào nhóm riêng của
   await call('POST', `/blocks/${top.id}`, {}, stranger.token);
   assert.equal((await call('POST', `/private/${g2.id}/invite`, { userIds: [stranger.id] }, top.token)).status, 400);
 });
+
+test('cửa hàng xu tím: số dư tách khỏi tổng xu, mua khung và màu tên, chọn đồ đang dùng', async () => {
+  const { db } = await import('../server/db.js');
+  const u = await signup('shopper', 1);
+  const o = await signup('shopperB', 1);
+  db.prepare('UPDATE users SET start_done = 1, lvl = 1, lvl_seen = 1, coins = 1000 WHERE id = ?').run(u.id);
+  const s0 = (await call('GET', '/shop', null, u.token)).data;
+  assert.equal(s0.balance, 1000);
+  assert.equal(s0.coins, 1000);
+  assert.equal(s0.frames.length, 5);
+  assert.equal(s0.colors.length, 5);
+  assert.deepEqual(s0.mine.frames, []);
+  // chưa đủ xu / vật phẩm lạ
+  assert.equal((await call('POST', '/shop/buy', { kind: 'frame', id: 5 }, u.token)).status, 400);
+  assert.equal((await call('POST', '/shop/buy', { kind: 'frame', id: 99 }, u.token)).status, 400);
+  assert.equal((await call('POST', '/shop/buy', { kind: 'khong', id: 1 }, u.token)).status, 400);
+  // mua khung 600: số dư giảm, tổng xu và cấp không đổi
+  const b1 = await call('POST', '/shop/buy', { kind: 'frame', id: 3 }, u.token);
+  assert.equal(b1.status, 200, JSON.stringify(b1.data));
+  assert.equal(b1.data.balance, 400);
+  assert.equal(b1.data.shop.coins, 1000);
+  assert.equal((await call('GET', '/me', null, u.token)).data.user.level, 2); // đủ 1.000 xu là cấp 2, tiêu xu không làm tụt cấp
+  assert.equal((await call('POST', '/shop/buy', { kind: 'frame', id: 3 }, u.token)).status, 400); // đã sở hữu
+  assert.equal((await call('POST', '/shop/buy', { kind: 'color', id: 2 }, u.token)).status, 200); // 200 xu
+  const sh = (await call('GET', '/shop', null, u.token)).data;
+  assert.equal(sh.balance, sh.coins - 800); // đã tiêu 600 + 200
+  // chọn đồ: chỉ chọn được đồ đã sở hữu
+  assert.equal((await call('POST', '/me/appearance', { frame: 'shop:4' }, u.token)).status, 400);
+  assert.equal((await call('POST', '/me/appearance', { frame: 'title:1' }, u.token)).status, 400);
+  const ap = await call('POST', '/me/appearance', { frame: 'shop:3', color: 'shop:2' }, u.token);
+  assert.equal(ap.status, 200);
+  assert.equal(ap.data.user.frame, 'shop:3');
+  assert.equal(ap.data.user.nameColor, 'shop:2');
+  // người khác thấy khung và màu tên trong chat
+  const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((g) => g.type === 'country');
+  for (const x of [u, o]) await call('POST', `/groups/${vn.id}/rules-ack`, {}, x.token);
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'xem khung của mình' }, u.token);
+  const seen = (await call('GET', `/groups/${vn.id}/messages`, null, o.token)).data.messages.find((m) => m.user.id === u.id).user;
+  assert.equal(seen.frame, 'shop:3');
+  assert.equal(seen.nameColor, 'shop:2');
+  // bỏ chọn
+  assert.equal((await call('POST', '/me/appearance', { frame: null }, u.token)).data.user.frame, null);
+});
+
+test('danh hiệu Bot trend tự trao khi bấm đủ link X; phần thưởng khung và màu tên không mua được', async () => {
+  const { db } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('botuser', 1);
+  db.prepare('UPDATE users SET start_done = 1, lvl = 1, lvl_seen = 1 WHERE id = ?').run(u.id);
+  const t0 = (await call('GET', '/me/titles', null, u.token)).data;
+  assert.equal(t0.titles.length, 3);
+  assert.equal(t0.titles[0].state, 'doing');
+  assert.equal(t0.titles[1].state, 'locked');
+  assert.equal(t0.titles[0].conditions[0].need, 100);
+  assert.equal((await call('POST', '/me/appearance', { frame: 'title:1' }, u.token)).status, 400); // chưa đạt
+  assert.equal((await call('POST', '/shop/buy', { kind: 'frame', id: 'title:1' }, u.token)).status, 400); // không bán
+  // 99 link X: chưa đủ; thêm 1 link nữa qua API thật thì đạt
+  const ins = db.prepare("INSERT INTO coin_log (user_id, kind, amount, ref, day, created_at) VALUES (?, 'xlink', 1, ?, '2026-01-01', ?)");
+  for (let i = 0; i < 99; i++) ins.run(u.id, `x.com/seed/${i}`, Date.now());
+  assert.equal((await call('GET', '/me/titles', null, u.token)).data.titles[0].state, 'doing');
+  const trend = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((g) => g.type === 'trend');
+  const xm = (await call('POST', `/groups/${trend.id}/messages`, { body: 'xem https://x.com/lingorm/status/777' }, adm.token)).data.message;
+  assert.equal((await call('POST', '/trend/click', { messageId: xm.id, url: 'https://x.com/lingorm/status/777' }, u.token)).data.coins, 1);
+  const t1 = (await call('GET', '/me/titles', null, u.token)).data;
+  assert.equal(t1.titles[0].state, 'done');
+  assert.equal(t1.titles[1].state, 'doing');
+  assert.ok((await call('GET', '/notifications', null, u.token)).data.notifications.some((n) => n.type === 'title' && n.text.includes('Bot trend')));
+  // danh hiệu mở khóa phần thưởng
+  const ap = await call('POST', '/me/appearance', { frame: 'title:1', color: 'title:1' }, u.token);
+  assert.equal(ap.status, 200);
+  assert.equal(ap.data.user.frame, 'title:1');
+  assert.ok((await call('GET', '/shop', null, u.token)).data.mine.frames.some((f) => f.id === 'title:1' && f.source === 'title'));
+  // Admin thu hồi danh hiệu: bỏ luôn khung và màu đang dùng
+  await call('POST', `/admin/users/${u.id}/titles`, { title: 'bot_trend', grant: false }, adm.token);
+  db.prepare("DELETE FROM coin_log WHERE user_id = ? AND kind = 'xlink'").run(u.id); // để không tự trao lại
+  assert.equal((await call('GET', '/me', null, u.token)).data.user.frame, null);
+});

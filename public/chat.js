@@ -1,5 +1,6 @@
 import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, newsGallery, roleOf, avatarR, roleClass, roleSr, lvBadge, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
 import { maybeAskPush } from './push.js';
+import { nameCls } from './frames.js';
 
 const PUBLIC = ['country', 'region', 'province', 'topic'];
 const EMOJI = ['😀','😂','🥹','😍','🥰','😭','😘','🤣','👍','🙏','👏','🔥','💜','💚','💙','💖','✨','🎉','😎','🤗','😅','🥺','😢','😡','🤔','🙌','💪','🌸','⭐','🎬','📺','🍿'];
@@ -288,7 +289,7 @@ function msgHtml(m) {
       </div></div>`;
   const who = m.user.deleted
     ? `<span class="who muted">${esc(m.user.displayName)}</span>`
-    : `<button class="who${roleClass(rr)}" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}${roleSr(rr)}${lvBadge(m.user.level)}</button>`;
+    : `<button class="who${roleClass(rr)}${nameCls(m.user)}" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}${roleSr(rr)}${lvBadge(m.user.level)}</button>`;
   return `<div class="msg ${own ? 'own' : ''}" data-mid="${m.id}" data-uid="${m.user.id}" data-name="${esc(m.user.displayName)}">
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
     <div class="body">

@@ -1,6 +1,7 @@
 import { previewHtml } from './chat.js';
 import { commentBlock } from './comments.js';
 import { ago, createTopicHtml, pendingMineHtml } from './topics.js';
+import { nameCls } from './frames.js';
 import { $, $$, esc, S, api, icon, avatar, fmtDateTime, linkify, roleOf, avatarR, roleClass, roleSr, actions, toast, fail, confirmBox } from './core.js';
 
 // Chủ đề nóng gồm 3 tab:
@@ -31,7 +32,7 @@ export function boardCard(t, tab, guest = false) {
 const heartCard = (m, i) => `<div class="card col" style="gap:6px">
   <div class="row wrap"><span class="pill">#${i + 1}</span><span class="pill warn">${m.interactions} tương tác</span><a class="pill warn" href="#/chat/${m.groupId}">${esc(m.groupName)} →</a>
     <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
-  <div class="row">${avatarR(m.user, roleOf(m.user, m.modRole))}<div class="grow"><b class="${roleClass(roleOf(m.user, m.modRole)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user, m.modRole))}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
+  <div class="row">${avatarR(m.user, roleOf(m.user, m.modRole))}<div class="grow"><b class="${(roleClass(roleOf(m.user, m.modRole)) + nameCls(m.user)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user, m.modRole))}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
   ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, m.mentions)}</div>` : ''}
   ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy">` : ''}
   ${previewHtml(m.preview)}
@@ -78,7 +79,7 @@ document.addEventListener('topics-changed', (e) => { if ($('#hot-page')) renderH
 function pinnedCard(m, isAdmin) {
   return `<div class="card col hot-pin" style="gap:6px" data-mid="${m.id}">
     <div class="row wrap"><span class="pill warn">Từ quản trị</span><span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div>
-    <div class="row">${avatarR(m.user, roleOf(m.user, m.modRole))}<div class="grow"><b class="${roleClass(roleOf(m.user, m.modRole)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user, m.modRole))}</b></div></div>
+    <div class="row">${avatarR(m.user, roleOf(m.user, m.modRole))}<div class="grow"><b class="${(roleClass(roleOf(m.user, m.modRole)) + nameCls(m.user)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user, m.modRole))}</b></div></div>
     ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, m.mentions)}</div>` : ''}
     ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong bài đăng" style="max-width:100%;border-radius:10px" loading="lazy" decoding="async">` : ''}
     ${previewHtml(m.preview)}

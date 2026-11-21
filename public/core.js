@@ -1,3 +1,4 @@
+import { frameSvg } from './frames.js';
 // Trạng thái dùng chung, API client, modal, toast, tiện ích.
 export const $ = (s, el = document) => el.querySelector(s);
 export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -74,7 +75,9 @@ export const icon = (n, s = 16, extra = '') =>
 export function avatar(u, cls = '') {
   const name = u?.displayName || '?';
   const inner = u?.avatarUrl ? `<img src="${esc(u.avatarUrl)}" alt="">` : esc([...name][0]?.toUpperCase() || '?');
-  return `<span class="av c${(u?.avatarColor || 0) % 6} ${cls}${u?.level >= 2 && !u?.staff ? ' lvf' : ''}" aria-hidden="true">${inner}</span>`;
+  const fr = u?.frame ? frameSvg(u.frame) : ''; // khung đã mua / phần thưởng danh hiệu thay cho khung tím của cấp bậc
+  const av = `<span class="av c${(u?.avatarColor || 0) % 6} ${cls}${!fr && u?.level >= 2 && !u?.staff ? ' lvf' : ''}" aria-hidden="true">${inner}</span>`;
+  return fr ? `<span class="av-fr">${av}${fr}</span>` : av;
 }
 export const groupAvatar = (g) =>
   g.avatarUrl ? `<span class="av sq"><img src="${esc(g.avatarUrl)}" alt=""></span>`

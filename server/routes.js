@@ -12,7 +12,7 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
-import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onTrendClick, award, TITLES, normalizeXLink, userTitles } from './levels.js';
+import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onTrendClick, award, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
 
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
@@ -201,7 +201,7 @@ function guestMsg(m, extra = {}) {
   return {
     id: d.id, groupId: d.groupId, body: d.body, imageUrl: d.imageUrl, imageUrls: d.imageUrls, preview: d.preview, fwd: d.fwd,
     hearts: extra.hearts ?? d.hearts, createdAt: d.createdAt, modRole: d.modRole,
-    user: { displayName: d.user.displayName, avatarColor: d.user.avatarColor, avatarUrl: d.user.avatarUrl, deleted: d.user.deleted, staff: d.user.staff },
+    user: { displayName: d.user.displayName, avatarColor: d.user.avatarColor, avatarUrl: d.user.avatarUrl, deleted: d.user.deleted, staff: d.user.staff, level: d.user.level, frame: d.user.frame, nameColor: d.user.nameColor },
     reply: d.reply && !d.reply.deleted ? { displayName: d.reply.displayName, body: d.reply.body, hasImage: d.reply.hasImage } : null,
     ...('groupName' in extra ? { groupName: extra.groupName } : {}),
   };
@@ -251,6 +251,22 @@ api.get('/me/level', wrap((req, res) => {
   recompute(req.user.id);
   res.json({ level: statusOf(req.user.id) });
 }));
+api.get('/me/titles', wrap((req, res) => {
+  recompute(req.user.id);
+  res.json(titlesStatus(req.user.id));
+}));
+api.get('/shop', wrap((req, res) => res.json(shopStatus(req.user.id))));
+api.post('/shop/buy', wrap((req, res) => {
+  rateLimit(`shopbuy:${req.user.id}`, 30, 60_000);
+  const r = buyItem(req.user.id, String(req.body.kind || ''), req.body.id);
+  if (r.error) throw bad(r.error);
+  res.json({ ...r, shop: shopStatus(req.user.id) });
+}));
+api.post('/me/appearance', wrap((req, res) => {
+  const r = setAppearance(req.user.id, req.body || {});
+  if (r.error) throw bad(r.error);
+  res.json({ user: selfUser(getUser(req.user.id)) });
+}));
 api.post('/me/level-seen', wrap((req, res) => {
   db.prepare('UPDATE users SET lvl_seen = lvl WHERE id = ?').run(req.user.id);
   res.json({ ok: true });
@@ -273,6 +289,7 @@ api.post('/admin/users/:id/titles', adminOnly, wrap((req, res) => {
   if (req.body.grant === false) db.prepare('DELETE FROM user_titles WHERE user_id = ? AND title = ?').run(uid, title);
   else db.prepare('INSERT OR IGNORE INTO user_titles (user_id, title, granted_at) VALUES (?,?,?)').run(uid, title, now());
   log(req.user.id, req.body.grant === false ? 'revoke_title' : 'grant_title', { target: uid, reason: title });
+  dropTitleRewards(uid);
   recompute(uid);
   res.json({ titles: userTitles(uid) });
 }));

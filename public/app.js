@@ -1,5 +1,7 @@
 import { $, $$, esc, S, api, go, icon, avatar, fmtDateTime, toast, fail, openModal, closeModal, refreshGroups, refreshCounters, setToken, actions, isStaff, mutedNow, lvBadge, coinIcon } from './core.js';
 import { renderLevel, showLevelUp } from './level.js';
+import { renderShop, renderTitles } from './shop.js';
+import { nameCls } from './frames.js';
 import { renderChat, onSocket } from './chat.js';
 import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
@@ -60,13 +62,15 @@ function renderSide() {
     ${nav('#/news', 'news', 'Bản tin', 'news', S.unreadNews)}
     ${nav('#/friends', 'friends', 'Bạn bè', 'friends')}
     <a class="nav-item" href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${coinIcon(20)}<span class="name">Thăng cấp</span></a>
+    <a class="nav-item" href="#/shop" ${r.name === 'shop' ? 'aria-current="page"' : ''}>${icon('star', 20)}<span class="name">Cửa hàng xu tím</span></a>
+    <a class="nav-item" href="#/titles" ${r.name === 'titles' ? 'aria-current="page"' : ''}>${icon('trend', 20)}<span class="name">Danh hiệu</span></a>
     ${nav('#/tools', 'tools', 'Công cụ', 'tool')}
     ${S.me.role === 'admin' ? '' : `<button class="nav-item" data-act="report-bug">${icon('bug')}<span class="name">Báo lỗi</span></button>`}
     ${S.me.role === 'admin' ? nav('#/bugs', 'bugs', 'Danh sách lỗi', 'bug') : ''}
     ${isStaff() ? nav('#/admin', 'admin', S.me.role === 'admin' ? 'Quản trị' : 'Báo cáo', 'shield') : ''}
     <button class="nav-item" data-act="notifs">${icon('bell')}<span class="name">Thông báo</span>${S.unreadNotif ? `<span class="badge">${S.unreadNotif}</span>` : ''}</button>
     <a class="nav-item only-mobile" href="#/settings" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${icon('gear')}<span class="name">Cài đặt tài khoản</span></a>
-    <div class="side-foot"><a class="nav-item" href="#/settings" style="min-height:48px" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${avatar(S.me)}<span class="name" style="font-weight:600">${esc(S.me.displayName)}${lvBadge(S.me.level)}</span>${icon('gear')}</a></div>`;
+    <div class="side-foot"><a class="nav-item" href="#/settings" style="min-height:48px" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${avatar(S.me)}<span class="name${nameCls(S.me)}" style="font-weight:600">${esc(S.me.displayName)}${lvBadge(S.me.level)}</span>${icon('gear')}</a></div>`;
 
   const chatUnread = S.groups.reduce((n, g) => n + (g.type === 'trend' ? 0 : g.unread || 0), 0);
   const trendTab = tg ? `<a href="#/chat/${tg.id}" ${tg.id === activeId ? 'aria-current="page"' : ''}>${icon('trend', 22)}Đẩy trend${tg.unread ? `<span class="badge">${tg.unread}</span>` : ''}</a>` : '';
@@ -124,6 +128,8 @@ async function route() {
       case 'news': await refreshCounters().catch(() => {}); return await renderNews(view);
       case 'settings': return renderSettings(view);
       case 'level': return await renderLevel(view);
+      case 'shop': return await renderShop(view);
+      case 'titles': return await renderTitles(view);
       case 'admin': return await renderAdmin(view);
       case 'join': return await renderJoin(view, r.arg);
       default: return go('#/chat');
@@ -149,6 +155,7 @@ function connectWs() {
       S.unreadNotif++; renderSide();
       toast(ev.notification.text, 7000);
       if (['group_invite', 'join_approved', 'group_dissolved', 'moderation'].includes(ev.notification.type)) refreshGroups().catch(() => {});
+      if (ev.notification.type === 'title') api('GET', '/me').then((r) => { S.me = r.user; renderSide(); if (['titles', 'shop'].includes(parseHash().name)) route(); }).catch(() => {});
       if (ev.notification.type === 'level') api('GET', '/me').then(async (r) => { S.me = r.user; renderSide(); if (parseHash().name === 'level') await route(); showLevelUp(r.levelUp); }).catch(() => {});
       if (ev.notification.type === 'friend_accept' && parseHash().name === 'friends') route();
     } else if (ev.type === 'news') { S.unreadNews++; renderSide(); toast(`Bản tin mới: ${ev.news.title}`, 7000); }
