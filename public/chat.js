@@ -113,7 +113,7 @@ function tagBarHtml() {
   if (C?.group?.type !== 'trend') return '';
   const admin = S.me?.role === 'admin';
   if (!C.tags?.length && !admin) return '';
-  return `<div class="tagbar"><span class="tiny muted grow">Hashtag hôm nay</span>
+  return `<div class="tagbar"><span class="tiny muted grow">Click để xem post nổi bật</span>
     ${admin ? `<button class="btn sm" data-act="tags-edit">Sửa</button>` : ''}
     <div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Top">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div></div>`;
 }
