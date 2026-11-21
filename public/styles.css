@@ -522,3 +522,7 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .preview-row { flex-wrap: nowrap; gap: 8px; }
 .preview-row .preview { width: 64px; flex: none; }
 .preview-row .preview img { width: 64px; height: 64px; }
+.lvl-pv { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; }
+.lvl-pv .lvb { margin: 0; vertical-align: baseline; }
+.lvl-pv.locked { opacity: .45; }
+.lvl-row > .lvb { margin: 0; }

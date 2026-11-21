@@ -66,7 +66,7 @@ export async function renderLevel(view) {
       <div class="row" style="gap:8px">${[[st.stats.messages, 'Tin nhắn'], [st.stats.hearts, 'Tim nhận'], [st.stats.topics, 'Chủ đề']].map(([n, l]) => `<div class="card" style="flex:1;text-align:center;padding:10px 4px"><b style="font-size:20px">${fmt(n)}</b><div class="tiny muted">${l}</div></div>`).join('')}</div>
     </section>
     <section class="card col"><div class="h2" style="margin:0">Đặc quyền theo cấp</div>
-      ${PRIVS.map(([lv, t]) => `<div class="lvl-row"><span class="${u.level >= lv ? 'lvl-ok' : 'lvl-no'}">${u.level >= lv ? '✓' : lv}</span><span ${u.level >= lv ? '' : 'class="muted"'}>${esc(t)}</span></div>`).join('')}
+      ${PRIVS.map(([lv, t]) => `<div class="lvl-row"><span class="lvl-pv${u.level >= lv ? '' : ' locked'}">${lvBadge(lv, 22)}</span><span ${u.level >= lv ? '' : 'class="muted"'}>${esc(t)}</span></div>`).join('')}
       <p class="tiny muted">Mọi tính năng chat, thả tim, trả lời, kết bạn đều dùng được ngay từ đầu, cấp chỉ thêm đặc quyền mới.</p>
     </section>
     <section class="card col"><div class="h2" style="margin:0">Các cấp</div>
