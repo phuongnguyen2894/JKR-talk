@@ -58,10 +58,6 @@ export async function renderLevel(view) {
       ${st.streak ? `<div class="small muted">Chuỗi ${st.streak} ngày liên tiếp</div>` : ''}
     </section>
     ${progress}
-    <section class="card col"><div class="h2" style="margin:0">Cách kiếm xu tím</div>
-      ${EARN.map(([t, x, note]) => `<div class="lvl-row"><span class="earn-t">${esc(t)}${note ? `<br><span class="tiny muted">${esc(note)}</span>` : ''}</span><span class="chip" style="display:inline-flex;align-items:center;gap:4px">${coinIcon(14)}${esc(x)}</span></div>`).join('')}
-      <p class="tiny muted">Xu tím chỉ tăng, không bị trừ. Có đủ xu và đủ điều kiện của cấp thì tự lên cấp.</p>
-    </section>
     <section class="card col"><div class="h2" style="margin:0">Số liệu</div>
       <div class="row" style="gap:8px">${[[st.stats.messages, 'Tin nhắn'], [st.stats.hearts, 'Tim nhận'], [st.stats.topics, 'Chủ đề']].map(([n, l]) => `<div class="card" style="flex:1;text-align:center;padding:10px 4px"><b style="font-size:20px">${fmt(n)}</b><div class="tiny muted">${l}</div></div>`).join('')}</div>
     </section>
@@ -73,6 +69,10 @@ export async function renderLevel(view) {
       ${levels.map((l) => `<div class="lvl-row">${lvBadge(l.level, 22)}<b>${esc(l.name)}</b><span class="chip">${l.min ? `từ ${fmt(l.min)} xu` : 'sau 3 việc khởi đầu'}</span></div>`).join('')}
     </section>
     ${st.titles.length ? `<section class="card col"><div class="h2" style="margin:0">Danh hiệu</div><div class="row wrap">${st.titles.map((t) => `<span class="pill">${esc({ bot_trend: 'Bot trend', bot_trend_cao_thu: 'Bot trend cao thủ', bot_trend_huyen_thoai: 'Bot trend huyền thoại' }[t] || t)}</span>`).join('')}</div></section>` : ''}
+    <section class="card col"><div class="h2" style="margin:0">Cách kiếm xu tím</div>
+      ${EARN.map(([t, x, note]) => `<div class="lvl-row"><span class="earn-t">${esc(t)}${note ? `<br><span class="tiny muted">${esc(note)}</span>` : ''}</span><span class="chip" style="display:inline-flex;align-items:center;gap:4px">${coinIcon(14)}${esc(x)}</span></div>`).join('')}
+      <p class="tiny muted">Xu tím chỉ tăng, không bị trừ. Có đủ xu và đủ điều kiện của cấp thì tự lên cấp.</p>
+    </section>
   </div></div>`;
 }
 
