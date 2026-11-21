@@ -56,9 +56,11 @@ export async function renderLevel(view) {
       ${avatar({ ...u, level: u.level }, 'lg')}
       <div class="row" style="justify-content:center;margin-top:6px"><b class="${nameCls(u).trim()}" style="font-size:20px">${esc(u.displayName)}</b>${lvBadge(u.level, 26)}</div>
       ${u.level ? `<div class="small" style="font-weight:600;color:var(--accent)">${esc(LEVEL_NAMES[u.level])} · Cấp ${u.level}</div>` : ''}
-      <div class="row" style="justify-content:center;font-weight:700;font-size:22px">${coinIcon(26)}${fmt(st.coins)}<span class="small muted" style="font-weight:400">xu tím đã kiếm</span></div>
+      <div class="coin-stats" style="align-self:stretch">
+        <div class="coin-stat">${coinIcon(26)}<b>${fmt(st.coins)}</b><span class="small">Xu đã kiếm</span><span class="tiny muted">Tính thăng cấp</span></div>
+        <div class="coin-stat spend">${coinIcon(26)}<b>${fmt(st.balance)}</b><span class="small">Xu có thể tiêu</span><span class="tiny muted">Mua đồ, bị trừ khi mua</span></div>
+      </div>
       ${st.streak ? `<div class="small muted">Chuỗi ${st.streak} ngày liên tiếp</div>` : ''}
-      <div class="small muted">Số dư có thể tiêu: <b>${fmt(st.balance)}</b> xu tím</div>
       <div class="row wrap" style="justify-content:center;gap:8px;margin-top:4px"><a class="btn primary" href="#/shop">Cửa hàng xu tím</a><a class="btn" href="#/titles">Danh hiệu và phần thưởng</a></div>
     </section>
     ${progress}

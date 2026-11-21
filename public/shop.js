@@ -49,8 +49,10 @@ export async function renderShop(view, t = tab) {
     <div class="row between"><h1>Cửa hàng xu tím</h1><a class="btn sm" href="#/level">Thăng cấp</a></div>
     <p class="small muted">Dùng xu tím để mua khung avatar và màu tên. Đồ đã mua là của bạn mãi mãi, mua đồ không làm bạn tụt cấp.</p>
     <section class="card col">
-      <div class="row" style="gap:12px">${coinIcon(44)}<div><div style="font-size:28px;font-weight:700;line-height:1.1">${fmt(sh.balance)}</div><div class="small muted">xu tím có thể tiêu</div></div></div>
-      <div class="small muted" style="background:var(--soft);border-radius:10px;padding:8px 10px">Tổng đã kiếm: <b>${fmt(sh.coins)}</b> xu. Số này dùng để tính cấp và <b>không bị trừ</b> khi bạn mua đồ.</div>
+      <div class="coin-stats">
+        <div class="coin-stat">${coinIcon(34)}<b>${fmt(sh.coins)}</b><span class="small">Xu đã kiếm</span><span class="tiny muted">Dùng để tính thăng cấp, chỉ tăng</span></div>
+        <div class="coin-stat spend">${coinIcon(34)}<b>${fmt(sh.balance)}</b><span class="small">Xu có thể tiêu</span><span class="tiny muted">Dùng để mua đồ, bị trừ khi mua</span></div>
+      </div>
     </section>
     <div class="pillnav" role="group" aria-label="Chọn mục">${[['frame', 'Khung avatar'], ['color', 'Màu tên'], ['mine', 'Của tôi']].map(([k, n]) => `<button data-shoptab="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
     ${body}

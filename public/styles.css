@@ -560,3 +560,8 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .tt.big { font-size: 15px; padding: 6px 13px 6px 10px; }
 .tt.t1 { background: #D9F2EC; color: #0B6B5C; } .tt.t2 { background: #DDE6FF; color: #2447B8; } .tt.t3 { background: linear-gradient(135deg, #E5484D, #F2A100); color: #fff; }
 @media (prefers-color-scheme: dark) { .tt.t1 { background: #12433B; color: #7DE3CF; } .tt.t2 { background: #1E2D63; color: #A8BDFF; } }
+.coin-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.coin-stat { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; background: var(--soft); border-radius: 12px; padding: 12px 8px; }
+.coin-stat b { font-size: 26px; line-height: 1.15; margin-top: 4px; }
+.coin-stat.spend { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.lvl-hero > .av, .lvl-hero > .av-fr { align-self: center; margin-left: auto; margin-right: auto; }
