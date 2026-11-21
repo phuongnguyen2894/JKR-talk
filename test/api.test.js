@@ -1017,9 +1017,8 @@ test('cấp bậc: người mới chưa có cấp, xong 3 việc khởi đầu n
   // người khác chỉ thấy cấp khi chưa ẩn
   const seen = (await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages.find((m) => m.user.id === a.id);
   assert.equal(seen.user.level, 1);
-  await call('PATCH', '/me', { hideLevel: true }, a.token);
-  assert.equal((await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages.find((m) => m.user.id === a.id).user.level, 0);
-  assert.equal((await call('GET', '/me', null, a.token)).data.user.level, 1); // chính chủ vẫn thấy
+  await call('PATCH', '/me', { hideLevel: true }, a.token); // không còn tuỳ chọn ẩn cấp: bị bỏ qua
+  assert.equal((await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages.find((m) => m.user.id === a.id).user.level, 1);
   // đặc quyền theo cấp
   const trend = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((g) => g.type === 'trend');
   assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/abc/status/1' }, a.token)).status, 403);

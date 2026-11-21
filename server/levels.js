@@ -162,7 +162,7 @@ export function statusOf(uid) {
     { key: 'push', label: 'Bật thông báo đẩy', have: t.push ? 1 : 0, need: 1 },
   ]; })() : null;
   return {
-    level: u.lvl, name: u.lvl ? levelName(u.lvl) : '', coins: u.coins, streak: u.streak, hideLevel: !!u.hide_level,
+    level: u.lvl, name: u.lvl ? levelName(u.lvl) : '', coins: u.coins, streak: u.streak,
     tasks,
     next: next && u.start_done ? { level: next.lvl, name: next.name, conditions: conditionsFor(next, u) } : null,
     titles: userTitles(uid),

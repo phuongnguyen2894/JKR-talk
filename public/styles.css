@@ -509,3 +509,5 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .lvl-big .lvb { margin: 0; }
 .tabs-bar .lvb { margin: 0; vertical-align: baseline; }
 .tabs-bar .coin { vertical-align: baseline; }
+.lvl-coin { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; }
+.lvl-row .earn-t { flex: 1; min-width: 0; }

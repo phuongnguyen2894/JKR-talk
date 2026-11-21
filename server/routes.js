@@ -302,7 +302,7 @@ api.patch(
       if (!['everyone', 'shared', 'none'].includes(b.friendPolicy)) throw bad('Giá trị không hợp lệ');
       set('friend_policy', b.friendPolicy);
     }
-    for (const [k, col] of [['showOnline', 'show_online'], ['newsPush', 'news_push'], ['hideSuggestions', 'hide_suggestions'], ['hideLevel', 'hide_level']])
+    for (const [k, col] of [['showOnline', 'show_online'], ['newsPush', 'news_push'], ['hideSuggestions', 'hide_suggestions']])
       if (b[k] !== undefined) set(col, b[k] ? 1 : 0);
     if (sets.length) db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.user.id);
     res.json({ user: selfUser(getUser(req.user.id)) });
