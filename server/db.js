@@ -274,3 +274,15 @@ if (!db.prepare('PRAGMA table_info(reactions)').all().some((c) => c.name === 'em
     COMMIT;
   `);
 }
+
+// ---- Thống kê sử dụng (chỉ Admin hệ thống xem) ----------------------------------------
+db.exec(`
+CREATE TABLE IF NOT EXISTS daily_users (
+  day TEXT NOT NULL, user_id INTEGER NOT NULL, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, user_id)
+);
+CREATE TABLE IF NOT EXISTS daily_pages (
+  day TEXT NOT NULL, page TEXT NOT NULL, target INTEGER NOT NULL DEFAULT 0, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, page, target)
+);
+`);

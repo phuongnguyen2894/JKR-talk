@@ -5,6 +5,7 @@ import path from 'node:path';
 import { db, now, trendGroupId } from './db.js';
 import { hub, memberIds } from './lib.js';
 import { linksIn } from './levels.js';
+import { purgeStats } from './stats.js';
 
 export const RETENTION_DAYS = Number(process.env.RETENTION_DAYS) || 38;
 const DAY = 24 * 3600 * 1000;
@@ -99,6 +100,7 @@ export function dedupeTrendLinks(uploadDir) {
 export function startRetention(uploadDir) {
   const run = () => {
     try {
+      purgeStats();
       const r = purgeOldMessages(uploadDir);
       if (r.messages) console.log(`[retention] đã xóa ${r.messages} tin nhắn cũ hơn ${RETENTION_DAYS} ngày, ${r.files} ảnh`);
     } catch (e) { console.error('[retention] lỗi', e.message); }

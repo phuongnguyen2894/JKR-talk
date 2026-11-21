@@ -12,6 +12,7 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
+import { track, statsReport } from './stats.js';
 import { emojiMeta, EMOJI_LIMIT, EMOJI_MAX_PER_MESSAGE, REACTION_MAX_PER_USER, checkReactionKey, checkEmojiFile, checkEmojiName, addEmoji, countCustomTokens, visibleEmoji, activeEmoji, usageOf } from './emoji.js';
 import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
@@ -249,6 +250,14 @@ api.get('/me', wrap((req, res) => {
   const u = recompute(req.user.id) || getUser(req.user.id);
   res.json({ user: selfUser(u), levelUp: pendingLevelUp(u) });
 }));
+// Ghi nhận lượt xem trang và thời gian hoạt động (chỉ người đã đăng nhập; không lưu nội dung)
+api.post('/track', wrap((req, res) => {
+  const event = req.body.event === 'ping' ? 'ping' : 'view';
+  rateLimit(`track:${event}:${req.user.id}`, event === 'ping' ? 12 : 90, 60_000);
+  res.json({ ok: track(req.user.id, { page: String(req.body.page || ''), target: req.body.target, event, seconds: req.body.seconds }) });
+}));
+// Thống kê cho Admin hệ thống
+api.get('/admin/stats', superOnly, wrap((req, res) => res.json(statsReport(Number(req.query.days) || 30))));
 api.get('/me/level', wrap((req, res) => {
   recompute(req.user.id);
   res.json({ level: statusOf(req.user.id) });

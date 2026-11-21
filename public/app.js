@@ -3,6 +3,7 @@ import { renderLevel, showLevelUp } from './level.js';
 import { renderShop, renderTitles } from './shop.js';
 import { nameCls } from './frames.js';
 import { loadEmoji, onReactionsEvent } from './emoji.js';
+import { startTracking } from './track.js';
 import { renderChat, onSocket } from './chat.js';
 import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
@@ -192,6 +193,7 @@ async function boot() {
     root.innerHTML = '';
     route();
     showLevelUp(meRes.levelUp);
+    startTracking();
   } catch (e) {
     if (S.token) { setToken(null); S.me = null; }
     route();

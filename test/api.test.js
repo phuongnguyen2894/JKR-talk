@@ -1386,3 +1386,41 @@ test('react bằng emoji: tim và emoji tính như tim, tối đa 3 react mỗi 
   const after = (await call('GET', `/groups/${vn.id}/messages`, null, a.token)).data.messages.find((x) => x.id === m.id);
   assert.ok(!after.reactions.some((r) => r.emoji === `e:${e1}`));
 });
+
+test('thống kê: ghi lượt xem và thời gian hoạt động, chỉ Admin hệ thống xem được báo cáo', async () => {
+  const { db } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const a = await signup('statA', 1), b = await signup('statB', 1);
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((g) => g.type === 'country');
+  db.prepare('DELETE FROM daily_users').run();
+  db.prepare('DELETE FROM daily_pages').run();
+  // A xem trang chat nhóm VN 2 lần và hoạt động 45 giây; B xem tin tức 1 lần, hoạt động 15 giây
+  for (let i = 0; i < 2; i++) assert.equal((await call('POST', '/track', { event: 'view', page: 'chat', target: vn.id }, a.token)).status, 200);
+  for (let i = 0; i < 3; i++) await call('POST', '/track', { event: 'ping', seconds: 15, page: 'chat', target: vn.id }, a.token);
+  await call('POST', '/track', { event: 'view', page: 'news' }, b.token);
+  await call('POST', '/track', { event: 'ping', seconds: 15, page: 'news' }, b.token);
+  // trang lạ gộp vào "other", số giây bị chặn tối đa 30 mỗi lần, sự kiện lạ coi như lượt xem
+  await call('POST', '/track', { event: 'ping', seconds: 9999, page: 'trang-la' }, b.token);
+  assert.equal((await call('POST', '/track', { event: 'view', page: 'news' })).status, 401); // khách không được ghi
+  // chỉ Admin hệ thống xem báo cáo
+  assert.equal((await call('GET', '/admin/stats', null, a.token)).status, 403);
+  const r = (await call('GET', '/admin/stats?days=7', null, adm.token)).data;
+  assert.equal(r.days, 7);
+  assert.equal(r.series.length, 7);
+  assert.equal(r.summary.dauToday, 2);
+  assert.equal(r.summary.mau, 2);
+  assert.equal(r.summary.totalSeconds, 45 + 15 + 30);
+  assert.equal(r.summary.avgSecondsPerUserDay, 45); // 90 giây / 2 người
+  const pageOf = (p) => r.pages.find((x) => x.page === p);
+  assert.equal(pageOf('chat').views, 2);
+  assert.equal(pageOf('chat').seconds, 45);
+  assert.equal(pageOf('news').views, 1);
+  assert.ok(pageOf('other'));
+  assert.equal(r.pages[0].page, 'chat'); // xếp theo số lượt xem
+  assert.equal(r.groups[0].id, vn.id);
+  assert.equal(r.groups[0].views, 2);
+  assert.ok(r.groups[0].name.length > 0);
+  assert.equal(r.series[6].dau, 2);
+  assert.ok(r.series[6].newUsers >= 2);
+  assert.equal((await call('GET', '/admin/stats?days=9999', null, adm.token)).data.days, 365);
+});
