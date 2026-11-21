@@ -599,3 +599,9 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .pk-body { overflow-y: auto; max-height: 52vh; }
 .emoji-panel-lg { max-height: 260px; overflow-y: auto; display: block; padding: 8px; grid-template-columns: none; }
 .emoji-row.hid { opacity: .55; }
+
+/* tin liền nhau của cùng một người: ẩn avatar và tên ở tin sau */
+.msg.cont > .av, .msg.cont > .av-btn, .msg.cont > .av-fr { visibility: hidden; }
+.msg.cont .meta .who { display: none; }
+.msg.cont:not(.show-time) .meta { display: none; }
+.msgs > .msg.cont { margin-top: -2px; }

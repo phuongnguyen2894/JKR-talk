@@ -89,6 +89,19 @@ function drawChat(view) {
   </div>`;
   wireComposer();
   syncReadMode();
+  // tin liền nhau của cùng một người (cách nhau dưới 5 phút, không có dòng ngày xen giữa): ẩn avatar và tên ở các tin sau
+  const box = $('#msgs');
+  if (box) { new MutationObserver(() => groupMsgs(box)).observe(box, { childList: true }); groupMsgs(box); }
+}
+const GROUP_MS = 5 * 60_000;
+function groupMsgs(box) {
+  let prev = null;
+  for (const el of box.children) {
+    if (!el.classList.contains('msg')) { prev = null; continue; }
+    const cont = !!prev && prev.dataset.uid === el.dataset.uid && Math.abs(Number(el.dataset.t) - Number(prev.dataset.t)) < GROUP_MS;
+    el.classList.toggle('cont', cont);
+    prev = el;
+  }
 }
 
 function pinBarHtml() {
@@ -300,7 +313,7 @@ function msgHtml(m) {
   const who = m.user.deleted
     ? `<span class="who muted">${esc(m.user.displayName)}</span>`
     : `<button class="who${roleClass(rr)}${nameCls(m.user)}" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}${roleSr(rr)}${lvBadge(m.user.level)}</button>`;
-  return `<div class="msg ${own ? 'own' : ''}" data-mid="${m.id}" data-uid="${m.user.id}" data-name="${esc(m.user.displayName)}">
+  return `<div class="msg ${own ? 'own' : ''}" data-mid="${m.id}" data-uid="${m.user.id}" data-t="${m.createdAt}" data-name="${esc(m.user.displayName)}">
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
