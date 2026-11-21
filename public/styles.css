@@ -605,3 +605,6 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .msg.cont .meta .who { display: none; }
 .msg.cont:not(.show-time) .meta { display: none; }
 .msgs > .msg.cont { margin-top: -2px; }
+/* nút ẩn/hiện thanh tiêu đề: trong suốt để không che tin nhắn, rõ lại khi chạm hoặc rê chuột */
+.read-toggle { opacity: .4; background: color-mix(in srgb, var(--surface) 55%, transparent); border-color: color-mix(in srgb, var(--line) 60%, transparent); box-shadow: none; transition: opacity .15s; }
+.read-toggle:hover, .read-toggle:focus-visible, .read-toggle:active { opacity: 1; background: var(--surface); }
