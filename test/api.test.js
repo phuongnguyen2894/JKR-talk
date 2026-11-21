@@ -1275,3 +1275,20 @@ test('Đẩy trend: link trùng bị từ chối (kể cả chuyển tiếp), ti
   db.prepare("UPDATE messages SET created_at = ? WHERE body LIKE '%không có link%'").run(Date.now() - 100 * 3600_000);
   assert.equal(purgeTrendLinks(process.env.UPLOAD_DIR).messages, 0);
 });
+
+test('Đẩy trend: dọn các tin có link trùng có từ trước, giữ tin đăng sớm nhất', async () => {
+  const { db, trendGroupId } = await import('../server/db.js');
+  const { dedupeTrendLinks } = await import('../server/retention.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const gid = trendGroupId();
+  const ins = db.prepare('INSERT INTO messages (group_id, user_id, body, created_at) VALUES (?,?,?,?)');
+  const t = Date.now();
+  const a = Number(ins.run(gid, adm.user.id, 'xem https://x.com/usmile_thailand/status/2124001', t).lastInsertRowid);
+  const b = Number(ins.run(gid, adm.user.id, 'https://x.com/usmile_thailand/status/2124001', t + 1).lastInsertRowid);
+  const c = Number(ins.run(gid, adm.user.id, 'https://x.com/usmile_thailand/status/2124002', t + 2).lastInsertRowid);
+  const r = dedupeTrendLinks(process.env.UPLOAD_DIR);
+  assert.ok(r.messages >= 1);
+  const left = db.prepare('SELECT id FROM messages WHERE id IN (?,?,?)').all(a, b, c).map((x) => x.id);
+  assert.ok(!left.includes(b)); // bản trùng đăng sau bị xóa
+  assert.ok(left.includes(c)); // link khác được giữ
+});

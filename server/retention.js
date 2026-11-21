@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, now, trendGroupId } from './db.js';
 import { hub, memberIds } from './lib.js';
+import { linksIn } from './levels.js';
 
 export const RETENTION_DAYS = Number(process.env.RETENTION_DAYS) || 38;
 const DAY = 24 * 3600 * 1000;
@@ -74,6 +75,27 @@ export function purgeTrendLinks(uploadDir, hours = Number(process.env.TREND_LINK
   return { messages: old.length, files: dropFiles(old, uploadDir) };
 }
 
+// Đẩy trend: xóa các tin có link trùng với tin đăng trước đó (giữ tin sớm nhất), dùng để dọn các tin trùng có từ trước khi có quy tắc chặn trùng
+export function dedupeTrendLinks(uploadDir) {
+  const gid = trendGroupId();
+  const rows = db.prepare("SELECT id, body, image_url, images, preview FROM messages WHERE group_id = ? AND deleted = 0 AND body LIKE '%http%' ORDER BY id").all(gid);
+  const seen = new Set();
+  const dup = [];
+  for (const m of rows) {
+    const keys = linksIn(m.body);
+    if (!keys.length) continue;
+    if (keys.some((k) => seen.has(k))) dup.push(m);
+    else keys.forEach((k) => seen.add(k));
+  }
+  if (!dup.length) return { messages: 0, files: 0 };
+  const del = db.prepare('DELETE FROM messages WHERE id = ?');
+  for (const m of dup) del.run(m.id);
+  db.prepare("DELETE FROM comments WHERE kind = 'msg' AND target_id NOT IN (SELECT id FROM messages)").run();
+  const members = memberIds(gid);
+  for (const m of dup) hub.sendMany(members, { type: 'message_deleted', groupId: gid, messageId: m.id });
+  return { messages: dup.length, files: dropFiles(dup, uploadDir) };
+}
+
 export function startRetention(uploadDir) {
   const run = () => {
     try {
@@ -87,6 +109,8 @@ export function startRetention(uploadDir) {
     try {
       const r = purgeTrendLinks(uploadDir);
       if (r.messages) console.log(`[trend] đã xóa ${r.messages} tin có link quá hạn trong Đẩy trend`);
+      const d = dedupeTrendLinks(uploadDir);
+      if (d.messages) console.log(`[trend] đã xóa ${d.messages} tin có link trùng trong Đẩy trend`);
     } catch (e) { console.error('[trend] lỗi', e.message); }
   };
   setTimeout(runTrend, 20_000).unref();
