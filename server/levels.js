@@ -12,7 +12,7 @@ export const TITLES = {
 
 // Mỗi cấp: mốc xu tím cộng thêm điều kiện riêng (nếu có) và đặc quyền mới
 export const LEVELS = [
-  { lvl: 1, name: 'Tím Nhạt', min: 0, perk: 'Huy hiệu Tím Nhạt cạnh tên.' },
+  { lvl: 1, name: 'Tím Mầm Non', min: 0, perk: 'Huy hiệu Tím Mầm Non cạnh tên.' },
   { lvl: 2, name: 'Tím Sương', min: 1000, perk: 'Khung avatar tím.' },
   { lvl: 3, name: 'Tím Mộng Mơ', min: 3000, title: 'bot_trend', perk: 'Từ giờ bạn có thể gửi link vào Đẩy trend.' },
   { lvl: 4, name: 'Tím Thủy Chung', min: 7000, links: 1000, title: 'bot_trend_cao_thu', perk: 'Từ giờ bạn tạo chủ đề không cần duyệt và đăng được bài lên Bản tin.' },

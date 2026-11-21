@@ -23,7 +23,7 @@ export async function renderLevel(view) {
       <div class="lvl-bar" role="img" aria-label="Đã xong ${done} trên ${st.tasks.length} việc"><i style="width:${Math.round((done / st.tasks.length) * 100)}%"></i></div>
       ${st.tasks.map((t) => `<div class="lvl-row"><span class="${t.have >= t.need ? 'lvl-ok' : 'lvl-no'}">${t.have >= t.need ? '✓' : '·'}</span>${esc(t.label)}${t.need > 1 ? `<span class="chip">${t.have} / ${t.need}</span>` : ''}</div>`).join('')}
       ${st.tasks.some((t) => t.key === 'push' && t.have < 1) ? '<button class="btn" data-act="lvl-push">Bật thông báo đẩy</button>' : ''}
-      <p class="small muted">Xong ${st.tasks.length} việc là bạn nhận ngay cấp 1 <b>Tím Nhạt</b> và mở huy hiệu. Xu tím bạn đã kiếm từ trước vẫn được giữ nguyên.</p>
+      <p class="small muted">Xong ${st.tasks.length} việc là bạn nhận ngay cấp 1 <b>Tím Mầm Non</b> và mở huy hiệu. Xu tím bạn đã kiếm từ trước vẫn được giữ nguyên.</p>
     </section>`;
   } else if (next) {
     const coins = next.conditions.find((c) => c.key === 'coins');

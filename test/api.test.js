@@ -1005,9 +1005,9 @@ test('cấp bậc: người mới chưa có cấp, xong 3 việc khởi đầu n
   const me1 = (await call('GET', '/me', null, a.token)).data;
   assert.equal(me1.user.level, 1);
   assert.equal(me1.levelUp.level, 1);
-  assert.equal(me1.levelUp.name, 'Tím Nhạt');
+  assert.equal(me1.levelUp.name, 'Tím Mầm Non');
   assert.equal((await call('GET', '/me/level', null, a.token)).data.level.coins, coinsBefore); // xu giữ nguyên
-  assert.ok((await call('GET', '/notifications', null, a.token)).data.notifications.some((n) => n.type === 'level' && n.text.includes('Tím Nhạt')));
+  assert.ok((await call('GET', '/notifications', null, a.token)).data.notifications.some((n) => n.type === 'level' && n.text.includes('Tím Mầm Non')));
   await call('POST', '/me/level-seen', {}, a.token);
   assert.equal((await call('GET', '/me', null, a.token)).data.levelUp, null);
   // trả lời: người được trả lời +2 xu

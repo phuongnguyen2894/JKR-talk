@@ -311,8 +311,8 @@ export const roleClass = (role) => (role ? ` role-${role === 'mod' ? 'mod' : 'ad
 export const roleSr = (role) => (role ? `<span class="sr-only"> (${ROLE_TEXT[role]})</span>` : '');
 
 
-// ---- Cấp bậc (Tím Nhạt → Tím Thủy Tổ) và Xu tím ----------------------------------------
-export const LEVEL_NAMES = ['', 'Tím Nhạt', 'Tím Sương', 'Tím Mộng Mơ', 'Tím Thủy Chung', 'Tím Thủy Tổ'];
+// ---- Cấp bậc (Tím Mầm Non → Tím Thủy Tổ) và Xu tím ----------------------------------------
+export const LEVEL_NAMES = ['', 'Tím Mầm Non', 'Tím Sương', 'Tím Mộng Mơ', 'Tím Thủy Chung', 'Tím Thủy Tổ'];
 const LV_SVG = {
   1: '<path d="M20 4C9 4 4 9 4 15c0 2 1 4 3 5 0-5 3-9 9-11-4 3-6 6-6.5 11C15 20 20 15 20 4z"/>',
   2: '<path d="M12 12L12.00 1.50M12.00 4.80L9.21 2.85M12.00 4.80L14.79 2.85M12.00 7.60L10.03 6.22M12.00 7.60L13.97 6.22M12 12L2.91 6.75M5.76 8.40L2.68 9.84M5.76 8.40L5.47 5.01M8.19 9.80L6.01 10.81M8.19 9.80L7.98 7.41M12 12L2.91 17.25M5.76 15.60L5.47 18.99M5.76 15.60L2.68 14.16M8.19 14.20L7.98 16.59M8.19 14.20L6.01 13.19M12 12L12.00 22.50M12.00 19.20L14.79 21.15M12.00 19.20L9.21 21.15M12.00 16.40L13.97 17.78M12.00 16.40L10.03 17.78M12 12L21.09 17.25M18.24 15.60L21.32 14.16M18.24 15.60L18.53 18.99M15.81 14.20L17.99 13.19M15.81 14.20L16.02 16.59M12 12L21.09 6.75M18.24 8.40L18.53 5.01M18.24 8.40L21.32 9.84M15.81 9.80L16.02 7.41M15.81 9.80L17.99 10.81" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
