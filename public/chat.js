@@ -112,6 +112,7 @@ actions.unpin = async () => {
 };
 
 const canAct = () => C.joined || C.open;
+const canAddAny = () => S.me.role === 'admin' || (S.me.level || 0) >= 5;
 // lần đầu chat / thả tim trong chủ đề → đã thành thành viên: cập nhật menu, bắt đầu nhận tin realtime
 async function becameMember() {
   if (!C || C.joined) return;
@@ -635,7 +636,7 @@ function infoHtml() {
       <div class="row" style="min-height:44px">${avatar(u)}<button class="who grow" style="background:none;border:0;text-align:left;font-weight:600;padding:0" data-act="profile" data-id="${u.id}">${esc(u.displayName)}${u.role === 'admin' ? ' <span class="pill">Admin</span>' : ''}${u.id === S.me.id ? ' <span class="muted">(bạn)</span>' : ''}</button>
         ${admin && u.id !== S.me.id ? `<button class="link-btn" data-act="pg-admin" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? 'Gỡ admin' : 'Làm admin'}</button><button class="link-btn" data-act="mod-kick" data-id="${u.id}" data-gid="${g.id}">Xóa</button>` : ''}</div>`).join('')}</div></section>`;
     if (admin) h += `<section class="col"><div class="h2">Quản lý nhóm</div>
-      <button class="btn sm" data-act="pg-invite">${S.me.role === 'admin' ? 'Thêm thành viên' : 'Mời bạn bè'}</button>
+      <button class="btn sm" data-act="pg-invite">${canAddAny() ? 'Thêm thành viên' : 'Mời bạn bè'}</button>
       <button class="btn sm" data-act="pg-links">Liên kết mời</button>
       <button class="btn sm" data-act="pg-edit">Đổi tên / giới hạn</button>
       <button class="btn sm danger" data-act="pg-dissolve">Giải tán nhóm</button></section>`;
@@ -675,9 +676,9 @@ actions['pg-invite'] = async () => {
   const { friends } = await api('GET', '/friends');
   const ids = new Set(C.group.members.map((m) => m.id));
   const cands = friends.filter((f) => !ids.has(f.id));
-  const sysAdmin = S.me.role === 'admin';
+  const sysAdmin = canAddAny();
   if (!cands.length && !sysAdmin) return toast('Không còn bạn bè nào để mời');
-  openModal(`<form id="invf" class="col"><h2>${sysAdmin ? 'Thêm thành viên' : 'Mời bạn bè'}</h2><p class="small muted">${sysAdmin ? 'Admin thêm được bất kỳ ai, không cần kết bạn. Người được thêm vào nhóm ngay và nhận thông báo.' : 'Chỉ mời được người là bạn bè.'}</p>
+  openModal(`<form id="invf" class="col"><h2>${sysAdmin ? 'Thêm thành viên' : 'Mời bạn bè'}</h2><p class="small muted">${sysAdmin ? 'Bạn thêm được bất kỳ ai, không cần kết bạn. Người được thêm vào nhóm ngay và nhận thông báo.' : 'Chỉ mời được người là bạn bè.'}</p>
     ${memberPickerHtml(cands)}
     <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">${sysAdmin ? 'Thêm' : 'Mời'}</button></div></form>`);
   $('#modal [data-close]').onclick = closeModal;

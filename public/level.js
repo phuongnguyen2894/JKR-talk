@@ -16,6 +16,7 @@ const PRIVS = [
   [2, 'Khung avatar tím'],
   [3, 'Gửi link vào Đẩy trend'],
   [4, 'Tạo chủ đề không cần duyệt, đăng bài lên Bản tin'],
+  [5, 'Thêm ngay bất kỳ ai vào nhóm riêng của bạn'],
 ];
 
 const condRow = (c) => `<div class="lvl-row">${c.key === 'coins' ? `<span class="lvl-coin">${coinIcon(22)}</span>` : `<span class="${c.ok ? 'lvl-ok' : 'lvl-no'}">${c.ok ? '✓' : '·'}</span>`}${esc(c.label)}<span class="chip">${c.title ? (c.ok ? 'Đã đạt' : 'Chưa đạt') : `${fmt(c.have)} / ${fmt(c.need)}`}</span></div>`;

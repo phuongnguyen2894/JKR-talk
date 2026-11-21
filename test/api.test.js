@@ -1106,3 +1106,26 @@ test('tin nhắn gửi kèm tối đa 4 ảnh; tin cũ một ảnh vẫn hiển 
   const fw = await call('POST', `/messages/${ok.data.message.id}/forward`, { groupId: vn.id }, v.token);
   assert.equal(fw.data.message.imageUrls.length, 4);
 });
+
+test('cấp 5 Tím Thủy Tổ: thêm ngay bất kỳ ai vào nhóm riêng của mình, tìm theo tên không lộ email', async () => {
+  const { db } = await import('../server/db.js');
+  const top = await signup('lvTop', 1), stranger = await signup('strangerXyz', 1), friendless = await signup('lvLow', 1);
+  // chưa đạt cấp 5: chỉ mời được bạn bè, không tìm được người lạ
+  assert.equal((await call('GET', '/people/search?q=stranger', null, top.token)).status, 403);
+  const g0 = (await call('POST', '/private', { name: 'Nhóm của cấp thấp', memberIds: [stranger.id] }, friendless.token)).data.group;
+  assert.equal((await call('GET', `/groups/${g0.id}`, null, friendless.token)).data.group.members.length, 1); // người lạ không được thêm
+  db.prepare('UPDATE users SET start_done = 1, lvl = 5, lvl_seen = 5 WHERE id = ?').run(top.id);
+  const found = await call('GET', '/people/search?q=strangerX', null, top.token);
+  assert.equal(found.status, 200);
+  assert.deepEqual(found.data.users.map((u) => u.displayName), ['strangerXyz']);
+  assert.equal(found.data.users[0].email, undefined);
+  assert.deepEqual((await call('GET', '/people/search?q=s', null, top.token)).data.users, []); // quá ngắn
+  const g = (await call('POST', '/private', { name: 'Nhóm của Thủy Tổ', memberIds: [stranger.id] }, top.token)).data.group;
+  assert.equal((await call('GET', `/groups/${g.id}`, null, top.token)).data.group.members.length, 2);
+  assert.ok((await call('GET', '/notifications', null, stranger.token)).data.notifications.some((n) => n.text.includes('Nhóm của Thủy Tổ')));
+  // mời thêm người khác vào nhóm đã có; người chặn mình thì không thêm được
+  assert.equal((await call('POST', `/private/${g.id}/invite`, { userIds: [friendless.id] }, top.token)).data.added, 1);
+  const g2 = (await call('POST', '/private', { name: 'Nhóm thử chặn' }, top.token)).data.group;
+  await call('POST', `/blocks/${top.id}`, {}, stranger.token);
+  assert.equal((await call('POST', `/private/${g2.id}/invite`, { userIds: [stranger.id] }, top.token)).status, 400);
+});

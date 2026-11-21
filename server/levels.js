@@ -16,7 +16,7 @@ export const LEVELS = [
   { lvl: 2, name: 'Tím Sương Sương', min: 1000, perk: 'Khung avatar tím.' },
   { lvl: 3, name: 'Tím Mộng Mơ', min: 3000, title: 'bot_trend', perk: 'Từ giờ bạn có thể gửi link vào Đẩy trend.' },
   { lvl: 4, name: 'Tím Thủy Chung', min: 7000, links: 1000, title: 'bot_trend_cao_thu', perk: 'Từ giờ bạn tạo chủ đề không cần duyệt và đăng được bài lên Bản tin.' },
-  { lvl: 5, name: 'Tím Thủy Tổ', min: 15000, news: 500, topics: 20, title: 'bot_trend_huyen_thoai', perk: 'Bạn đã đạt cấp cao nhất.' },
+  { lvl: 5, name: 'Tím Thủy Tổ', min: 15000, news: 500, topics: 20, title: 'bot_trend_huyen_thoai', perk: 'Từ giờ bạn thêm ngay được bất kỳ ai vào nhóm riêng của mình, không cần kết bạn.' },
 ];
 export const TOPIC_PEOPLE = 20; // chủ đề được tính: có ít nhất 20 người khác nhau gửi tin
 export const levelName = (n) => LEVELS.find((l) => l.lvl === n)?.name || '';

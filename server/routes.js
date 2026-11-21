@@ -1316,9 +1316,11 @@ function requirePrivAdmin(gid, uid) {
 }
 // Ai được thêm thẳng vào nhóm riêng: bạn bè; Admin hệ thống thêm được bất kỳ ai (không cần kết bạn / chấp nhận).
 // Luôn loại tài khoản không hoạt động và người đã chặn nhau.
+// Admin hoặc người đạt cấp 5 (Tím Thủy Tổ): thêm ngay bất kỳ ai vào nhóm riêng, không cần kết bạn
+const canAddAnyone = (uid) => isSystemAdmin(uid) || (getUser(uid)?.lvl || 0) >= 5;
 const canAddToPrivate = (uid, id) => {
   if (id === uid || isBlockedEither(uid, id)) return false;
-  if (isSystemAdmin(uid)) return getUser(id)?.status === 'active';
+  if (canAddAnyone(uid)) return getUser(id)?.status === 'active';
   return areFriends(uid, id);
 };
 const memberCount = (gid) => db.prepare('SELECT COUNT(*) c FROM members WHERE group_id = ?').get(gid).c;
@@ -1326,6 +1328,15 @@ function assertRoom(g, extra) {
   if (memberCount(g.id) + extra > (g.member_limit || PRIVATE_LIMIT_DEFAULT)) throw bad('Nhóm đã đầy, không thể thêm thành viên');
 }
 
+// Tìm người để thêm vào nhóm riêng (Admin hoặc cấp 5): chỉ trả tên và ảnh đại diện, không lộ email
+api.get('/people/search', wrap((req, res) => {
+  if (!canAddAnyone(req.user.id)) throw forbidden('Cần đạt cấp Tím Thủy Tổ để tìm người dùng');
+  rateLimit(`usearch:${req.user.id}`, 60, 60_000);
+  const term = str(req.query.q, 60);
+  if (term.length < 2) return res.json({ users: [] });
+  const rows = db.prepare("SELECT * FROM users WHERE status = 'active' AND id != ? AND display_name LIKE ? ORDER BY display_name LIMIT 8").all(req.user.id, `%${term.replace(/[%_]/g, '')}%`);
+  res.json({ users: rows.filter((u) => !isBlockedEither(req.user.id, u.id)).map((u) => ({ id: u.id, displayName: u.display_name, avatarColor: u.avatar_color, avatarUrl: u.avatar_url, status: u.status })) });
+}));
 api.post('/private', wrap((req, res) => {
   rateLimit(`pg:${req.user.id}`, 10, 3600_000);
   const name = str(req.body.name, 50);
@@ -1365,7 +1376,7 @@ api.patch('/private/:id', wrap((req, res) => {
 api.post('/private/:id/invite', wrap((req, res) => {
   const g = requirePrivAdmin(int(req.params.id), req.user.id);
   const ids = [...new Set((req.body.userIds || []).map(int))].filter((id) => canAddToPrivate(req.user.id, id) && !getMember(g.id, id));
-  if (!ids.length) throw bad(isSystemAdmin(req.user.id) ? 'Không có người dùng hợp lệ để thêm' : 'Không có bạn bè hợp lệ để mời');
+  if (!ids.length) throw bad(canAddAnyone(req.user.id) ? 'Không có người dùng hợp lệ để thêm' : 'Không có bạn bè hợp lệ để mời');
   assertRoom(g, ids.length);
   for (const id of ids) {
     addMember(g.id, id);
