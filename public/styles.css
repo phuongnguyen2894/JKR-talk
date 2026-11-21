@@ -485,3 +485,4 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .msg:not(.own) .bline > .text { align-self: flex-start; }
 .msg .bline:has(> .pic) { align-items: flex-end; }
 
+.msg .bline > .lp { margin: 0; min-width: 0; flex: 0 1 auto; }
