@@ -23,7 +23,7 @@ const PRIVS = [
 const condRow = (c) => `<div class="lvl-row">${c.key === 'coins' ? `<span class="lvl-coin">${coinIcon(22)}</span>` : `<span class="${c.ok ? 'lvl-ok' : 'lvl-no'}">${c.ok ? '✓' : '·'}</span>`}${esc(c.label)}<span class="chip">${c.title ? (c.ok ? 'Đã đạt' : 'Chưa đạt') : `${fmt(c.have)} / ${fmt(c.need)}`}</span></div>`;
 
 export async function renderLevel(view) {
-  const { level: st } = await api('GET', '/me/level');
+  const [{ level: st }, shop] = await Promise.all([api('GET', '/me/level'), api('GET', '/shop')]);
   S.me = { ...S.me, level: st.level, coins: st.coins };
   const u = S.me;
   const next = st.next;
@@ -64,6 +64,20 @@ export async function renderLevel(view) {
       <div class="row wrap" style="justify-content:center;gap:8px;margin-top:4px"><a class="btn primary" href="#/shop">Cửa hàng xu tím</a><a class="btn" href="#/titles">Danh hiệu và phần thưởng</a></div>
     </section>
     ${progress}
+    <section class="card col" id="appearance"><div class="h2" style="margin:0">Khung avatar và màu tên</div>
+      <p class="small muted" style="margin:0">Đồ đã mua và phần thưởng danh hiệu không tự áp dụng. Chọn đồ bạn muốn dùng ở đây.</p>
+      <div class="tiny muted" style="font-weight:700;letter-spacing:.04em">KHUNG AVATAR</div>
+      <div class="shop-grid">
+        <div class="shop-mine">${avatar({ ...u, frame: null }, '')}<span class="tiny">Mặc định</span>${!shop.equipped.frame ? '<span class="st done">Đang dùng</span>' : '<button class="btn sm" data-act="equip" data-kind="frame" data-id="">Dùng</button>'}</div>
+        ${shop.mine.frames.map((f) => `<div class="shop-mine"><div class="fr-prev">${avatar({ ...u, frame: f.id }, '')}</div><span class="tiny">${esc(f.name)}</span>${f.source === 'title' ? '<span class="tiny muted">Danh hiệu</span>' : ''}${shop.equipped.frame === f.id ? '<span class="st done">Đang dùng</span>' : `<button class="btn sm" data-act="equip" data-kind="frame" data-id="${f.id}">Dùng</button>`}</div>`).join('')}
+      </div>
+      <div class="tiny muted" style="font-weight:700;letter-spacing:.04em">MÀU TÊN</div>
+      <div class="list">
+        <div class="row between"><b>${esc(u.displayName)}</b><span class="tiny muted grow" style="margin-left:8px">Mặc định</span>${!shop.equipped.color ? '<span class="st done">Đang dùng</span>' : '<button class="btn sm" data-act="equip" data-kind="color" data-id="">Dùng</button>'}</div>
+        ${shop.mine.colors.map((c) => `<div class="row between"><b class="${nameCls({ nameColor: c.id }).trim()}">${esc(u.displayName)}</b><span class="tiny muted grow" style="margin-left:8px">${esc(c.name)}${c.source === 'title' ? ' · Danh hiệu' : ''}</span>${shop.equipped.color === c.id ? '<span class="st done">Đang dùng</span>' : `<button class="btn sm" data-act="equip" data-kind="color" data-id="${c.id}">Dùng</button>`}</div>`).join('')}
+      </div>
+      ${!shop.mine.frames.length && !shop.mine.colors.length ? '<p class="small muted" style="margin:0">Bạn chưa có đồ nào. Mua ở Cửa hàng hoặc đạt danh hiệu để nhận.</p>' : ''}
+    </section>
     <section class="card col"><div class="h2" style="margin:0">Số liệu</div>
       <div class="row" style="gap:8px">${[[st.stats.messages, 'Tin nhắn'], [st.stats.hearts, 'Tim nhận'], [st.stats.topics, 'Chủ đề']].map(([n, l]) => `<div class="card" style="flex:1;text-align:center;padding:10px 4px"><b style="font-size:20px">${fmt(n)}</b><div class="tiny muted">${l}</div></div>`).join('')}</div>
     </section>

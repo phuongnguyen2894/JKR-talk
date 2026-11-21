@@ -9,10 +9,9 @@ const preview = (frame, size = 'lg') => `<div class="fr-prev">${avatar({ ...S.me
 const nameSample = (colorId, big = false) => `<b class="${nameCls({ nameColor: colorId }).trim()}" style="font-size:${big ? 19 : 17}px">${esc(S.me.displayName)}</b>`;
 const kindOf = (id) => id.split(':')[0];
 
-function equipBtn(kind, id, equipped) {
-  return equipped
-    ? '<button class="btn sm shop-on" disabled>Đang dùng</button>'
-    : `<button class="btn sm" data-act="equip" data-kind="${kind}" data-id="${id}">Dùng</button>`;
+// Đồ đã có không tự áp dụng và cũng không áp dụng ở đây: người dùng chọn dùng ở trang Thăng cấp (hồ sơ cấp bậc)
+function ownedTag(equipped) {
+  return equipped ? '<span class="st done">Đang dùng</span>' : '<span class="st doing">Đã sở hữu</span>';
 }
 
 export async function renderShop(view, t = tab) {
@@ -20,12 +19,12 @@ export async function renderShop(view, t = tab) {
   const sh = await api('GET', '/shop');
   S.me = { ...S.me, coins: sh.coins, balance: sh.balance, frame: sh.equipped.frame, nameColor: sh.equipped.color };
   const buy = (kind, it) => {
-    if (it.owned) return equipBtn(kind, it.id, kind === 'frame' ? sh.equipped.frame === it.id : sh.equipped.color === it.id);
+    if (it.owned) return ownedTag(kind === 'frame' ? sh.equipped.frame === it.id : sh.equipped.color === it.id);
     return it.price > sh.balance
       ? '<button class="btn sm" disabled>Chưa đủ xu</button>'
       : `<button class="btn sm primary" data-act="shop-buy" data-kind="${kind}" data-id="${it.id}">Mua</button>`;
   };
-  const price = (it) => (it.owned ? '<span class="tiny muted">Đã sở hữu</span>' : `<span class="shop-price">${coinIcon(16)}${fmt(it.price)}</span>`);
+  const price = (it) => (it.owned ? '' : `<span class="shop-price">${coinIcon(16)}${fmt(it.price)}</span>`);
   let body = '';
   if (tab === 'frame') {
     body = `<div class="shop-grid">${sh.frames.map((it) => `<div class="card shop-item">${preview(it.id)}<b>${esc(it.name)}</b>${price(it)}${buy('frame', it)}</div>`).join('')}
@@ -35,15 +34,14 @@ export async function renderShop(view, t = tab) {
       <div class="list">${sh.colors.map((it) => `<div class="card row between" style="gap:10px"><div class="grow">${nameSample(it.id, true)}<div class="tiny muted">${esc(it.name)}</div></div>${price(it)}${buy('color', it)}</div>`).join('')}</div>`;
   } else {
     const fr = sh.mine.frames, co = sh.mine.colors;
-    body = `<section class="card col"><div class="h2" style="margin:0">Khung avatar</div>
-        <div class="shop-grid">${fr.map((f) => `<div class="shop-mine">${preview(f.id, '')}<span class="tiny">${esc(f.name)}</span>${f.source === 'title' ? '<span class="tiny muted">Danh hiệu</span>' : ''}${equipBtn('frame', f.id, sh.equipped.frame === f.id)}</div>`).join('') || '<p class="small muted">Bạn chưa có khung nào. Vào tab Khung avatar để mua.</p>'}</div>
-        ${sh.equipped.frame ? '<button class="btn sm" data-act="equip" data-kind="frame" data-id="">Bỏ khung (dùng mặc định)</button>' : ''}
+    body = `<section class="card col"><div class="h2" style="margin:0">Khung avatar đã có</div>
+        <div class="shop-grid">${fr.map((f) => `<div class="shop-mine">${preview(f.id, '')}<span class="tiny">${esc(f.name)}</span>${f.source === 'title' ? '<span class="tiny muted">Danh hiệu</span>' : ''}${ownedTag(sh.equipped.frame === f.id)}</div>`).join('') || '<p class="small muted">Bạn chưa có khung nào. Vào tab Khung avatar để mua.</p>'}</div>
       </section>
-      <section class="card col"><div class="h2" style="margin:0">Màu tên</div>
-        <div class="list">${co.map((c) => `<div class="row between">${nameSample(c.id)}<span class="tiny muted grow" style="margin-left:8px">${esc(c.name)}${c.source === 'title' ? ' · Danh hiệu' : ''}</span>${equipBtn('color', c.id, sh.equipped.color === c.id)}</div>`).join('') || '<p class="small muted">Bạn chưa có màu tên nào. Vào tab Màu tên để mua.</p>'}</div>
-        ${sh.equipped.color ? '<button class="btn sm" data-act="equip" data-kind="color" data-id="">Bỏ màu (dùng mặc định)</button>' : ''}
+      <section class="card col"><div class="h2" style="margin:0">Màu tên đã có</div>
+        <div class="list">${co.map((c) => `<div class="row between">${nameSample(c.id)}<span class="tiny muted grow" style="margin-left:8px">${esc(c.name)}${c.source === 'title' ? ' · Danh hiệu' : ''}</span>${ownedTag(sh.equipped.color === c.id)}</div>`).join('') || '<p class="small muted">Bạn chưa có màu tên nào. Vào tab Màu tên để mua.</p>'}</div>
       </section>
-      <p class="tiny muted">Khung và màu có nhãn Danh hiệu là phần thưởng, không bán và không mua được bằng xu.</p>`;
+      <section class="card col"><p class="small muted" style="margin:0">Đồ đã mua hoặc nhận từ danh hiệu không tự áp dụng. Bạn chọn khung và màu để dùng ở trang Thăng cấp.</p>
+        <a class="btn primary" href="#/level">Chọn khung và màu ở Thăng cấp</a></section>`;
   }
   view.innerHTML = `<div class="page"><div class="page-inner">
     <div class="row between"><h1>Cửa hàng xu tím</h1><a class="btn sm" href="#/level">Thăng cấp</a></div>
@@ -82,12 +80,9 @@ actions['shop-buy'] = async (el) => {
       const m2 = openModal(`<div class="col shop-confirm"><h2 style="margin:0">Bạn đã sở hữu ${esc(it.name)}</h2>
         ${kind === 'frame' ? preview(id, 'lg') : `<div style="padding:8px">${nameSample(id, true)}</div>`}
         <p class="small muted" style="margin:0">Còn lại ${fmt(r.balance)} xu tím.</p>
-        <div class="btns"><button type="button" class="btn" data-close>Tiếp tục mua sắm</button><button type="button" class="btn primary" id="useit">Dùng ngay</button></div></div>`);
+        <p class="small muted" style="margin:0">Đồ mới chưa được áp dụng. Bạn chọn dùng ở trang Thăng cấp.</p>
+        <div class="btns"><button type="button" class="btn" data-close>Tiếp tục mua sắm</button><a class="btn primary" href="#/level">Chọn dùng ở Thăng cấp</a></div></div>`);
       $('[data-close]', m2).onclick = () => { closeModal(); renderShop($('#view')).catch(fail); };
-      $('#useit', m2).onclick = async () => {
-        try { S.me = (await api('POST', '/me/appearance', { [kind === 'frame' ? 'frame' : 'color']: id })).user; } catch (e) { fail(e); }
-        closeModal(); renderShop($('#view')).catch(fail);
-      };
     } catch (e) { fail(e); }
   };
 };
@@ -95,10 +90,9 @@ actions['shop-buy'] = async (el) => {
 actions.equip = async (el) => {
   const kind = el.dataset.kind, id = el.dataset.id || null;
   S.me = (await api('POST', '/me/appearance', { [kind === 'frame' ? 'frame' : 'color']: id })).user;
-  toast(id ? 'Đã đổi sang đồ mới' : 'Đã bỏ chọn');
+  toast(id ? 'Đã áp dụng' : 'Đã về mặc định');
   S.hooks.renderSide?.();
-  const v = $('#view');
-  if ($('#titles-page')) renderTitles(v).catch(fail); else renderShop(v).catch(fail);
+  window.dispatchEvent(new Event('hashchange')); // vẽ lại trang đang mở
 };
 
 // ---- trang Danh hiệu --------------------------------------------------------------
@@ -116,8 +110,8 @@ export async function renderTitles(view) {
   const card = (t) => {
     const ok = t.state === 'done';
     const stx = { done: '<span class="st done">Đã đạt</span>', doing: '<span class="st doing">Đang làm</span>', locked: '<span class="st locked">Chưa mở</span>' }[t.state];
-    const useF = ok ? (equipped.frame === t.reward.frame ? '<span class="st done">Đang dùng</span>' : `<button class="btn sm" data-act="equip" data-kind="frame" data-id="${t.reward.frame}">Dùng khung</button>`) : '<span class="st locked">Chưa mở</span>';
-    const useC = ok ? (equipped.color === t.reward.color ? '<span class="st done">Đang dùng</span>' : `<button class="btn sm" data-act="equip" data-kind="color" data-id="${t.reward.color}">Dùng màu</button>`) : '<span class="st locked">Chưa mở</span>';
+    const useF = ok ? (equipped.frame === t.reward.frame ? '<span class="st done">Đang dùng</span>' : '<span class="st doing">Đã nhận</span>') : '<span class="st locked">Chưa mở</span>';
+    const useC = ok ? (equipped.color === t.reward.color ? '<span class="st done">Đang dùng</span>' : '<span class="st doing">Đã nhận</span>') : '<span class="st locked">Chưa mở</span>';
     return `<section class="card col" style="gap:12px">
       <div class="row between">${titleChip(t.n, t.name, true)}${stx}</div>
       <div class="tiny muted" style="font-weight:700;letter-spacing:.04em">ĐIỀU KIỆN</div>
@@ -135,6 +129,6 @@ export async function renderTitles(view) {
     <section class="card row" style="gap:12px"><div class="grow"><b style="font-size:20px">${done} / ${titles.length}</b><div class="small muted">danh hiệu đã đạt</div></div><div class="lvl-bar" style="width:140px"><i style="width:${Math.round((done / titles.length) * 100)}%"></i></div></section>
     ${titles.map(card).join('')}
     <section class="card col" style="border-style:dashed;text-align:center"><b class="small muted">Sắp có thêm danh hiệu</b><span class="tiny muted">Danh hiệu mới sẽ xuất hiện ở đây cùng điều kiện và phần thưởng.</span></section>
-    <section class="card col"><div class="small muted">Khung và màu tên đang dùng được chọn trong <a href="#/shop">Cửa hàng, mục Của tôi</a>. Bạn có thể xen kẽ đồ mua và đồ danh hiệu.</div></section>
+    <section class="card col"><div class="small muted">Phần thưởng không tự áp dụng. Bạn chọn khung và màu để dùng ở <a href="#/level">trang Thăng cấp</a>, có thể xen kẽ đồ mua và đồ danh hiệu.</div></section>
   </div></div>`;
 }

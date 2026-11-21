@@ -1150,6 +1150,7 @@ test('cửa hàng xu tím: số dư tách khỏi tổng xu, mua khung và màu t
   assert.equal(b1.status, 200, JSON.stringify(b1.data));
   assert.equal(b1.data.balance, 400);
   assert.equal(b1.data.shop.coins, 1000);
+  assert.equal((await call('GET', '/me', null, u.token)).data.user.frame, null); // đồ mua không tự áp dụng
   assert.equal((await call('GET', '/me', null, u.token)).data.user.level, 2); // đủ 1.000 xu là cấp 2, tiêu xu không làm tụt cấp
   assert.equal((await call('POST', '/shop/buy', { kind: 'frame', id: 3 }, u.token)).status, 400); // đã sở hữu
   assert.equal((await call('POST', '/shop/buy', { kind: 'color', id: 2 }, u.token)).status, 200); // 200 xu
@@ -1195,6 +1196,8 @@ test('danh hiệu Bot trend tự trao khi bấm đủ link X; phần thưởng k
   const t1 = (await call('GET', '/me/titles', null, u.token)).data;
   assert.equal(t1.titles[0].state, 'done');
   assert.equal(t1.titles[1].state, 'doing');
+  assert.equal((await call('GET', '/me', null, u.token)).data.user.frame, null); // phần thưởng danh hiệu không tự áp dụng
+  assert.equal((await call('GET', '/me', null, u.token)).data.user.nameColor, null);
   assert.ok((await call('GET', '/notifications', null, u.token)).data.notifications.some((n) => n.type === 'title' && n.text.includes('Bot trend')));
   // danh hiệu mở khóa phần thưởng
   const ap = await call('POST', '/me/appearance', { frame: 'title:1', color: 'title:1' }, u.token);
