@@ -625,3 +625,4 @@ details.card > summary { font-weight: 700; min-height: 44px; display: flex; alig
 :root { --guest: #E0508A; }
 @media (prefers-color-scheme: dark) { :root { --guest: #F07FB0; } }
 .stat-row.cmp { grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 0.9fr)); font-size: 13.5px; gap: 6px; }
+#updbar { position: fixed; left: 12px; right: 12px; top: calc(8px + env(safe-area-inset-top)); z-index: 80; background: var(--text); color: var(--bg); border-radius: 14px; padding: 8px 8px 8px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.25); font-size: 14px; font-weight: 600; }

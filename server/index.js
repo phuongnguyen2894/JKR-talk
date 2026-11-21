@@ -45,6 +45,9 @@ app.use((_req, res, next) => {
 app.get('/healthz', (_req, res) => {
   try { db.prepare('SELECT 1').get(); res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); }
 });
+// phiên bản đang chạy: máy khách so sánh để nhắc tải lại khi có bản mới
+const APP_VERSION = String(Date.now());
+app.use('/api', (_req, res, next) => { res.setHeader('X-App-Version', APP_VERSION); next(); });
 app.use('/api', api);
 
 // ---- link chia sẻ chủ đề: /t/:id → trang nhỏ có thẻ xem trước (Facebook, Messenger, Zalo…) rồi chuyển vào app ----

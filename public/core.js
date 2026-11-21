@@ -21,6 +21,18 @@ export function setToken(t) {
   try { t ? localStorage.setItem('jkr_token', t) : localStorage.removeItem('jkr_token'); } catch {}
 }
 
+// Khi máy chủ có bản mới (đã triển khai lại) mà trang đang mở là bản cũ: nhắc tải lại để tránh lỗi lệch phiên bản
+let seenVersion = null;
+function checkVersion(v) {
+  if (!v) return;
+  if (seenVersion === null) { seenVersion = v; return; }
+  if (v === seenVersion || document.getElementById('updbar')) return;
+  const bar = document.createElement('div');
+  bar.id = 'updbar'; bar.setAttribute('role', 'status');
+  bar.innerHTML = '<span>Có bản mới của JKR talks.</span><button type="button" class="btn sm primary" id="updbtn">Tải lại</button>';
+  document.body.appendChild(bar);
+  document.getElementById('updbtn').onclick = () => location.reload();
+}
 export async function api(method, url, body) {
   const res = await fetch('/api' + url, {
     method,
@@ -28,6 +40,7 @@ export async function api(method, url, body) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
+  checkVersion(res.headers.get('x-app-version'));
   if (!res.ok) {
     if (res.status === 401 && S.token) S.hooks.logout?.(true);
     const err = new Error(data.error || 'Có lỗi xảy ra');

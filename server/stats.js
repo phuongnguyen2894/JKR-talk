@@ -108,10 +108,12 @@ export function statsReport(days = 30) {
       series, pages, groups, heatmap, peak,
     };
   };
+  const trackedSince = db.prepare('SELECT MIN(day) d FROM stat_actors').get().d || null;
+  const segments = { all: build(['u', 'g']), users: build(['u']), guests: build(['g']) };
   return {
-    days, from, today: list[list.length - 1], totalUsers,
-    trackedSince: db.prepare('SELECT MIN(day) d FROM stat_actors').get().d || null,
-    segments: { all: build(['u', 'g']), users: build(['u']), guests: build(['g']) },
+    days, from, today: list[list.length - 1], totalUsers, trackedSince, segments,
+    // giữ các trường cũ (số liệu tổng hợp) để bản giao diện cũ đang mở chưa tải lại vẫn hiển thị được
+    ...segments.all, summary: { ...segments.all.summary, totalUsers, trackedSince },
   };
 }
 
