@@ -72,6 +72,7 @@ export function publicUser(u, viewerId) {
     language: u.language,
     isAdmin: u.role === 'admin',
     staff: u.role === 'admin' ? (u.is_super ? 'super' : 'admin') : null, // vai trò toàn hệ thống (hiện huy hiệu + màu tên)
+    level: u.hide_level ? 0 : u.lvl || 0, // cấp bậc (0 = chưa có cấp hoặc đang ẩn)
   };
   if (viewerId) out.online = presenceVisible(u, viewerId) ? isOnline(u.id) : undefined;
   return out;
@@ -91,6 +92,9 @@ export function selfUser(u) {
     showOnline: !!u.show_online,
     newsPush: !!u.news_push,
     hideSuggestions: !!u.hide_suggestions,
+    level: u.lvl || 0, // chính chủ luôn thấy cấp thật
+    coins: u.coins || 0,
+    hideLevel: !!u.hide_level,
     homeChangedAt: u.home_changed_at,
   };
 }
@@ -151,6 +155,7 @@ export function isSuper(uid) {
 // Được đăng vào "Đẩy trend": admin hệ thống hoặc mod của bất kỳ nhóm công khai nào
 export function canPostTrend(uid) {
   if (isSystemAdmin(uid)) return true;
+  if ((getUser(uid)?.lvl || 0) >= 3) return true; // từ cấp 3 (Tím Mộng Mơ) được gửi link vào Đẩy trend
   return !!db.prepare("SELECT 1 FROM members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ? AND m.role = 'mod' AND g.type IN ('country','region','province') LIMIT 1").get(uid);
 }
 

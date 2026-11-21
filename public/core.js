@@ -74,7 +74,7 @@ export const icon = (n, s = 16, extra = '') =>
 export function avatar(u, cls = '') {
   const name = u?.displayName || '?';
   const inner = u?.avatarUrl ? `<img src="${esc(u.avatarUrl)}" alt="">` : esc([...name][0]?.toUpperCase() || '?');
-  return `<span class="av c${(u?.avatarColor || 0) % 6} ${cls}" aria-hidden="true">${inner}</span>`;
+  return `<span class="av c${(u?.avatarColor || 0) % 6} ${cls}${u?.level >= 2 && !u?.staff ? ' lvf' : ''}" aria-hidden="true">${inner}</span>`;
 }
 export const groupAvatar = (g) =>
   g.avatarUrl ? `<span class="av sq"><img src="${esc(g.avatarUrl)}" alt=""></span>`
@@ -309,6 +309,22 @@ export function avatarR(u, role, cls = '') {
 }
 export const roleClass = (role) => (role ? ` role-${role === 'mod' ? 'mod' : 'admin'}` : '');
 export const roleSr = (role) => (role ? `<span class="sr-only"> (${ROLE_TEXT[role]})</span>` : '');
+
+
+// ---- Cấp bậc (Tím Nhạt → Tím Thủy Tổ) và Xu tím ----------------------------------------
+export const LEVEL_NAMES = ['', 'Tím Nhạt', 'Tím Sương', 'Tím Mộng Mơ', 'Tím Thủy Chung', 'Tím Thủy Tổ'];
+const LV_SVG = {
+  1: '<path d="M20 4C9 4 4 9 4 15c0 2 1 4 3 5 0-5 3-9 9-11-4 3-6 6-6.5 11C15 20 20 15 20 4z"/>',
+  2: '<path d="M12 12L12.00 1.50M12.00 4.80L9.21 2.85M12.00 4.80L14.79 2.85M12.00 7.60L10.03 6.22M12.00 7.60L13.97 6.22M12 12L2.91 6.75M5.76 8.40L2.68 9.84M5.76 8.40L5.47 5.01M8.19 9.80L6.01 10.81M8.19 9.80L7.98 7.41M12 12L2.91 17.25M5.76 15.60L5.47 18.99M5.76 15.60L2.68 14.16M8.19 14.20L7.98 16.59M8.19 14.20L6.01 13.19M12 12L12.00 22.50M12.00 19.20L14.79 21.15M12.00 19.20L9.21 21.15M12.00 16.40L13.97 17.78M12.00 16.40L10.03 17.78M12 12L21.09 17.25M18.24 15.60L21.32 14.16M18.24 15.60L18.53 18.99M15.81 14.20L17.99 13.19M15.81 14.20L16.02 16.59M12 12L21.09 6.75M18.24 8.40L18.53 5.01M18.24 8.40L21.32 9.84M15.81 9.80L16.02 7.41M15.81 9.80L17.99 10.81" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+  3: '<path d="M12 3.2l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6-4.4-4.2 6-.8z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+  4: '<path d="M6.5 2h3.6L12 6.5 13.9 2h3.6l-3.8 8h-3.4z"/><circle cx="12" cy="15.5" r="6.5"/>',
+  5: '<path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8z"/>',
+};
+// huy hiệu cấp: chỉ hiện biểu tượng tô màu cạnh tên (cấp 0 hoặc đang ẩn: không hiện gì)
+export const lvBadge = (n, size = 18) => (n >= 1 && n <= 5
+  ? `<span class="lvb l${n}" style="width:${size}px;height:${size}px" role="img" aria-label="${LEVEL_NAMES[n]}" title="${LEVEL_NAMES[n]}"><svg viewBox="0 0 24 24" aria-hidden="true">${LV_SVG[n]}</svg></span>` : '');
+// đồng Xu tím (chữ LO ở giữa); gradient dùng chung khai báo trong index.html
+export const coinIcon = (size = 18) => `<svg class="coin" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><circle cx="12" cy="12" r="11.4" fill="url(#cgR)"/><circle cx="12" cy="12" r="10" fill="none" stroke="#F1EAFF" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="1.1 1.1"/><circle cx="12" cy="12" r="8" fill="url(#cgF)" stroke="#E4D9FF" stroke-width=".9"/><path d="M5.9 9.3A6.7 6.7 0 0 1 11 5.4" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1.1" stroke-linecap="round"/><text x="12" y="15.4" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.4" font-weight="800" letter-spacing="-.2" fill="#2B0F6B" fill-opacity=".55">LO</text><text x="12" y="14.8" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.4" font-weight="800" letter-spacing="-.2" fill="#fff">LO</text></svg>`;
 
 // Lưới ảnh bản tin (1 ảnh: rộng đầy đủ; 2-4 ảnh: lưới 2 cột). act = tên hành động khi bấm vào ảnh.
 export function newsGallery(urls, act = 'news-zoom') {

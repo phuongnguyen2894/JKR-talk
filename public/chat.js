@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, roleOf, avatarR, roleClass, roleSr, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
+import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, roleOf, avatarR, roleClass, roleSr, lvBadge, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
 import { maybeAskPush } from './push.js';
 
 const PUBLIC = ['country', 'region', 'province', 'topic'];
@@ -284,7 +284,7 @@ function msgHtml(m) {
       </div></div>`;
   const who = m.user.deleted
     ? `<span class="who muted">${esc(m.user.displayName)}</span>`
-    : `<button class="who${roleClass(rr)}" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}${roleSr(rr)}</button>`;
+    : `<button class="who${roleClass(rr)}" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}${roleSr(rr)}${lvBadge(m.user.level)}</button>`;
   return `<div class="msg ${own ? 'own' : ''}" data-mid="${m.id}" data-uid="${m.user.id}" data-name="${esc(m.user.displayName)}">
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
     <div class="body">
@@ -719,3 +719,15 @@ actions['toggle-read'] = () => {
   applyRead(readMode);
 };
 export const syncReadMode = () => applyRead(readMode);
+
+// Bấm vào link X trong Đẩy trend: server cộng 1 xu tím (mỗi link một lần), link vẫn mở bình thường
+document.addEventListener('click', (e) => {
+  const a = e.target.closest?.('.msg a.ext-link, .msg a.lp');
+  if (!a || !C?.group || C.group.type !== 'trend') return;
+  let host = '';
+  try { host = new URL(a.href).hostname.toLowerCase(); } catch { return; }
+  if (!/^(www\.|mobile\.)?(x|twitter)\.com$/.test(host)) return;
+  const mid = Number(a.closest('.msg')?.dataset.mid);
+  if (!mid) return;
+  api('POST', '/trend/click', { messageId: mid, url: a.href }).then((r) => { if (r.coins) toast(`+${r.coins} xu tím`); }).catch(() => {});
+});

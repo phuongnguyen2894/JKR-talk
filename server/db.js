@@ -222,3 +222,21 @@ for (const u of db.prepare("SELECT id, display_name FROM users WHERE name_key IS
   try { db.prepare('UPDATE users SET name_key = ? WHERE id = ?').run(nameKey(u.display_name), u.id); } catch { /* trùng cũ: bỏ qua */ }
 }
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_key ON users(name_key) WHERE name_key IS NOT NULL');
+
+// ---- Cấp bậc và Xu tím ------------------------------------------------------
+// coins: tổng Xu tím đã kiếm (chỉ tăng); lvl: cấp cao nhất đã đạt (0 = chưa có cấp); lvl_seen: cấp đã chúc mừng
+for (const c of [
+  'coins INTEGER NOT NULL DEFAULT 0', 'lvl INTEGER NOT NULL DEFAULT 0', 'lvl_seen INTEGER NOT NULL DEFAULT 0',
+  'hide_level INTEGER NOT NULL DEFAULT 0', 'start_done INTEGER NOT NULL DEFAULT 0', 'streak INTEGER NOT NULL DEFAULT 0', 'last_day TEXT',
+]) { try { db.exec(`ALTER TABLE users ADD COLUMN ${c}`); } catch { /* đã có cột */ } }
+db.exec(`
+CREATE TABLE IF NOT EXISTS coin_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, kind TEXT NOT NULL, amount INTEGER NOT NULL,
+  ref TEXT, day TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coin_ref ON coin_log(user_id, kind, ref) WHERE ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_coin_day ON coin_log(user_id, kind, day);
+CREATE TABLE IF NOT EXISTS user_titles (
+  user_id INTEGER NOT NULL, title TEXT NOT NULL, granted_at INTEGER NOT NULL, PRIMARY KEY (user_id, title)
+);
+`);

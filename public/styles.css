@@ -486,3 +486,24 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .msg .bline:has(> .pic) { align-items: flex-end; }
 
 .msg .bline > .lp { margin: 0; min-width: 0; flex: 0 1 auto; }
+
+/* ---- cấp bậc và Xu tím ---- */
+:root { --lv1: #A996EE; --lv2: #8B63F2; --lv3: #6B3FD9; --lv4: #4A1FA8; --lv5: #2B0F6B; --lv-frame: #8B63F2; }
+@media (prefers-color-scheme: dark) { :root { --lv1: #D9CFFF; --lv2: #B79CFF; --lv3: #9A75FF; --lv4: #B08CFF; --lv5: #D9CFFF; --lv-frame: #B79CFF; } }
+.lvb { display: inline-flex; vertical-align: -3px; margin-left: 4px; flex: none; }
+.lvb svg { width: 100%; height: 100%; fill: currentColor; display: block; }
+.lvb.l1 { color: var(--lv1); } .lvb.l2 { color: var(--lv2); } .lvb.l3 { color: var(--lv3); } .lvb.l4 { color: var(--lv4); }
+.lvb.l5 { color: var(--lv5); filter: drop-shadow(0 0 3px #8C75FF); }
+.av.lvf { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--lv-frame); }
+.card .av.lvf { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--lv-frame); }
+.coin { display: inline-block; vertical-align: -4px; flex: none; }
+.lvl-hero { align-items: center; text-align: center; gap: 6px; }
+.lvl-bar { height: 12px; border-radius: 99px; background: var(--soft); overflow: hidden; }
+.lvl-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.lvl-row { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.lvl-row .chip { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--accent); background: var(--soft); padding: 2px 10px; border-radius: 99px; white-space: nowrap; }
+.lvl-ok, .lvl-no { width: 22px; height: 22px; border-radius: 99px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.lvl-ok { background: #D9F2EC; color: #135A48; } .lvl-no { background: var(--soft); color: var(--muted); }
+.lvl-modal { align-items: center; text-align: center; }
+.lvl-big { width: 88px; height: 88px; border-radius: 99px; display: flex; align-items: center; justify-content: center; background: var(--soft); margin: 4px auto; }
+.lvl-big .lvb { margin: 0; }

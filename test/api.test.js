@@ -970,3 +970,111 @@ test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, 
   assert.equal((await call('GET', `/groups/${tid}`, null, u.token)).status, 404);
   assert.ok((await call('GET', '/notifications', null, u.token)).data.notifications.some((n) => n.text.includes('đã được đóng')));
 });
+
+// ---- Cấp bậc và Xu tím ---------------------------------------------------------
+test('cấp bậc: người mới chưa có cấp, xong 3 việc khởi đầu nhận cấp 1, xu kiếm lúc cấp 0 được giữ', async () => {
+  const { db } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const a = await signup('lvA', 1), b = await signup('lvB', 1);
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((g) => g.type === 'country');
+  for (const u of [a, b]) await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  const me0 = (await call('GET', '/me', null, a.token)).data;
+  assert.equal(me0.user.level, 0);
+  assert.equal(me0.levelUp, null);
+  const st0 = (await call('GET', '/me/level', null, a.token)).data.level;
+  assert.equal(st0.level, 0);
+  assert.equal(st0.tasks.length, 3);
+  assert.equal(st0.coins, 3); // vào app lần đầu trong ngày +3 xu
+  // tin ngắn (<5 ký tự) và tin trùng liền trước không được xu
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'ok' }, a.token);
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'Xin chào cả nhà' }, a.token);
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'Xin chào cả nhà' }, a.token);
+  assert.equal((await call('GET', '/me/level', null, a.token)).data.level.coins, 4);
+  for (const t of ['tin thứ hai của A', 'tin thứ ba của A', 'tin thứ tư của A', 'tin thứ năm của A']) await call('POST', `/groups/${vn.id}/messages`, { body: t }, a.token);
+  // tim: B đăng 4 tin, A thả tim (+2 xu cho B mỗi tim, tối đa 3 tim/ngày cho cùng một người)
+  const bm = [];
+  for (const t of ['B nói một', 'B nói hai', 'B nói ba', 'B nói bốn']) bm.push((await call('POST', `/groups/${vn.id}/messages`, { body: t }, b.token)).data.message);
+  const coinsB0 = (await call('GET', '/me/level', null, b.token)).data.level.coins;
+  for (const m of bm) assert.equal((await call('POST', `/messages/${m.id}/heart`, {}, a.token)).status, 200);
+  assert.equal((await call('GET', '/me/level', null, b.token)).data.level.coins, coinsB0 + 6); // 3 tim đầu +2, tim thứ 4 không tính
+  // A chưa bật thông báo đẩy nên vẫn chưa có cấp
+  assert.equal((await call('GET', '/me', null, a.token)).data.user.level, 0);
+  const coinsBefore = (await call('GET', '/me/level', null, a.token)).data.level.coins;
+  const sub = { endpoint: 'https://push.example/dev-lvA', keys: { p256dh: 'pk', auth: 'ak' } };
+  assert.equal((await call('POST', '/push/subscribe', { subscription: sub }, a.token)).status, 200);
+  const me1 = (await call('GET', '/me', null, a.token)).data;
+  assert.equal(me1.user.level, 1);
+  assert.equal(me1.levelUp.level, 1);
+  assert.equal(me1.levelUp.name, 'Tím Nhạt');
+  assert.equal((await call('GET', '/me/level', null, a.token)).data.level.coins, coinsBefore); // xu giữ nguyên
+  assert.ok((await call('GET', '/notifications', null, a.token)).data.notifications.some((n) => n.type === 'level' && n.text.includes('Tím Nhạt')));
+  await call('POST', '/me/level-seen', {}, a.token);
+  assert.equal((await call('GET', '/me', null, a.token)).data.levelUp, null);
+  // trả lời: người được trả lời +2 xu
+  const coinsB1 = (await call('GET', '/me/level', null, b.token)).data.level.coins;
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'trả lời bạn B nhé', replyTo: bm[0].id }, a.token);
+  assert.equal((await call('GET', '/me/level', null, b.token)).data.level.coins, coinsB1 + 2);
+  // người khác chỉ thấy cấp khi chưa ẩn
+  const seen = (await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages.find((m) => m.user.id === a.id);
+  assert.equal(seen.user.level, 1);
+  await call('PATCH', '/me', { hideLevel: true }, a.token);
+  assert.equal((await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages.find((m) => m.user.id === a.id).user.level, 0);
+  assert.equal((await call('GET', '/me', null, a.token)).data.user.level, 1); // chính chủ vẫn thấy
+  // đặc quyền theo cấp
+  const trend = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((g) => g.type === 'trend');
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/abc/status/1' }, a.token)).status, 403);
+  // lên cấp: đủ xu nhưng thiếu danh hiệu thì dừng ở cấp 2
+  db.prepare('UPDATE users SET coins = 3500 WHERE id = ?').run(a.id);
+  assert.equal((await call('GET', '/me/level', null, a.token)).data.level.level, 2);
+  const need = (await call('GET', '/me/level', null, a.token)).data.level.next;
+  assert.equal(need.name, 'Tím Mộng Mơ');
+  assert.ok(need.conditions.some((c) => c.key === 'title' && !c.ok));
+  assert.equal((await call('POST', `/admin/users/${a.id}/titles`, { title: 'bot_trend' }, a.token)).status, 403);
+  assert.equal((await call('POST', `/admin/users/${a.id}/titles`, { title: 'khong_co' }, adm.token)).status, 400);
+  assert.equal((await call('POST', `/admin/users/${a.id}/titles`, { title: 'bot_trend' }, adm.token)).status, 200);
+  assert.equal((await call('GET', '/me/level', null, a.token)).data.level.level, 3);
+  assert.ok((await call('GET', '/notifications', null, a.token)).data.notifications.some((n) => n.text.includes('Tím Mộng Mơ') && n.text.includes('Đẩy trend')));
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/abc/status/1' }, a.token)).status, 201);
+  // bấm link X trong Đẩy trend: +1 xu, mỗi link một lần, chỉ link X
+  const xm = (await call('POST', `/groups/${trend.id}/messages`, { body: 'xem https://x.com/lingorm/status/99 và https://example.com/tin' }, adm.token)).data.message;
+  const click = (url) => call('POST', '/trend/click', { messageId: xm.id, url }, b.token);
+  assert.equal((await click('https://x.com/lingorm/status/99')).data.coins, 1);
+  assert.equal((await click('https://x.com/lingorm/status/99')).data.coins, 0);
+  assert.equal((await click('https://example.com/tin')).data.coins, 0);
+  assert.equal((await click('https://x.com/khac/status/5')).data.coins, 0); // link không nằm trong tin
+  // cấp 4: tạo chủ đề không cần duyệt, đăng bản tin; chưa đủ thì bị từ chối
+  assert.equal((await call('POST', '/news', { title: 'Bài của thành viên' }, a.token)).status, 403);
+  assert.equal((await call('POST', '/topics', { name: 'Chủ đề chờ duyệt' }, a.token)).status, 202);
+  db.prepare('UPDATE users SET coins = 8000 WHERE id = ?').run(a.id);
+  await call('POST', `/admin/users/${a.id}/titles`, { title: 'bot_trend_cao_thu' }, adm.token);
+  assert.equal((await call('GET', '/me/level', null, a.token)).data.level.level, 3); // chưa đủ 1.000 link Đẩy trend
+  db.prepare('UPDATE users SET lvl = 4 WHERE id = ?').run(a.id); // đặt thẳng cấp 4 để thử đặc quyền
+  assert.equal((await call('POST', '/topics', { name: 'Chủ đề cấp bốn tạo' }, a.token)).status, 201);
+  const np = await call('POST', '/news', { title: 'Bài của thành viên', body: 'Nội dung' }, a.token);
+  assert.equal(np.status, 201);
+  assert.equal(np.data.news.author.displayName, 'lvA');
+  assert.equal(np.data.news.mine, true);
+  assert.equal((await call('DELETE', `/news/${np.data.news.id}`, {}, b.token)).status, 404);
+  assert.equal((await call('DELETE', `/news/${np.data.news.id}`, {}, a.token)).status, 200);
+});
+
+test('cấp bậc: xu vào app mỗi ngày chỉ một lần, chuỗi 7 ngày +20, chủ đề được duyệt +30', async () => {
+  const { db } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('lvDaily', 1);
+  await call('GET', '/me', null, u.token);
+  await call('GET', '/me', null, u.token);
+  assert.equal((await call('GET', '/me/level', null, u.token)).data.level.coins, 3);
+  // giả lập đang có chuỗi 6 ngày tính đến hôm qua
+  const y = new Date(Date.now() + 7 * 3600_000 - 86400_000).toISOString().slice(0, 10);
+  db.prepare('UPDATE users SET last_day = ?, streak = 6 WHERE id = ?').run(y, u.id);
+  db.prepare("DELETE FROM coin_log WHERE user_id = ? AND kind = 'daily'").run(u.id);
+  db.prepare('UPDATE users SET coins = 0 WHERE id = ?').run(u.id);
+  await call('GET', '/me', null, u.token);
+  assert.equal((await call('GET', '/me/level', null, u.token)).data.level.coins, 23);
+  assert.equal((await call('GET', '/me/level', null, u.token)).data.level.streak, 7);
+  // chủ đề được duyệt +30
+  const t = (await call('POST', '/topics', { name: 'Chủ đề được duyệt xu' }, u.token)).data.topic;
+  await call('POST', `/topics/pending/${t.id}/approve`, {}, adm.token);
+  assert.equal((await call('GET', '/me/level', null, u.token)).data.level.coins, 53);
+});

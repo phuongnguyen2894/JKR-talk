@@ -12,6 +12,7 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
+import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onTrendClick, award, TITLES, normalizeXLink, userTitles } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
 
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
@@ -241,7 +242,40 @@ api.post('/auth/logout', wrap((req, res) => {
 // ============================================================================
 // Hồ sơ & cài đặt
 // ============================================================================
-api.get('/me', wrap((req, res) => res.json({ user: selfUser(req.user) })));
+api.get('/me', wrap((req, res) => {
+  touchDaily(req.user.id);
+  const u = recompute(req.user.id) || getUser(req.user.id);
+  res.json({ user: selfUser(u), levelUp: pendingLevelUp(u) });
+}));
+api.get('/me/level', wrap((req, res) => {
+  recompute(req.user.id);
+  res.json({ level: statusOf(req.user.id) });
+}));
+api.post('/me/level-seen', wrap((req, res) => {
+  db.prepare('UPDATE users SET lvl_seen = lvl WHERE id = ?').run(req.user.id);
+  res.json({ ok: true });
+}));
+// Bấm vào link X được gửi trong Đẩy trend: +1 xu tím, mỗi link tính một lần
+api.post('/trend/click', wrap((req, res) => {
+  rateLimit(`xclick:${req.user.id}`, 60, 60_000);
+  const m = db.prepare('SELECT * FROM messages WHERE id = ? AND deleted = 0').get(int(req.body.messageId));
+  if (!m || m.group_id !== trendGroupId()) throw notFound('Tin nhắn không tồn tại');
+  const url = String(req.body.url || '');
+  if (!normalizeXLink(url) || !m.body.includes(url.replace(/[#?].*$/, ''))) return res.json({ coins: 0 });
+  res.json({ coins: onTrendClick(req.user.id, url) });
+}));
+// Admin cấp / thu hồi danh hiệu (Bot trend...) cho người dùng
+api.post('/admin/users/:id/titles', adminOnly, wrap((req, res) => {
+  const uid = int(req.params.id);
+  if (!getUser(uid)) throw notFound('Không tìm thấy người dùng');
+  const title = String(req.body.title || '');
+  if (!TITLES[title]) throw bad('Danh hiệu không hợp lệ');
+  if (req.body.grant === false) db.prepare('DELETE FROM user_titles WHERE user_id = ? AND title = ?').run(uid, title);
+  else db.prepare('INSERT OR IGNORE INTO user_titles (user_id, title, granted_at) VALUES (?,?,?)').run(uid, title, now());
+  log(req.user.id, req.body.grant === false ? 'revoke_title' : 'grant_title', { target: uid, reason: title });
+  recompute(uid);
+  res.json({ titles: userTitles(uid) });
+}));
 
 api.patch(
   '/me',
@@ -268,7 +302,7 @@ api.patch(
       if (!['everyone', 'shared', 'none'].includes(b.friendPolicy)) throw bad('Giá trị không hợp lệ');
       set('friend_policy', b.friendPolicy);
     }
-    for (const [k, col] of [['showOnline', 'show_online'], ['newsPush', 'news_push'], ['hideSuggestions', 'hide_suggestions']])
+    for (const [k, col] of [['showOnline', 'show_online'], ['newsPush', 'news_push'], ['hideSuggestions', 'hide_suggestions'], ['hideLevel', 'hide_level']])
       if (b[k] !== undefined) set(col, b[k] ? 1 : 0);
     if (sets.length) db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.user.id);
     res.json({ user: selfUser(getUser(req.user.id)) });
@@ -511,7 +545,7 @@ api.get(
 );
 
 // ---- Chủ đề thảo luận: Admin / Mod tạo, mọi người vào bàn luận như một nhóm chat ----
-const canCreateTopic = (uid) => isSystemAdmin(uid) ||
+const canCreateTopic = (uid) => isSystemAdmin(uid) || (getUser(uid)?.lvl || 0) >= 4 ||
   !!db.prepare("SELECT 1 FROM members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ? AND m.role = 'mod' AND g.type IN ('country','region','province','topic')").get(uid);
 function topicDto(g, uid) {
   const m = getMember(g.id, uid);
@@ -577,6 +611,7 @@ api.post('/topics/pending/:id/approve', adminOnly, wrap((req, res) => {
     }
   });
   log(req.user.id, 'approve_topic', { group: g.id, name: g.name });
+  if (g.created_by) award(g.created_by, 'topic', 30, { ref: String(g.id) });
   if (g.created_by) notify(g.created_by, 'moderation', `Chủ đề "${g.name}" của bạn đã được duyệt và hiện ở mục Chủ đề nóng`, { url: `/#/chat/${g.id}`, tag: `topic-ok-${g.id}` });
   res.json({ ok: true });
 }));
@@ -604,6 +639,7 @@ api.post('/topics/:id/highlight', wrap((req, res) => {
   const on = req.body.on !== false;
   db.prepare('UPDATE groups SET highlighted = ? WHERE id = ?').run(on ? now() : null, g.id);
   log(req.user.id, on ? 'highlight_topic' : 'unhighlight_topic', { group: g.id, name: g.name });
+  if (on && g.created_by) award(g.created_by, 'hl', 50, { ref: String(g.id) });
   res.json({ topic: topicDto(getGroup(g.id), req.user.id) });
 }));
 api.post('/topics', wrap((req, res) => {
@@ -633,6 +669,7 @@ api.post('/topics', wrap((req, res) => {
     return gid;
   });
   log(req.user.id, 'create_topic', { group: id, name });
+  award(req.user.id, 'topic', 30, { ref: String(id) });
   res.status(201).json({ topic: topicDto(getGroup(id), req.user.id) });
 }));
 api.patch('/topics/:id', wrap((req, res) => {
@@ -884,7 +921,7 @@ api.post(
     const body = str(req.body.body, 2000);
     const imageUrl = req.body.imageUrl ? checkUploadUrl(req.body.imageUrl) : null;
     if (!body && !imageUrl) throw bad('Tin nhắn trống');
-    if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin và mod được đăng trong Đẩy trend');
+    if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin, mod và người dùng từ cấp Tím Mộng Mơ mới được đăng trong Đẩy trend');
     if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
     if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
     if (g.type === 'dm') {
@@ -906,6 +943,8 @@ api.post(
     db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, gid, req.user.id);
     hub.sendMany(memberIds(gid), { type: 'message', message: dto });
     res.status(201).json({ message: dto });
+    touchDaily(req.user.id);
+    onMessage(req.user, g, dto, replyTo ? db.prepare('SELECT user_id FROM messages WHERE id = ?').get(replyTo)?.user_id : null);
     notifyMentions(g, req.user, mentionIds);
     if (mentionAll) {
       const text = `${req.user.display_name} đã nhắc đến mọi người trong "${g.name}"`;
@@ -958,7 +997,7 @@ api.post(
     const gid = int(req.body.groupId);
     autoJoinTopic(gid, req.user.id);
     const { g, m } = requireMember(gid, req.user.id);
-    if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin và mod được đăng trong Đẩy trend');
+    if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin, mod và người dùng từ cấp Tím Mộng Mơ mới được đăng trong Đẩy trend');
     if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
     if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
     if (g.type === 'dm') {
@@ -998,6 +1037,7 @@ api.post(
     for (const t of db.prepare('SELECT id, group_id FROM messages WHERE (id = ? OR fwd_id = ?) AND deleted = 0').all(root.id, root.id)) {
       hub.sendMany(memberIds(t.group_id), { type: 'heart', groupId: t.group_id, messageId: t.id, hearts });
     }
+    if (!had) onHeart(req.user.id, root.user_id, root.id);
     if (!had && [1, 5, 10, 25, 50, 100].includes(hearts)) {
       notify(root.user_id, 'heart', hearts === 1 ? `${req.user.display_name} đã thả tim tin nhắn của bạn` : `Tin nhắn của bạn đã nhận được ${hearts} tim`, { url: `/#/chat/${root.group_id}`, tag: `heart-${root.id}` });
     }
@@ -1591,6 +1631,8 @@ const newsDto = (n, uid) => ({
   commentCount: db.prepare("SELECT COUNT(*) c FROM comments WHERE kind = 'news' AND target_id = ?").get(n.id).c,
   imageUrls: newsImgs(n),
   hearts: newsHearts(n.id), hearted: !!db.prepare('SELECT 1 FROM news_hearts WHERE news_id = ? AND user_id = ?').get(n.id, uid),
+  author: (() => { const a = getUser(n.author_id); return a && a.role !== 'admin' ? { id: a.id, displayName: publicUser(a).displayName, level: publicUser(a).level } : null; })(),
+  mine: n.author_id === uid,
   id: n.id, title: n.title, body: n.body, imageUrl: newsImgs(n)[0] || null, pinned: !!n.pinned, edited: !!n.edited,
   createdAt: n.created_at, read: !!db.prepare('SELECT 1 FROM news_reads WHERE user_id=? AND news_id=?').get(uid, n.id),
 });
@@ -1602,6 +1644,7 @@ api.get('/push/config', wrap((req, res) => {
 api.post('/push/subscribe', wrap((req, res) => {
   rateLimit(`push:${req.user.id}`, 20, 60_000);
   if (!saveSubscription(req.user.id, req.body.subscription, req.get('user-agent'))) throw bad('Đăng ký thông báo không hợp lệ');
+  recompute(req.user.id);
   res.json({ ok: true, prefs: getPrefs(req.user.id) });
 }));
 api.post('/push/unsubscribe', wrap((req, res) => {
@@ -1640,6 +1683,29 @@ api.post('/admin/news', adminOnly, wrap((req, res) => {
   }
   hub.sendMany(db.prepare("SELECT id FROM users WHERE status='active' AND news_push=0").all().map((u) => u.id), { type: 'news_silent' });
   res.status(201).json({ news: newsDto(n, req.user.id) });
+}));
+// Từ cấp 4 (Tím Thủy Chung) được đăng bài lên Bản tin; bài của thành viên không đẩy thông báo tới mọi người
+api.post('/news', wrap((req, res) => {
+  if (!isSystemAdmin(req.user.id) && (req.user.lvl || 0) < 4) throw forbidden('Cần đạt cấp Tím Thủy Chung để đăng bản tin');
+  rateLimit(`newspost:${req.user.id}`, 10, 3600_000);
+  const title = str(req.body.title, 150), body = str(req.body.body, 5000);
+  const imgs = req.body.imageUrls !== undefined ? cleanNewsImages(req.body.imageUrls) : [];
+  if (!title && !body && !imgs.length) throw bad('Hãy nhập tiêu đề, nội dung hoặc chọn ảnh');
+  const r = db.prepare('INSERT INTO news (title, body, image_url, images, pinned, author_id, created_at) VALUES (?,?,?,?,0,?,?)').run(title, body, imgs[0] || null, JSON.stringify(imgs), req.user.id, now());
+  const n = db.prepare('SELECT * FROM news WHERE id = ?').get(r.lastInsertRowid);
+  hub.sendMany(db.prepare("SELECT id FROM users WHERE status='active'").all().map((u) => u.id).filter((id) => id !== req.user.id), { type: 'news_silent' });
+  recompute(req.user.id);
+  res.status(201).json({ news: newsDto(n, req.user.id) });
+}));
+// Người đăng tự xóa bài của mình
+api.delete('/news/:id', wrap((req, res) => {
+  const n = db.prepare('SELECT * FROM news WHERE id = ?').get(int(req.params.id));
+  if (!n || n.author_id !== req.user.id) throw notFound('Không tìm thấy bản tin của bạn');
+  db.prepare('DELETE FROM news_hearts WHERE news_id = ?').run(n.id);
+  db.prepare("DELETE FROM comments WHERE kind = 'news' AND target_id = ?").run(n.id);
+  db.prepare('DELETE FROM news_reads WHERE news_id = ?').run(n.id);
+  db.prepare('DELETE FROM news WHERE id = ?').run(n.id);
+  res.json({ ok: true });
 }));
 api.patch('/admin/news/:id', adminOnly, wrap((req, res) => {
   const n = db.prepare('SELECT * FROM news WHERE id = ?').get(int(req.params.id));
