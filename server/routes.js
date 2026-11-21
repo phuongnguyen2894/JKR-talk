@@ -12,7 +12,7 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
-import { track, statsReport } from './stats.js';
+import { track, statsReport, linkVisitor, VID_RE } from './stats.js';
 import { emojiMeta, EMOJI_LIMIT, EMOJI_MAX_PER_MESSAGE, REACTION_MAX_PER_USER, checkReactionKey, checkEmojiFile, checkEmojiName, addEmoji, countCustomTokens, visibleEmoji, activeEmoji, usageOf } from './emoji.js';
 import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
@@ -228,6 +228,15 @@ api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
   res.json({ pinned, items: rows.map((m) => ({ ...guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name }), interactions: m.score })) });
 }));
 api.get('/public/topic-board', guestLimit, wrap((req, res) => res.json({ topics: topicBoard(boardTab(req)).map(({ joined, creatorName, ...t }) => t) })));
+// Khách (chưa đăng nhập) gửi lượt xem và thời gian hoạt động, nhận diện bằng mã ẩn danh ngẫu nhiên trên trình duyệt
+api.post('/public/track', wrap((req, res) => {
+  const vid = String(req.body.vid || '');
+  if (!VID_RE.test(vid)) throw bad('Mã khách không hợp lệ');
+  const event = req.body.event === 'ping' ? 'ping' : 'view';
+  rateLimit(`gtrack:${req.ip}`, 240, 60_000);
+  rateLimit(`gtrack:${event}:${vid}`, event === 'ping' ? 12 : 90, 60_000);
+  res.json({ ok: track({ kind: 'g', id: vid }, { page: String(req.body.page || ''), target: req.body.target, event, seconds: req.body.seconds }) });
+}));
 api.get('/public/emoji', guestLimit, wrap((_req, res) => res.json({ emoji: activeEmoji().map(emojiDto) })));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
@@ -254,7 +263,8 @@ api.get('/me', wrap((req, res) => {
 api.post('/track', wrap((req, res) => {
   const event = req.body.event === 'ping' ? 'ping' : 'view';
   rateLimit(`track:${event}:${req.user.id}`, event === 'ping' ? 12 : 90, 60_000);
-  res.json({ ok: track(req.user.id, { page: String(req.body.page || ''), target: req.body.target, event, seconds: req.body.seconds }) });
+  linkVisitor(req.body.vid, req.user.id); // trình duyệt này từng là khách: nối với tài khoản để không đếm hai lần
+  res.json({ ok: track({ kind: 'u', id: req.user.id }, { page: String(req.body.page || ''), target: req.body.target, event, seconds: req.body.seconds }) });
 }));
 // Thống kê cho Admin hệ thống
 api.get('/admin/stats', superOnly, wrap((req, res) => res.json(statsReport(Number(req.query.days) || 30))));

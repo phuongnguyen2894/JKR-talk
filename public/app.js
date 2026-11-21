@@ -178,7 +178,8 @@ function connectWs() {
 async function boot() {
   try {
     S.geo ||= await api('GET', '/geo');
-    if (!S.token) return route();
+    if (!S.token) { startTracking(); return route(); } // khách
+
     const meRes = await api('GET', '/me');
     S.me = meRes.user;
     await Promise.all([refreshGroups(), refreshCounters(), loadEmoji()]);
@@ -193,9 +194,10 @@ async function boot() {
     root.innerHTML = '';
     route();
     showLevelUp(meRes.levelUp);
-    startTracking();
+    startTracking(); // người dùng đã đăng ký (hoặc vừa đăng nhập từ trình duyệt từng là khách)
   } catch (e) {
     if (S.token) { setToken(null); S.me = null; }
+    startTracking();
     route();
   }
 }

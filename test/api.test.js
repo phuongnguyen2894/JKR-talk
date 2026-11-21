@@ -1387,52 +1387,74 @@ test('react bằng emoji: tim và emoji tính như tim, tối đa 3 react mỗi 
   assert.ok(!after.reactions.some((r) => r.emoji === `e:${e1}`));
 });
 
-test('thống kê: ghi lượt xem và thời gian hoạt động, chỉ Admin hệ thống xem được báo cáo', async () => {
+test('thống kê: ghi lượt xem và thời gian của người dùng và khách, chia theo đối tượng, chỉ Admin hệ thống xem được báo cáo', async () => {
   const { db } = await import('../server/db.js');
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
-  const a = await signup('statA', 1), b = await signup('statB', 1);
+  const a = await signup('statA', 1), b = await signup('statB', 1), c = await signup('statC', 1);
   const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((g) => g.type === 'country');
-  db.prepare('DELETE FROM daily_users').run();
-  db.prepare('DELETE FROM daily_pages').run();
-  // A xem trang chat nhóm VN 2 lần và hoạt động 45 giây; B xem tin tức 1 lần, hoạt động 15 giây
+  for (const t of ['stat_actors', 'stat_pages', 'stat_hours', 'visitor_links']) db.prepare(`DELETE FROM ${t}`).run();
+  const gtrack = (vid, body) => call('POST', '/public/track', { vid, ...body });
+  const G1 = 'guest-aaaaaaaaaaaaaaaa', G2 = 'guest-bbbbbbbbbbbbbbbb', GC = 'guest-cccccccccccccccc';
+  // người dùng A: xem chat nhóm VN 2 lần, hoạt động 45 giây; B: xem tin tức 1 lần, hoạt động 15 + 30 giây
   for (let i = 0; i < 2; i++) assert.equal((await call('POST', '/track', { event: 'view', page: 'chat', target: vn.id }, a.token)).status, 200);
   for (let i = 0; i < 3; i++) await call('POST', '/track', { event: 'ping', seconds: 15, page: 'chat', target: vn.id }, a.token);
   await call('POST', '/track', { event: 'view', page: 'news' }, b.token);
   await call('POST', '/track', { event: 'ping', seconds: 15, page: 'news' }, b.token);
-  // trang lạ gộp vào "other", số giây bị chặn tối đa 30 mỗi lần, sự kiện lạ coi như lượt xem
-  await call('POST', '/track', { event: 'ping', seconds: 9999, page: 'trang-la' }, b.token);
-  assert.equal((await call('POST', '/track', { event: 'view', page: 'news' })).status, 401); // khách không được ghi
-  // chỉ Admin hệ thống xem báo cáo
+  await call('POST', '/track', { event: 'ping', seconds: 9999, page: 'trang-la' }, b.token); // trang lạ gộp vào "other", tối đa 30 giây mỗi lần
+  // khách G1: 2 lượt xem, 15 giây; G2: 1 lượt xem; GC xem như khách rồi đăng nhập thành tài khoản C cùng ngày
+  await gtrack(G1, { event: 'view', page: 'news' });
+  await gtrack(G1, { event: 'view', page: 'chat', target: vn.id });
+  await gtrack(G1, { event: 'ping', seconds: 15, page: 'chat', target: vn.id });
+  await gtrack(G2, { event: 'view', page: 'hot' });
+  await gtrack(GC, { event: 'view', page: 'news' });
+  await call('POST', '/track', { event: 'view', page: 'news', vid: GC }, c.token); // đăng nhập: mã khách được nối với tài khoản C
+  // mã khách sai bị từ chối
+  assert.equal((await gtrack('ngan', { event: 'view', page: 'news' })).status, 400);
+  assert.equal((await call('POST', '/track', { event: 'view', page: 'news' })).status, 401);
   assert.equal((await call('GET', '/admin/stats', null, a.token)).status, 403);
   const r = (await call('GET', '/admin/stats?days=7', null, adm.token)).data;
   assert.equal(r.days, 7);
-  assert.equal(r.series.length, 7);
-  assert.equal(r.summary.dauToday, 2);
-  assert.equal(r.summary.mau, 2);
-  assert.equal(r.summary.totalSeconds, 45 + 15 + 30);
-  assert.equal(r.summary.avgSecondsPerUserDay, 45); // 90 giây / 2 người
-  const pageOf = (p) => r.pages.find((x) => x.page === p);
-  assert.equal(pageOf('chat').views, 2);
-  assert.equal(pageOf('chat').seconds, 45);
-  assert.equal(pageOf('news').views, 1);
-  assert.ok(pageOf('other'));
-  assert.equal(r.pages[0].page, 'chat'); // xếp theo số lượt xem
-  assert.equal(r.groups[0].id, vn.id);
-  assert.equal(r.groups[0].views, 2);
-  assert.ok(r.groups[0].name.length > 0);
-  assert.equal(r.series[6].dau, 2);
-  assert.ok(r.series[6].newUsers >= 2);
-  // lượt xem và heatmap theo giờ: 2 người dùng, 4 lượt xem (A 2 chat, B 1 news); tất cả rơi vào ô (thứ, giờ) hiện tại
-  assert.equal(r.summary.viewsToday, 3);
-  assert.equal(r.summary.viewsTotal, 3);
-  assert.equal(r.summary.avgViewsPerUserDay, 1.5);
-  assert.equal(r.heatmap.users.length, 7);
-  assert.equal(r.heatmap.users[0].length, 24);
+  const { all, users, guests } = r.segments;
+  assert.equal(all.series.length, 7);
+  // người dùng đã đăng ký: A, B, C (C gồm cả lượt xem lúc còn là khách)
+  assert.equal(users.summary.dauToday, 3);
+  assert.equal(users.summary.viewsToday, 2 + 1 + 2);
+  assert.equal(users.summary.totalSeconds, 45 + 45);
+  assert.equal(users.summary.avgSecondsPerUserDay, 30);
+  // khách: chỉ G1 và G2 (GC đã được gộp vào tài khoản C)
+  assert.equal(guests.summary.dauToday, 2);
+  assert.equal(guests.summary.viewsToday, 3);
+  assert.equal(guests.summary.totalSeconds, 15);
+  // cả hai: 5 người khác nhau, không đếm C hai lần
+  assert.equal(all.summary.dauToday, 5);
+  assert.equal(all.summary.viewsToday, 8);
+  assert.equal(all.summary.totalSeconds, 105);
+  assert.equal(all.summary.mau, 5);
+  assert.equal(users.summary.mau, 3);
+  assert.equal(guests.summary.mau, 2);
+  // trang xem nhiều: theo từng đối tượng
+  const pageOf = (seg, p) => seg.pages.find((x) => x.page === p);
+  assert.equal(pageOf(users, 'chat').views, 2);
+  assert.equal(pageOf(users, 'chat').seconds, 45);
+  assert.equal(pageOf(guests, 'chat').views, 1);
+  assert.equal(pageOf(guests, 'hot').views, 1);
+  assert.equal(pageOf(all, 'news').views, 4); // B, C (người dùng), G1, GC (khách, trước khi đăng nhập)
+  assert.ok(pageOf(users, 'other'));
+  assert.equal(all.groups[0].id, vn.id);
+  assert.equal(all.groups[0].views, 3);
+  assert.equal(guests.groups[0].views, 1);
+  // heatmap theo giờ: tất cả ghi vào ô (thứ, giờ) hiện tại
   const nowVn = new Date(Date.now() + 7 * 3600_000);
   const w = (nowVn.getUTCDay() + 6) % 7, h = nowVn.getUTCHours();
-  const occ = r.series.filter((x) => (new Date(x.day + 'T00:00:00Z').getUTCDay() + 6) % 7 === w).length;
-  assert.equal(r.heatmap.users[w][h], Math.round((2 / occ) * 100) / 100); // 2 người hoạt động trong giờ này
-  assert.equal(r.heatmap.views[w][h], Math.round((3 / occ) * 100) / 100);
-  assert.deepEqual({ weekday: r.peak.weekday, hour: r.peak.hour }, { weekday: w, hour: h });
+  const occ = all.series.filter((x) => (new Date(x.day + 'T00:00:00Z').getUTCDay() + 6) % 7 === w).length;
+  const avg = (n) => Math.round((n / occ) * 100) / 100;
+  assert.equal(all.heatmap.users[w][h], avg(5));
+  assert.equal(users.heatmap.users[w][h], avg(3));
+  assert.equal(guests.heatmap.users[w][h], avg(2));
+  assert.equal(users.heatmap.views[w][h], avg(5));
+  assert.deepEqual({ weekday: all.peak.weekday, hour: all.peak.hour }, { weekday: w, hour: h });
+  // người đăng ký mới được tính ở hai nhóm có người dùng
+  assert.ok(all.series[6].newUsers >= 3);
+  assert.equal(guests.series[6].newUsers, 0);
   assert.equal((await call('GET', '/admin/stats?days=9999', null, adm.token)).data.days, 365);
 });

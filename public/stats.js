@@ -31,6 +31,19 @@ function bars(series, key, { label, fmtVal = fmt }) {
     <text x="${PAD}" y="12" font-size="11" fill="var(--muted)">${fmtVal(max)}</text><line x1="${PAD}" y1="16" x2="${W - PAD}" y2="16" stroke="var(--line)" stroke-dasharray="3 4"/>${rects}${marks}</svg>`;
 }
 
+// biểu đồ cột chồng: người dùng đăng ký (tím) và khách (hồng) mỗi ngày
+function stacked(us, gs) {
+  const W = 600, H = 150, PAD = 22, n = us.length;
+  const max = Math.max(1, ...us.map((u, i) => u.dau + gs[i].dau));
+  const bw = (W - PAD * 2) / n;
+  const rects = us.map((u, i) => {
+    const hu = Math.round((u.dau / max) * (H - 30)), hg = Math.round((gs[i].dau / max) * (H - 30)), x = (PAD + i * bw + bw * 0.15).toFixed(1), w = (bw * 0.7).toFixed(1);
+    return `<rect x="${x}" y="${H - 18 - hu}" width="${w}" height="${hu}" fill="var(--accent)"><title>${dm(u.day)}: ${u.dau} đăng ký</title></rect><rect x="${x}" y="${H - 18 - hu - hg}" width="${w}" height="${hg}" fill="var(--guest)"><title>${dm(u.day)}: ${gs[i].dau} khách</title></rect>`;
+  }).join('');
+  const tick = (i) => `<text x="${(PAD + i * bw + bw / 2).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="11" fill="var(--muted)">${dm(us[i].day)}</text>`;
+  const marks = [0, Math.floor((n - 1) / 2), n - 1].filter((v, i, a) => a.indexOf(v) === i).map(tick).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="stat-chart" role="img" aria-label="Người dùng đăng ký và khách hoạt động mỗi ngày, cao nhất ${max} người"><text x="${PAD}" y="12" font-size="11" fill="var(--muted)">${max}</text><line x1="${PAD}" y1="16" x2="${W - PAD}" y2="16" stroke="var(--line)" stroke-dasharray="3 4"/>${rects}${marks}</svg>`;
+}
 const WD = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 const WD_LONG = ['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật'];
 // heatmap giờ cao điểm: 7 dòng (thứ) x 24 cột (giờ), màu đậm hơn = nhiều hơn
@@ -47,26 +60,43 @@ function heatmap(grid, unit) {
     <div class="row" style="gap:6px;justify-content:flex-end"><span class="tiny muted">Ít</span>${[0.15, 0.35, 0.6, 0.8, 1].map((o) => `<i class="hm-key" style="opacity:${o}"></i>`).join('')}<span class="tiny muted">Nhiều</span></div>`;
 }
 
-let days = 30, hmMetric = 'users';
+let days = 30, hmMetric = 'users', seg = 'all';
+const SEG_NAMES = { all: 'Tất cả', users: 'Đã đăng ký', guests: 'Khách' };
 export async function renderStats(body, d = days) {
   days = d;
-  const r = await api('GET', `/admin/stats?days=${days}`);
-  const s = r.summary;
+  const raw = await api('GET', `/admin/stats?days=${days}`);
+  const r = { ...raw.segments[seg], totalUsers: raw.totalUsers, trackedSince: raw.trackedSince };
+  const s = { ...r.summary, totalUsers: raw.totalUsers, trackedSince: raw.trackedSince };
+  const { all, users, guests } = raw.segments;
   const delta = s.dauToday - s.dauYesterday;
   const share = s.totalUsers ? Math.round((s.dauToday / s.totalUsers) * 100) : 0;
+  const who = seg === 'guests' ? 'Khách' : seg === 'users' ? 'Người dùng đã đăng ký' : 'Khách và người dùng';
   const totalViews = r.pages.reduce((n, p) => n + p.views, 0) || 1;
   const tile = (v, l, sub = '') => `<div class="stat-tile"><b>${v}</b><span class="small">${l}</span>${sub ? `<span class="tiny muted">${sub}</span>` : ''}</div>`;
-  body.innerHTML = `<div class="pillnav" role="group" aria-label="Khoảng thời gian">${[7, 30, 90].map((n) => `<button data-sd="${n}" aria-pressed="${days === n}">${n} ngày</button>`).join('')}</div>
+  const cmp = (label, fn) => `<div class="stat-row cmp" role="row"><span role="cell">${label}</span><b role="cell">${fn(all.summary)}</b><span role="cell">${fn(users.summary)}</span><span role="cell">${fn(guests.summary)}</span></div>`;
+  const comparison = `<section class="card col"><div class="h2" style="margin:0">So sánh khách và người dùng đã đăng ký</div>
+      <div class="stat-table" role="table" aria-label="So sánh khách và người dùng đã đăng ký">
+        <div class="stat-row cmp head" role="row"><span role="columnheader"></span><span role="columnheader">Tất cả</span><span role="columnheader">Đăng ký</span><span role="columnheader">Khách</span></div>
+        ${cmp('DAU hôm nay', (x) => fmt(x.dauToday))}${cmp('WAU (7 ngày)', (x) => fmt(x.wau))}${cmp('MAU (30 ngày)', (x) => fmt(x.mau))}
+        ${cmp('Lượt xem hôm nay', (x) => fmt(x.viewsToday))}${cmp(`Lượt xem (${days} ngày)`, (x) => fmt(x.viewsTotal))}
+        ${cmp('Lượt xem/người/ngày', (x) => String(x.avgViewsPerUserDay).replace('.', ','))}${cmp('Thời gian/người/ngày', (x) => fmtDur(x.avgSecondsPerUserDay))}
+      </div>
+      <div class="h2" style="margin:8px 0 0">Người dùng hoạt động mỗi ngày: đăng ký và khách</div>${stacked(users.series, guests.series)}
+      <div class="row" style="gap:12px;justify-content:center"><span class="small"><i class="hm-key" style="opacity:1"></i> Đăng ký</span><span class="small"><i class="hm-key" style="opacity:1;background:var(--guest)"></i> Khách</span></div>
+      <p class="tiny muted">Khách đăng nhập hoặc đăng ký trong cùng ngày chỉ được tính một lần, ở nhóm đăng ký. Cột "Tất cả" là số người khác nhau, không cộng trùng.</p></section>`;
+  body.innerHTML = `${comparison}
+    <div class="pillnav" role="group" aria-label="Xem số liệu của">${Object.entries(SEG_NAMES).map(([k, n]) => `<button data-seg="${k}" aria-pressed="${seg === k}">${n}</button>`).join('')}</div>
+    <div class="pillnav" role="group" aria-label="Khoảng thời gian">${[7, 30, 90].map((n) => `<button data-sd="${n}" aria-pressed="${days === n}">${n} ngày</button>`).join('')}</div>
     <div class="stat-grid">
-      ${tile(fmt(s.dauToday), 'Người dùng hoạt động hôm nay (DAU)', `${delta === 0 ? 'bằng' : delta > 0 ? `tăng ${delta}` : `giảm ${-delta}`} so với hôm qua · ${share}% tổng số`)}
+      ${tile(fmt(s.dauToday), `${who} hoạt động hôm nay (DAU)`, `${delta === 0 ? 'bằng' : delta > 0 ? `tăng ${delta}` : `giảm ${-delta}`} so với hôm qua${seg === 'users' ? ` · ${share}% tổng số tài khoản` : ''}`)}
       ${tile(fmt(s.dauAvg7), 'DAU trung bình 7 ngày')}
       ${tile(fmt(s.wau), 'Hoạt động trong 7 ngày (WAU)')}
-      ${tile(fmt(s.mau), 'Hoạt động trong 30 ngày (MAU)', `trên ${fmt(s.totalUsers)} tài khoản`)}
+      ${tile(fmt(s.mau), 'Hoạt động trong 30 ngày (MAU)', seg === 'users' ? `trên ${fmt(s.totalUsers)} tài khoản` : '')}
       ${tile(fmtDur(s.avgSecondsPerUserDay), 'Thời gian trên app, trung bình mỗi người mỗi ngày')}
       ${tile(fmtDur(s.totalSeconds), `Tổng thời gian trên app (${days} ngày)`)}
       ${tile(fmt(s.viewsToday), 'Lượt xem trang hôm nay', `${fmt(s.viewsTotal)} lượt trong ${days} ngày · ${String(s.avgViewsPerUserDay).replace('.', ',')} lượt/người/ngày`)}
     </div>
-    <section class="card col"><div class="h2" style="margin:0">Người dùng hoạt động mỗi ngày</div>${bars(r.series, 'dau', { label: 'Người dùng hoạt động mỗi ngày' })}</section>
+    <section class="card col"><div class="h2" style="margin:0">${esc(SEG_NAMES[seg])}: hoạt động mỗi ngày</div>${bars(r.series, 'dau', { label: 'Người dùng hoạt động mỗi ngày' })}</section>
     <section class="card col"><div class="h2" style="margin:0">Lượt xem trang mỗi ngày</div>${bars(r.series, 'views', { label: 'Lượt xem trang mỗi ngày' })}</section>
     <section class="card col"><div class="h2" style="margin:0">Thời gian trên app (trung bình mỗi người dùng hoạt động)</div>${bars(r.series, 'avgSeconds', { label: 'Thời gian trung bình mỗi người mỗi ngày', fmtVal: fmtDur })}</section>
     <section class="card col"><div class="row between wrap"><div class="h2" style="margin:0">Heatmap giờ cao điểm</div><div class="pillnav" role="group" aria-label="Chỉ số heatmap" style="margin:0"><button data-hm="users" aria-pressed="${hmMetric === 'users'}">Người dùng</button><button data-hm="views" aria-pressed="${hmMetric === 'views'}">Lượt xem</button></div></div>
@@ -88,6 +118,7 @@ export async function renderStats(body, d = days) {
         ${[...r.series].reverse().map((x) => `<div class="stat-row" role="row"><span role="cell">${dm(x.day)}</span><b role="cell">${fmt(x.dau)}</b><span role="cell">${fmt(x.newUsers)}</span><span role="cell">${fmtDur(x.avgSeconds)}</span></div>`).join('')}
       </div></details>
     <p class="tiny muted">Thống kê tính từ ${r.summary.trackedSince ? esc(r.summary.trackedSince) : 'khi bật tính năng'}, chỉ gồm người đã đăng nhập (chưa tính khách). Thời gian chỉ tính khi bạn đang mở app và có thao tác, ngừng tính sau 3 phút không thao tác. Giờ theo múi giờ Việt Nam.</p>`;
+  $$('[data-seg]', body).forEach((b) => (b.onclick = () => { seg = b.dataset.seg; renderStats(body, days).catch(fail); }));
   $$('[data-sd]', body).forEach((b) => (b.onclick = () => renderStats(body, Number(b.dataset.sd)).catch(fail)));
   $$('[data-hm]', body).forEach((b) => (b.onclick = () => { hmMetric = b.dataset.hm; renderStats(body, days).catch(fail); }));
 }

@@ -275,22 +275,29 @@ if (!db.prepare('PRAGMA table_info(reactions)').all().some((c) => c.name === 'em
   `);
 }
 
-// ---- Thống kê sử dụng (chỉ Admin hệ thống xem) ----------------------------------------
-db.exec(`
-CREATE TABLE IF NOT EXISTS daily_users (
-  day TEXT NOT NULL, user_id INTEGER NOT NULL, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (day, user_id)
-);
-CREATE TABLE IF NOT EXISTS daily_pages (
-  day TEXT NOT NULL, page TEXT NOT NULL, target INTEGER NOT NULL DEFAULT 0, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (day, page, target)
-);
-`);
 
-// Hoạt động theo giờ (để vẽ heatmap giờ cao điểm): mỗi (ngày, giờ, người dùng) một hàng
+// Thống kê theo đối tượng: kind 'u' = người dùng đã đăng ký (actor = id), 'g' = khách (actor = mã ẩn danh trên trình duyệt)
 db.exec(`
-CREATE TABLE IF NOT EXISTS hourly_users (
-  day TEXT NOT NULL, hour INTEGER NOT NULL, user_id INTEGER NOT NULL, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (day, hour, user_id)
+CREATE TABLE IF NOT EXISTS stat_actors (
+  day TEXT NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, kind, actor)
 );
+CREATE TABLE IF NOT EXISTS stat_pages (
+  day TEXT NOT NULL, kind TEXT NOT NULL, page TEXT NOT NULL, target INTEGER NOT NULL DEFAULT 0, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, kind, page, target)
+);
+CREATE TABLE IF NOT EXISTS stat_hours (
+  day TEXT NOT NULL, hour INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, hour, kind, actor)
+);
+CREATE TABLE IF NOT EXISTS visitor_links (vid TEXT PRIMARY KEY, user_id INTEGER NOT NULL, linked_at INTEGER NOT NULL);
 `);
+const hasTable = (n) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(n);
+if (hasTable('daily_users')) {
+  db.exec(`
+    INSERT OR IGNORE INTO stat_actors (day, kind, actor, views, seconds) SELECT day, 'u', CAST(user_id AS TEXT), views, seconds FROM daily_users;
+    INSERT OR IGNORE INTO stat_pages (day, kind, page, target, views, seconds) SELECT day, 'u', page, target, views, seconds FROM daily_pages;
+    INSERT OR IGNORE INTO stat_hours (day, hour, kind, actor, views, seconds) SELECT day, hour, 'u', CAST(user_id AS TEXT), views, seconds FROM hourly_users;
+    DROP TABLE daily_users; DROP TABLE daily_pages; DROP TABLE hourly_users;
+  `);
+}

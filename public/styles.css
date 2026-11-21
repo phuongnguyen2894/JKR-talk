@@ -621,3 +621,7 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .stat-row > :nth-child(n+2) { text-align: right; }
 details.card > summary { font-weight: 700; min-height: 44px; display: flex; align-items: center; cursor: pointer; }
 .hm-key { display: inline-block; width: 18px; height: 12px; border-radius: 3px; background: var(--accent); }
+.stat-row.cmp { grid-template-columns: minmax(0, 1fr) 62px 62px 62px; }
+:root { --guest: #E0508A; }
+@media (prefers-color-scheme: dark) { :root { --guest: #F07FB0; } }
+.stat-row.cmp { grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 0.9fr)); font-size: 13.5px; gap: 6px; }
