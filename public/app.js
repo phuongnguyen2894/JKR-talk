@@ -59,7 +59,7 @@ function renderSide() {
     ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame')}
     ${nav('#/news', 'news', 'Bản tin', 'news', S.unreadNews)}
     ${nav('#/friends', 'friends', 'Bạn bè', 'friends')}
-    <a class="nav-item" href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${coinIcon(20)}<span class="name">Cấp bậc</span></a>
+    <a class="nav-item" href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${coinIcon(20)}<span class="name">Thăng cấp</span></a>
     ${nav('#/tools', 'tools', 'Công cụ', 'tool')}
     ${S.me.role === 'admin' ? '' : `<button class="nav-item" data-act="report-bug">${icon('bug')}<span class="name">Báo lỗi</span></button>`}
     ${S.me.role === 'admin' ? nav('#/bugs', 'bugs', 'Danh sách lỗi', 'bug') : ''}
