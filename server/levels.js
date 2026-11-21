@@ -175,8 +175,9 @@ export function onMessage(user, g, dto, replyOwnerId) {
 }
 
 // Tim: người nhận +2 xu (tối đa 50/ngày, mỗi người thả tối đa 3 tim/ngày cho cùng một người); người thả được tính việc khởi đầu
-export function onHeart(giverId, ownerId, messageId) {
-  if (giverId !== ownerId) award(ownerId, 'heart', 2, { ref: `${messageId}:${giverId}` }); // mỗi người một tim cho mỗi tin nên bật tắt tim không cộng thêm
+export function onHeart(giverId, ownerId, messageId, key = 'heart') {
+  // mỗi react (tim hoặc emoji) +2 xu; mỗi người mỗi emoji một lần trên mỗi tin nên bật tắt không cộng thêm
+  if (giverId !== ownerId) award(ownerId, 'heart', 2, { ref: key === 'heart' ? `${messageId}:${giverId}` : `${messageId}:${giverId}:${key}` });
   recompute(giverId);
 }
 // Đăng bài lên Bản tin: +3 xu

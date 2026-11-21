@@ -12,6 +12,7 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
+import { emojiMeta, EMOJI_LIMIT, EMOJI_MAX_PER_MESSAGE, REACTION_MAX_PER_USER, checkReactionKey, checkEmojiFile, checkEmojiName, addEmoji, countCustomTokens, visibleEmoji, activeEmoji, usageOf } from './emoji.js';
 import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
 
@@ -199,7 +200,7 @@ const guestLimit = (req, _res, next) => { rateLimit(`guest:${req.ip}`, 120, 60_0
 function guestMsg(m, extra = {}) {
   const d = messageDto(m, null);
   return {
-    id: d.id, groupId: d.groupId, body: d.body, imageUrl: d.imageUrl, imageUrls: d.imageUrls, preview: d.preview, fwd: d.fwd,
+    id: d.id, groupId: d.groupId, body: d.body, imageUrl: d.imageUrl, imageUrls: d.imageUrls, preview: d.preview, fwd: d.fwd, reactions: (d.reactions || []).map(({ emoji, count }) => ({ emoji, count })),
     hearts: extra.hearts ?? d.hearts, createdAt: d.createdAt, modRole: d.modRole,
     user: { displayName: d.user.displayName, avatarColor: d.user.avatarColor, avatarUrl: d.user.avatarUrl, deleted: d.user.deleted, staff: d.user.staff, level: d.user.level, frame: d.user.frame, nameColor: d.user.nameColor },
     reply: d.reply && !d.reply.deleted ? { displayName: d.reply.displayName, body: d.reply.body, hasImage: d.reply.hasImage } : null,
@@ -226,6 +227,7 @@ api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
   res.json({ pinned, items: rows.map((m) => ({ ...guestMsg(m, { hearts: m.hc, groupName: getGroup(m.group_id).name }), interactions: m.score })) });
 }));
 api.get('/public/topic-board', guestLimit, wrap((req, res) => res.json({ topics: topicBoard(boardTab(req)).map(({ joined, creatorName, ...t }) => t) })));
+api.get('/public/emoji', guestLimit, wrap((_req, res) => res.json({ emoji: activeEmoji().map(emojiDto) })));
 api.get('/public/news', guestLimit, wrap((_req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
   res.json({ news: rows.map((n) => ({ id: n.id, title: n.title, body: n.body, imageUrl: newsImgs(n)[0] || null, imageUrls: newsImgs(n), pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at, hearts: newsHearts(n.id) })) });
@@ -955,6 +957,7 @@ api.post(
       const r = db.prepare('SELECT id FROM messages WHERE id = ? AND group_id = ?').get(int(req.body.replyTo), gid);
       replyTo = r?.id ?? null;
     }
+    if (countCustomTokens(body) > EMOJI_MAX_PER_MESSAGE) throw bad(`Mỗi tin nhắn dùng tối đa ${EMOJI_MAX_PER_MESSAGE} emoji tùy chỉnh`);
     const mentionIds = validMentions(gid, req.user.id, body, req.body.mentions);
     // @everyone: chỉ Admin (toàn hệ thống), không dùng trong tin nhắn riêng
     const mentionAll = /(^|\s)@everyone(?![\p{L}\p{N}_])/iu.test(body) && isSystemAdmin(req.user.id) && g.type !== 'dm';
@@ -1039,34 +1042,107 @@ api.post(
   })
 );
 
-// Thả tim màu tím: bật/tắt, mỗi người 1 tim cho mỗi tin; không tự thả tim tin của mình
-api.post(
-  '/messages/:id/heart',
-  wrap((req, res) => {
-    rateLimit(`heart:${req.user.id}`, 60, 60_000);
-    const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
-    if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
-    autoJoinTopic(msg.group_id, req.user.id);
-    if (getGroup(msg.group_id)?.type !== 'hot') requireMember(msg.group_id, req.user.id);
-    // tin chuyển tiếp: thả tim vào tin gốc
-    const root = msg.fwd_id ? db.prepare('SELECT * FROM messages WHERE id = ?').get(msg.fwd_id) : msg;
-    if (!root || root.deleted) throw notFound('Tin nhắn gốc không còn');
-    if (msg.user_id === req.user.id || root.user_id === req.user.id) throw bad('Bạn không thể thả tim tin nhắn của mình');
-    const had = db.prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ?').get(root.id, req.user.id);
-    if (had) db.prepare('DELETE FROM reactions WHERE message_id = ? AND user_id = ?').run(root.id, req.user.id);
-    else db.prepare('INSERT INTO reactions (message_id, user_id, created_at) VALUES (?,?,?)').run(root.id, req.user.id, now());
-    const hearts = db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(root.id).c;
-    // báo cho mọi nhóm đang hiển thị tin gốc hoặc bản chuyển tiếp của nó
-    for (const t of db.prepare('SELECT id, group_id FROM messages WHERE (id = ? OR fwd_id = ?) AND deleted = 0').all(root.id, root.id)) {
-      hub.sendMany(memberIds(t.group_id), { type: 'heart', groupId: t.group_id, messageId: t.id, hearts });
-    }
-    if (!had) onHeart(req.user.id, root.user_id, root.id);
-    if (!had && [1, 5, 10, 25, 50, 100].includes(hearts)) {
-      notify(root.user_id, 'heart', hearts === 1 ? `${req.user.display_name} đã thả tim tin nhắn của bạn` : `Tin nhắn của bạn đã nhận được ${hearts} tim`, { url: `/#/chat/${root.group_id}`, tag: `heart-${root.id}` });
-    }
-    res.json({ hearts, hearted: !had });
-  })
-);
+// React tin nhắn bằng tim hoặc emoji: bật/tắt; mỗi người tối đa 3 react khác nhau trên một tin; không tự react tin của mình.
+// Mỗi react tính như một tim (điểm tương tác, xu tím cho chủ tin).
+function reactTo(req, res, key) {
+  rateLimit(`heart:${req.user.id}`, 60, 60_000);
+  const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
+  if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
+  autoJoinTopic(msg.group_id, req.user.id);
+  if (getGroup(msg.group_id)?.type !== 'hot') requireMember(msg.group_id, req.user.id);
+  // tin chuyển tiếp: react vào tin gốc
+  const root = msg.fwd_id ? db.prepare('SELECT * FROM messages WHERE id = ?').get(msg.fwd_id) : msg;
+  if (!root || root.deleted) throw notFound('Tin nhắn gốc không còn');
+  if (msg.user_id === req.user.id || root.user_id === req.user.id) throw bad('Bạn không thể react tin nhắn của mình');
+  const had = db.prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').get(root.id, req.user.id, key);
+  const chk = checkReactionKey(key, { forNew: !had });
+  if (!chk.ok) throw bad(chk.error);
+  if (had) db.prepare('DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').run(root.id, req.user.id, key);
+  else {
+    if (db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ? AND user_id = ?').get(root.id, req.user.id).c >= REACTION_MAX_PER_USER) throw bad(`Mỗi tin chỉ react tối đa ${REACTION_MAX_PER_USER} emoji khác nhau`);
+    db.prepare('INSERT INTO reactions (message_id, user_id, emoji, created_at) VALUES (?,?,?,?)').run(root.id, req.user.id, key, now());
+  }
+  const summary = db.prepare('SELECT emoji, COUNT(*) c FROM reactions WHERE message_id = ? GROUP BY emoji ORDER BY MIN(created_at)').all(root.id).map((r) => ({ emoji: r.emoji, count: r.c, ...(r.emoji.startsWith('e:') ? { custom: emojiMeta(r.emoji) } : {}) }));
+  const hearts = summary.reduce((n, r) => n + r.count, 0);
+  // báo cho mọi nhóm đang hiển thị tin gốc hoặc bản chuyển tiếp của nó
+  for (const t of db.prepare('SELECT id, group_id FROM messages WHERE (id = ? OR fwd_id = ?) AND deleted = 0').all(root.id, root.id)) {
+    hub.sendMany(memberIds(t.group_id), { type: 'reactions', groupId: t.group_id, messageId: t.id, reactions: summary, hearts, actorId: req.user.id, emoji: key, added: !had });
+  }
+  if (!had) onHeart(req.user.id, root.user_id, root.id, key);
+  if (!had && [1, 5, 10, 25, 50, 100].includes(hearts)) {
+    notify(root.user_id, 'heart', hearts === 1 ? `${req.user.display_name} đã react tin nhắn của bạn` : `Tin nhắn của bạn đã nhận được ${hearts} react`, { url: `/#/chat/${root.group_id}`, tag: `heart-${root.id}` });
+  }
+  const mine = new Set(db.prepare('SELECT emoji FROM reactions WHERE message_id = ? AND user_id = ?').all(root.id, req.user.id).map((r) => r.emoji));
+  res.json({ hearts, hearted: mine.has('heart'), reactions: summary.map((r) => ({ ...r, mine: mine.has(r.emoji) })) });
+}
+api.post('/messages/:id/heart', wrap((req, res) => reactTo(req, res, 'heart'))); // tim tím: react mặc định
+api.post('/messages/:id/react', wrap((req, res) => reactTo(req, res, String(req.body.emoji || ''))));
+// Ai đã react: theo từng emoji
+api.get('/messages/:id/reactions', wrap((req, res) => {
+  const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(int(req.params.id));
+  if (!msg || msg.deleted) throw notFound('Tin nhắn không tồn tại');
+  const g = getGroup(msg.group_id);
+  if (!['hot', 'trend', 'country', 'region', 'province', 'topic'].includes(g.type)) requireMember(msg.group_id, req.user.id);
+  const root = msg.fwd_id || msg.id;
+  const rows = db.prepare('SELECT emoji, user_id FROM reactions WHERE message_id = ? ORDER BY created_at LIMIT 400').all(root);
+  const by = new Map();
+  for (const r of rows) {
+    const u = getUser(r.user_id);
+    if (!u || u.status === 'deleted') continue;
+    if (!by.has(r.emoji)) by.set(r.emoji, []);
+    by.get(r.emoji).push(publicUser(u));
+  }
+  res.json({ reactions: [...by].map(([emoji, users]) => ({ emoji, users })) });
+}));
+
+// ---- Emoji tùy chỉnh: ai cũng xem và dùng được; chỉ Admin thêm, đổi tên, ẩn, xóa ----
+const emojiDto = (e) => ({ id: e.id, name: e.name, url: e.url, hidden: !!e.hidden });
+const tellEmojiChanged = () => hub.sendMany(db.prepare("SELECT id FROM users WHERE status = 'active'").all().map((u) => u.id), { type: 'emoji_changed' });
+// trả cả emoji đã ẩn (cờ hidden) để tin cũ vẫn hiển thị hình; bảng chọn chỉ liệt kê emoji không ẩn
+api.get('/emoji', wrap((_req, res) => res.json({ emoji: activeEmoji().map(emojiDto), limit: EMOJI_LIMIT })));
+api.get('/admin/emoji', adminOnly, wrap((_req, res) => {
+  res.json({
+    limit: EMOJI_LIMIT,
+    emoji: activeEmoji().map((e) => ({ ...emojiDto(e), hidden: !!e.hidden, createdAt: e.created_at, createdBy: e.created_by ? publicUser(getUser(e.created_by)).displayName : null, uses: usageOf(e.name) })),
+  });
+}));
+api.post('/admin/emoji', adminOnly, wrap((req, res) => {
+  rateLimit(`emoji:${req.user.id}`, 30, 60_000);
+  const name = str(req.body.name, 40).toLowerCase();
+  const url = String(req.body.imageUrl || '');
+  const bad1 = checkEmojiName(name) || checkEmojiFile(url, UPLOAD_DIR);
+  if (bad1) throw bad(bad1);
+  if (activeEmoji().length >= EMOJI_LIMIT) throw bad(`Đã đủ ${EMOJI_LIMIT} emoji, hãy xóa bớt trước khi thêm`);
+  const id = addEmoji(name, url, req.user.id);
+  log(req.user.id, 'add_emoji', { reason: name });
+  tellEmojiChanged();
+  res.status(201).json({ emoji: emojiDto(db.prepare('SELECT * FROM custom_emoji WHERE id = ?').get(id)) });
+}));
+api.patch('/admin/emoji/:id', adminOnly, wrap((req, res) => {
+  const e = db.prepare('SELECT * FROM custom_emoji WHERE id = ? AND deleted_at IS NULL').get(int(req.params.id));
+  if (!e) throw notFound('Không tìm thấy emoji');
+  if (req.body.name !== undefined) {
+    const name = str(req.body.name, 40).toLowerCase();
+    const err = name === e.name ? null : checkEmojiName(name, e.id);
+    if (err) throw bad(err);
+    db.prepare('UPDATE custom_emoji SET name = ? WHERE id = ?').run(name, e.id);
+  }
+  if (req.body.hidden !== undefined) db.prepare('UPDATE custom_emoji SET hidden = ? WHERE id = ?').run(req.body.hidden ? 1 : 0, e.id);
+  log(req.user.id, 'edit_emoji', { reason: e.name });
+  tellEmojiChanged();
+  res.json({ emoji: emojiDto(db.prepare('SELECT * FROM custom_emoji WHERE id = ?').get(e.id)) });
+}));
+api.delete('/admin/emoji/:id', adminOnly, wrap((req, res) => {
+  const e = db.prepare('SELECT * FROM custom_emoji WHERE id = ? AND deleted_at IS NULL').get(int(req.params.id));
+  if (!e) throw notFound('Không tìm thấy emoji');
+  tx(() => {
+    db.prepare('UPDATE custom_emoji SET deleted_at = ? WHERE id = ?').run(now(), e.id);
+    db.prepare('DELETE FROM reactions WHERE emoji = ?').run(`e:${e.id}`); // react bằng emoji đã xóa biến mất
+  });
+  log(req.user.id, 'delete_emoji', { reason: e.name });
+  tellEmojiChanged();
+  res.json({ ok: true });
+}));
 
 // Chủ đề nóng: 38 tin nhắn nhận được nhiều tim nhất trong 24 giờ qua, ở các group công khai
 const HOT_LIMIT = 38; // tối đa 38 tin

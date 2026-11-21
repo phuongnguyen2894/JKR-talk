@@ -2,6 +2,7 @@
 import { $, esc, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, actions, lightbox, linkify, newsGallery, roleOf, avatarR, roleClass, roleSr } from './core.js';
 import { previewHtml } from './chat.js';
 import { boardCard, HOT_TABS, sectionHead, ALL_N } from './hot.js';
+import { loadEmoji, emojiHtml } from './emoji.js';
 import { renderTools } from './pages.js';
 
 const G = { groups: null, trendId: 0 };
@@ -65,6 +66,7 @@ function msgHtml(m) {
       ${fwd}${quote}${m.body ? `<div class="text">${linkify(m.body)}</div>` : ''}${(m.imageUrls?.length || m.imageUrl) ? `<div class="bmedia">${newsGallery(m.imageUrls?.length ? m.imageUrls : [m.imageUrl], 'guest-zoom')}</div>` : ''}
       ${previewHtml(m.preview)}
       <div class="row" style="gap:4px;margin-top:2px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
+      ${(m.reactions || []).length ? `<div class="reacts">${m.reactions.map((r) => `<span class="rchip">${emojiHtml(r.emoji, r.custom)}<span>${r.count}</span></span>`).join('')}</div>` : ''}
     </div></div>`;
 }
 actions['guest-zoom'] = (el) => lightbox(el.dataset.src);
@@ -160,7 +162,7 @@ export async function routeGuest(root, r) {
   if (!['explore', 'g', 'hot', 'news', 'tools', ''].includes(r.name)) return false;
   if (!r.name) return go('#/news'), true; // vào trang gốc → Bản tin
   buildGuestShell(root);
-  await loadGroups();
+  await Promise.all([loadGroups(), loadEmoji(true)]);
   const app = $('#app');
   app.classList.toggle('show-side', r.name === 'explore');
   app.classList.toggle('in-chat', r.name === 'g');

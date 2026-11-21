@@ -571,3 +571,31 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .shop-item { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
 .shop-item .btn, .shop-item .st { max-width: 100%; }
 .shop-mine { min-width: 0; }
+
+/* ---- emoji tùy chỉnh, react, bảng chọn emoji ---- */
+.cemoji { width: 22px; height: 22px; vertical-align: -5px; object-fit: contain; }
+.emoji-only { background: transparent !important; border-color: transparent !important; padding: 2px 0 !important; }
+.emoji-only .cemoji { width: 48px; height: 48px; vertical-align: middle; }
+.reacts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.msg.own .reacts { justify-content: flex-end; }
+.reacts:empty { display: none; }
+.rchip, .radd { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 0 10px; border: 1px solid var(--line); background: var(--surface); color: var(--accent); font: 700 13px inherit; border-radius: 99px; }
+.rchip.mine { background: var(--soft); border-color: var(--accent); }
+.rchip .cemoji { width: 20px; height: 20px; vertical-align: middle; }
+.rchip .rx-u { font-size: 17px; line-height: 1; }
+.rx-heart { width: 18px; height: 18px; color: var(--heart); display: block; }
+.radd { width: 32px; padding: 0; border-style: dashed; }
+.reactbtn { color: var(--muted); display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 0 6px; }
+.reactbtn svg { width: 17px; height: 17px; }
+.backdrop:has(.modal.sheet) { align-items: flex-end; padding: 0; }
+.modal.sheet { max-width: 560px; border-radius: 22px 22px 0 0; max-height: 78vh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.sheet-grab { align-self: center; width: 44px; height: 5px; border-radius: 99px; background: var(--line); flex: none; }
+.pk-sec { font-size: 12.5px; font-weight: 700; letter-spacing: .05em; color: var(--muted); display: flex; justify-content: space-between; margin: 8px 0 4px; }
+.pk-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.pk { width: 40px; height: 40px; border: 0; background: none; border-radius: 10px; padding: 3px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.pk:hover, .pk:focus-visible { background: var(--soft); }
+.pk .cemoji { width: 32px; height: 32px; vertical-align: middle; }
+.pk .rx-heart { width: 28px; height: 28px; }
+.pk-body { overflow-y: auto; max-height: 52vh; }
+.emoji-panel-lg { max-height: 260px; overflow-y: auto; display: block; padding: 8px; grid-template-columns: none; }
+.emoji-row.hid { opacity: .55; }

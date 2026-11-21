@@ -263,15 +263,20 @@ export async function imageToDataUrl(file, maxSide = 1600) {
 
 // Văn bản → HTML đã escape, liên kết http(s) thành thẻ <a> hiển thị rút gọn
 // Đoạn văn thường: escape + tô sáng các @tên đã được tag
+// :tên: của emoji tùy chỉnh thành hình (tên không có trong danh sách thì giữ nguyên chữ)
+function withEmoji(h) {
+  if (!S.emojiByName || !h.includes(':')) return h;
+  return h.replace(/:([a-z0-9_]{2,32}):/g, (m, n) => { const e = S.emojiByName[n]; return e ? `<img class="cemoji" src="${esc(e.url)}" alt=":${n}:" title=":${n}:" loading="lazy" decoding="async">` : m; });
+}
 function plainHtml(seg, mentions) {
   const h = esc(seg);
-  if (!mentions?.length) return h;
+  if (!mentions?.length) return withEmoji(h);
   const by = new Map(mentions.map((u) => ['@' + u.displayName.toLowerCase(), u]));
   const tags = [...by.keys()].sort((a, b) => b.length - a.length).map((t) => esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return h.replace(new RegExp(tags.join('|'), 'gi'), (t) => {
     const u = by.get(t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").toLowerCase());
     return '<span class="mention' + (u && (u.all || S.me?.id === u.id) ? ' me' : '') + '">' + t + '</span>';
-  });
+  }).replace(/(<span class="mention[^>]*>.*?<\/span>)|([^<]+)/g, (all, tag, txt) => (tag ? tag : withEmoji(txt)));
 }
 export function linkify(text, mentions) {
   const t = String(text ?? '');

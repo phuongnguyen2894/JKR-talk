@@ -1293,3 +1293,95 @@ test('Đẩy trend: dọn các tin có link trùng có từ trước, giữ tin 
   assert.ok(!left.includes(b)); // bản trùng đăng sau bị xóa
   assert.ok(left.includes(c)); // link khác được giữ
 });
+
+test('emoji tùy chỉnh: chỉ Admin thêm, kiểm tra tên và ảnh, ẩn, đổi tên, xóa; ai cũng xem và dùng được', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('emojiUser', 1);
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const up = (await call('POST', '/upload', { dataUrl: png }, adm.token)).data.url;
+  // người thường không thêm được
+  assert.equal((await call('POST', '/admin/emoji', { name: 'cuoi_lan', imageUrl: up }, u.token)).status, 403);
+  // tên và ảnh không hợp lệ
+  for (const name of ['a', 'Cuoi Lan', 'có_dấu', 'x'.repeat(33)]) assert.equal((await call('POST', '/admin/emoji', { name, imageUrl: up }, adm.token)).status, 400, name);
+  assert.equal((await call('POST', '/admin/emoji', { name: 'anh_loi', imageUrl: '/uploads/khong-co.png' }, adm.token)).status, 400);
+  const jpg = (await call('POST', '/upload', { dataUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=' }, adm.token)).data.url;
+  assert.equal((await call('POST', '/admin/emoji', { name: 'anh_jpg', imageUrl: jpg }, adm.token)).status, 400); // chỉ PNG, GIF, WebP
+  // thêm thành công, tên trùng bị từ chối
+  const add = await call('POST', '/admin/emoji', { name: 'cuoi_lan', imageUrl: up }, adm.token);
+  assert.equal(add.status, 201, JSON.stringify(add.data));
+  assert.equal((await call('POST', '/admin/emoji', { name: 'cuoi_lan', imageUrl: up }, adm.token)).status, 400);
+  const id = add.data.emoji.id;
+  // mọi người dùng xem được; khách cũng xem được
+  assert.ok((await call('GET', '/emoji', null, u.token)).data.emoji.some((e) => e.name === 'cuoi_lan'));
+  assert.ok((await call('GET', '/public/emoji')).data.emoji.some((e) => e.name === 'cuoi_lan'));
+  // danh sách quản trị có số lần dùng; người thường không xem được
+  assert.equal((await call('GET', '/admin/emoji', null, u.token)).status, 403);
+  const vn = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((g) => g.type === 'country');
+  await call('POST', `/groups/${vn.id}/rules-ack`, {}, u.token);
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'vui quá :cuoi_lan: :cuoi_lan:' }, u.token);
+  assert.equal((await call('GET', '/admin/emoji', null, adm.token)).data.emoji.find((e) => e.id === id).uses, 1);
+  // mỗi tin tối đa 20 emoji tùy chỉnh
+  assert.equal((await call('POST', `/groups/${vn.id}/messages`, { body: ':cuoi_lan:'.repeat(21) }, u.token)).status, 400);
+  // đổi tên, ẩn
+  assert.equal((await call('PATCH', `/admin/emoji/${id}`, { name: 'Sai Ten' }, adm.token)).status, 400);
+  assert.equal((await call('PATCH', `/admin/emoji/${id}`, { hidden: true }, adm.token)).status, 200);
+  assert.equal((await call('GET', '/emoji', null, u.token)).data.emoji.find((e) => e.id === id).hidden, true); // ẩn khỏi bảng chọn nhưng tin cũ vẫn hiện hình
+  await call('PATCH', `/admin/emoji/${id}`, { hidden: false }, adm.token);
+  // xóa: tên được giữ 30 ngày
+  assert.equal((await call('DELETE', `/admin/emoji/${id}`, {}, adm.token)).status, 200);
+  assert.ok(!(await call('GET', '/emoji', null, u.token)).data.emoji.some((e) => e.id === id));
+  const again = await call('POST', '/admin/emoji', { name: 'cuoi_lan', imageUrl: up }, adm.token);
+  assert.equal(again.status, 400);
+  assert.ok(again.data.error.includes('xóa gần đây'));
+});
+
+test('react bằng emoji: tim và emoji tính như tim, tối đa 3 react mỗi người, xem ai đã react, emoji bị xóa thì react biến mất', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const a = await signup('reactA', 1), b = await signup('reactB', 1), c = await signup('reactC', 1);
+  const vn = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((g) => g.type === 'country');
+  for (const x of [a, b, c]) await call('POST', `/groups/${vn.id}/rules-ack`, {}, x.token);
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const mkEmoji = async (name) => (await call('POST', '/admin/emoji', { name, imageUrl: (await call('POST', '/upload', { dataUrl: png }, adm.token)).data.url }, adm.token)).data.emoji.id;
+  const e1 = await mkEmoji('react_vui'), e2 = await mkEmoji('react_khoc'), e3 = await mkEmoji('react_gian');
+  const m = (await call('POST', `/groups/${vn.id}/messages`, { body: 'tin để react' }, a.token)).data.message;
+  const coinsA0 = (await call('GET', '/me/level', null, a.token)).data.level.coins;
+  // không tự react tin của mình; emoji lạ bị từ chối
+  assert.equal((await call('POST', `/messages/${m.id}/react`, { emoji: 'heart' }, a.token)).status, 400);
+  assert.equal((await call('POST', `/messages/${m.id}/react`, { emoji: 'e:99999' }, b.token)).status, 400);
+  assert.equal((await call('POST', `/messages/${m.id}/react`, { emoji: 'u:🦄' }, b.token)).status, 400);
+  assert.equal((await call('POST', `/messages/${m.id}/react`, { emoji: 'abc' }, b.token)).status, 400);
+  // B react tim, emoji tùy chỉnh và emoji mặc định; react thứ 4 bị từ chối
+  assert.equal((await call('POST', `/messages/${m.id}/react`, { emoji: 'heart' }, b.token)).status, 200);
+  assert.equal((await call('POST', `/messages/${m.id}/react`, { emoji: `e:${e1}` }, b.token)).status, 200);
+  const r3 = await call('POST', `/messages/${m.id}/react`, { emoji: 'u:😂' }, b.token);
+  assert.equal(r3.status, 200);
+  assert.equal(r3.data.hearts, 3); // mỗi react tính như một tim
+  assert.deepEqual(r3.data.reactions.map((r) => r.emoji).sort(), ['e:' + e1, 'heart', 'u:😂'].sort());
+  assert.ok(r3.data.reactions.every((r) => r.mine));
+  assert.equal((await call('POST', `/messages/${m.id}/react`, { emoji: `e:${e2}` }, b.token)).status, 400);
+  // chủ tin được +2 xu mỗi react
+  assert.equal((await call('GET', '/me/level', null, a.token)).data.level.coins, coinsA0 + 6);
+  // C react cùng emoji: số đếm tăng, mine chỉ của người xem
+  await call('POST', `/messages/${m.id}/react`, { emoji: `e:${e1}` }, c.token);
+  const view = (await call('GET', `/groups/${vn.id}/messages`, null, c.token)).data.messages.find((x) => x.id === m.id);
+  assert.equal(view.hearts, 4);
+  assert.equal(view.reactions.find((r) => r.emoji === `e:${e1}`).count, 2);
+  assert.equal(view.reactions.find((r) => r.emoji === `e:${e1}`).mine, true);
+  assert.equal(view.reactions.find((r) => r.emoji === 'heart').mine, false);
+  assert.equal(view.hearted, false);
+  // bật tắt: bỏ react không cộng thêm xu khi bật lại
+  await call('POST', `/messages/${m.id}/react`, { emoji: 'u:😂' }, b.token); // bỏ
+  await call('POST', `/messages/${m.id}/react`, { emoji: 'u:😂' }, b.token); // bật lại
+  assert.equal((await call('GET', '/me/level', null, a.token)).data.level.coins, coinsA0 + 8); // chỉ thêm react của C
+  // tim cũ vẫn là react 'heart'
+  assert.equal((await call('POST', `/messages/${m.id}/heart`, {}, c.token)).data.hearted, true);
+  // ai đã react
+  const who = (await call('GET', `/messages/${m.id}/reactions`, null, a.token)).data.reactions;
+  assert.deepEqual(who.find((r) => r.emoji === `e:${e1}`).users.map((x) => x.displayName).sort(), ['reactB', 'reactC']);
+  // ẩn emoji: react cũ còn, react mới bị chặn; xóa emoji: react biến mất
+  await call('PATCH', `/admin/emoji/${e1}`, { hidden: true }, adm.token);
+  assert.equal((await call('POST', `/messages/${m.id}/react`, { emoji: `e:${e1}` }, (await signup('reactD', 1)).token)).status, 400); // emoji đã ẩn: không react mới được
+  await call('DELETE', `/admin/emoji/${e1}`, {}, adm.token);
+  const after = (await call('GET', `/groups/${vn.id}/messages`, null, a.token)).data.messages.find((x) => x.id === m.id);
+  assert.ok(!after.reactions.some((r) => r.emoji === `e:${e1}`));
+});

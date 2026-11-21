@@ -250,3 +250,27 @@ CREATE TABLE IF NOT EXISTS user_items (
   user_id INTEGER NOT NULL, item TEXT NOT NULL, price INTEGER NOT NULL, acquired_at INTEGER NOT NULL, PRIMARY KEY (user_id, item)
 );
 `);
+
+// ---- Emoji tùy chỉnh và react bằng emoji ---------------------------------------------
+db.exec(`
+CREATE TABLE IF NOT EXISTS custom_emoji (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL,
+  hidden INTEGER NOT NULL DEFAULT 0, created_by INTEGER, created_at INTEGER NOT NULL, deleted_at INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_emoji_name ON custom_emoji(name) WHERE deleted_at IS NULL;
+`);
+// reactions: thêm cột emoji vào khóa chính (tim cũ chuyển thành react 'heart')
+if (!db.prepare('PRAGMA table_info(reactions)').all().some((c) => c.name === 'emoji')) {
+  db.exec(`
+    BEGIN;
+    CREATE TABLE reactions_new (
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL, emoji TEXT NOT NULL DEFAULT 'heart', created_at INTEGER NOT NULL,
+      PRIMARY KEY (message_id, user_id, emoji)
+    );
+    INSERT INTO reactions_new (message_id, user_id, emoji, created_at) SELECT message_id, user_id, 'heart', created_at FROM reactions;
+    DROP TABLE reactions;
+    ALTER TABLE reactions_new RENAME TO reactions;
+    COMMIT;
+  `);
+}

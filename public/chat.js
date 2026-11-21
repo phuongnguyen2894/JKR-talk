@@ -1,5 +1,6 @@
 import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, newsGallery, roleOf, avatarR, roleClass, roleSr, lvBadge, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
 import { maybeAskPush } from './push.js';
+import { rememberRx, reactsHtml, composerPanelHtml, wireEmojiSuggest, reactIcon } from './emoji.js';
 import { nameCls } from './frames.js';
 
 const PUBLIC = ['country', 'region', 'province', 'topic'];
@@ -137,7 +138,7 @@ function composerHtml() {
     ${g.type === 'trend' ? '<div class="tiny muted" style="padding:4px 12px 0">Tin trong Đẩy trend tự xóa sau 38 giờ. Link đã có sẽ không được gửi lại.</div>' : ''}
     ${C.replyTo ? `<div class="replybar"><span class="grow small">Trả lời <b>${esc(C.replyTo.name)}</b>: ${esc(C.replyTo.text)}</span><button class="link-btn" data-act="cancel-reply" aria-label="Hủy trả lời">${icon('x', 14)}</button></div>` : ''}
     ${C.images.length ? `<div class="preview-row">${C.images.map((u, i) => `<div class="preview"><img src="${esc(u)}" alt="Ảnh sẽ gửi ${i + 1}"><button type="button" data-act="remove-image" data-i="${i}" aria-label="Bỏ ảnh ${i + 1}">${icon('x', 14)}</button></div>`).join('')}</div>` : ''}
-    ${C.emoji ? `<div class="emoji-panel">${EMOJI.map((e) => `<button type="button" data-act="emoji" data-e="${e}" aria-label="${e}">${e}</button>`).join('')}</div>` : ''}
+    ${C.emoji ? composerPanelHtml() : ''}
     <form id="msgform" autocomplete="off">
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
       <button type="button" class="icon-btn" data-act="pick-image" aria-label="Gửi ảnh">${icon('image', 22)}</button>
@@ -183,6 +184,7 @@ function wireComposer() {
     }
   };
   wireMention();
+  wireEmojiSuggest($('#msg'), $('#composer'));
   $('#file').onchange = async (e) => {
     const files = [...e.target.files];
     e.target.value = '';
@@ -267,16 +269,22 @@ export function previewHtml(p) {
     <span class="lp-s">${esc(p.site)}${p.time ? ` · ${fmtDateTime(p.time)}` : ''}</span></a>`;
 }
 
+// tin chỉ gồm 1 đến 5 emoji tùy chỉnh (đều có thật) thì hiện to
+function onlyEmoji(body) {
+  if (!/^(?:\s*:[a-z0-9_]{2,32}:\s*){1,5}$/.test(body)) return '';
+  return [...body.matchAll(/:([a-z0-9_]{2,32}):/g)].every((x) => S.emojiByName?.[x[1]]) ? ' emoji-only' : '';
+}
 function msgHtml(m) {
   const own = mine(m);
   const quote = m.reply && !m.reply.deleted ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
   const text = m.deleted
     ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
-    : (m.body ? (own ? `<div class="bubble">${linkify(m.body, mentionsOf(m))}</div>` : `<div class="text">${linkify(m.body, mentionsOf(m))}</div>`) : '');
+    : (m.body ? (own ? `<div class="bubble${onlyEmoji(m.body)}">${linkify(m.body, mentionsOf(m))}</div>` : `<div class="text${onlyEmoji(m.body)}">${linkify(m.body, mentionsOf(m))}</div>`) : '');
   // ảnh (tối đa 4, dạng lưới) và xem trước link nằm dưới chữ
   const media = m.deleted ? '' : `${newsGallery(m.imageUrls?.length ? m.imageUrls : m.imageUrl ? [m.imageUrl] : [], 'zoom')}${m.preview ? previewHtml(m.preview) : ''}`;
   const rr = roleOf(m.user, m.modRole);
-  const heartBtn = m.deleted ? '' : `<button type="button" class="heart ${m.hearted ? 'on' : ''}" data-act="heart" data-id="${m.id}" ${own || !canAct() ? 'disabled' : ''} aria-pressed="${m.hearted}" aria-label="Thả tim, hiện có ${m.hearts} tim">${icon('heart', 15, m.hearted ? 'fill="currentColor"' : '')}<span class="hc">${m.hearts || ''}</span></button>`;
+  rememberRx(m);
+  const reactBtn = m.deleted || own || !canAct() ? '' : `<button type="button" class="link-btn reactbtn" data-act="react-open" data-id="${m.id}" aria-label="Thêm react">${reactIcon}</button>`;
   const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
   const canReply = canAct() && !(C.group.type === 'trend' && !C.group.canPost);
   const acts = m.deleted ? '' : `<div class="actions">
@@ -284,6 +292,7 @@ function msgHtml(m) {
       <div class="msg-menu" role="menu" hidden>
         ${canReply ? `<button type="button" role="menuitem" data-act="reply" data-id="${m.id}">Trả lời</button>` : ''}
         <button type="button" role="menuitem" data-act="fwd-msg" data-id="${m.id}">Chuyển tiếp</button>
+        <button type="button" role="menuitem" data-act="react-who" data-id="${m.id}">Ai đã react</button>
         ${C.group.canPin ? `<button type="button" role="menuitem" data-act="pin-msg" data-id="${m.id}">${C.group.pinned?.id === m.id ? 'Bỏ ghim' : 'Ghim lên đầu nhóm'}</button>` : ''}
         ${!own && canAct() ? `<button type="button" role="menuitem" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
         ${canDelete(m) ? `<button type="button" role="menuitem" class="danger" data-act="del-msg" data-id="${m.id}">Xóa</button>` : ''}
@@ -295,7 +304,8 @@ function msgHtml(m) {
     ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
-      ${fwdTag}${quote}${media ? `${text}<div class="bline"><div class="bmedia">${media}</div><div class="row">${heartBtn}${acts}</div></div>` : `<div class="bline">${text}<div class="row">${heartBtn}${acts}</div></div>`}
+      ${fwdTag}${quote}${media ? `${text}<div class="bline"><div class="bmedia">${media}</div><div class="row">${reactBtn}${acts}</div></div>` : `<div class="bline">${text}<div class="row">${reactBtn}${acts}</div></div>`}
+      ${reactsHtml(m, { own, can: canAct() })}
     </div></div>`;
 }
 
@@ -343,8 +353,6 @@ export function onSocket(ev) {
   } else if (ev.type === 'pin' && C && C.gid === ev.groupId) {
     C.group.pinned = ev.message;
     redrawPin();
-  } else if (ev.type === 'heart' && C && C.gid === ev.groupId) {
-    setHeart($(`.msg[data-mid="${ev.messageId}"] .heart`), ev.hearts);
   } else if (ev.type === 'message_preview' && C && C.gid === ev.groupId) {
     const el = $(`.msg[data-mid="${ev.messageId}"] .body`);
     if (el && !$('.lp', el)) {

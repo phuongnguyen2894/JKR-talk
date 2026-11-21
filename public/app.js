@@ -2,6 +2,7 @@ import { $, $$, esc, S, api, go, icon, avatar, fmtDateTime, toast, fail, openMod
 import { renderLevel, showLevelUp } from './level.js';
 import { renderShop, renderTitles } from './shop.js';
 import { nameCls } from './frames.js';
+import { loadEmoji, onReactionsEvent } from './emoji.js';
 import { renderChat, onSocket } from './chat.js';
 import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
@@ -150,6 +151,8 @@ function connectWs() {
   ws.onopen = () => { if (wsTries) { refreshGroups().catch(() => {}); } wsTries = 0; };
   ws.onmessage = (e) => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
+    if (ev.type === 'reactions') return onReactionsEvent(ev);
+    if (ev.type === 'emoji_changed') return void loadEmoji().catch(() => {});
     if (['message', 'message_deleted', 'message_preview', 'heart', 'pin'].includes(ev.type)) return onSocket(ev);
     if (ev.type === 'notification') {
       S.unreadNotif++; renderSide();
@@ -177,7 +180,7 @@ async function boot() {
     if (!S.token) return route();
     const meRes = await api('GET', '/me');
     S.me = meRes.user;
-    await Promise.all([refreshGroups(), refreshCounters()]);
+    await Promise.all([refreshGroups(), refreshCounters(), loadEmoji()]);
     connectWs();
     syncPush();
     if (!parseHash().name || ['login', 'register'].includes(parseHash().name)) {

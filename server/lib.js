@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { emojiMeta } from './emoji.js';
 import { pushToUser, PUSH_TYPE_MAP } from './push.js';
 import { db, now } from './db.js';
 import { provinceById, regionByCode } from './geo.js';
@@ -234,11 +235,15 @@ export function messageDto(m, viewerId) {
   // tin chuyển tiếp: tim được tính chung cho tin gốc
   const rootId = m.fwd_id || m.id;
   const rootGone = m.fwd_id ? !db.prepare('SELECT 1 FROM messages WHERE id = ? AND deleted = 0').get(rootId) : false;
-  const hearts = rootGone ? 0 : db.prepare('SELECT COUNT(*) c FROM reactions WHERE message_id = ?').get(rootId).c;
-  const hearted = viewerId && !rootGone ? !!db.prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ?').get(rootId, viewerId) : false;
+  // mỗi react (tim hoặc emoji) tính như một tim
+  const rx = rootGone || m.deleted ? [] : db.prepare('SELECT emoji, COUNT(*) c, MAX(user_id = ?) mine FROM reactions WHERE message_id = ? GROUP BY emoji ORDER BY MIN(created_at)').all(viewerId || 0, rootId);
+  const reactions = rx.map((r) => ({ emoji: r.emoji, count: r.c, mine: !!r.mine, ...(r.emoji.startsWith('e:') ? { custom: emojiMeta(r.emoji) } : {}) }));
+  const hearts = reactions.reduce((n, r) => n + r.count, 0);
+  const hearted = reactions.some((r) => r.emoji === 'heart' && r.mine);
   return {
     hearts: m.deleted ? 0 : hearts,
     hearted,
+    reactions,
     id: m.id,
     groupId: m.group_id,
     user: publicUser(author),
