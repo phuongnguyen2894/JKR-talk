@@ -31,7 +31,23 @@ function bars(series, key, { label, fmtVal = fmt }) {
     <text x="${PAD}" y="12" font-size="11" fill="var(--muted)">${fmtVal(max)}</text><line x1="${PAD}" y1="16" x2="${W - PAD}" y2="16" stroke="var(--line)" stroke-dasharray="3 4"/>${rects}${marks}</svg>`;
 }
 
-let days = 30;
+const WD = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+const WD_LONG = ['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật'];
+// heatmap giờ cao điểm: 7 dòng (thứ) x 24 cột (giờ), màu đậm hơn = nhiều hơn
+function heatmap(grid, unit) {
+  const CW = 24, CH = 24, LX = 30, TY = 18;
+  const max = Math.max(0, ...grid.flat());
+  const cells = grid.map((row, w) => row.map((v, h) => {
+    const op = max ? (v / max) : 0;
+    return `<rect x="${LX + h * CW}" y="${TY + w * CH}" width="${CW - 2}" height="${CH - 2}" rx="3" fill="${v ? 'var(--accent)' : 'var(--soft)'}" fill-opacity="${v ? (0.15 + op * 0.85).toFixed(2) : 1}"><title>${WD_LONG[w]}, ${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00: ${fmt(v)} ${unit}</title></rect>`;
+  }).join('')).join('');
+  const hours = [0, 3, 6, 9, 12, 15, 18, 21].map((h) => `<text x="${LX + h * CW + CW / 2 - 1}" y="12" text-anchor="middle" font-size="10" fill="var(--muted)">${h}h</text>`).join('');
+  const wds = WD.map((d, w) => `<text x="${LX - 6}" y="${TY + w * CH + 16}" text-anchor="end" font-size="11" fill="var(--muted)">${d}</text>`).join('');
+  return `<svg viewBox="0 0 ${LX + 24 * CW} ${TY + 7 * CH}" class="stat-chart" role="img" aria-label="Bản đồ nhiệt theo giờ, cao nhất ${fmt(max)} ${unit}">${hours}${wds}${cells}</svg>
+    <div class="row" style="gap:6px;justify-content:flex-end"><span class="tiny muted">Ít</span>${[0.15, 0.35, 0.6, 0.8, 1].map((o) => `<i class="hm-key" style="opacity:${o}"></i>`).join('')}<span class="tiny muted">Nhiều</span></div>`;
+}
+
+let days = 30, hmMetric = 'users';
 export async function renderStats(body, d = days) {
   days = d;
   const r = await api('GET', `/admin/stats?days=${days}`);
@@ -48,9 +64,14 @@ export async function renderStats(body, d = days) {
       ${tile(fmt(s.mau), 'Hoạt động trong 30 ngày (MAU)', `trên ${fmt(s.totalUsers)} tài khoản`)}
       ${tile(fmtDur(s.avgSecondsPerUserDay), 'Thời gian trên app, trung bình mỗi người mỗi ngày')}
       ${tile(fmtDur(s.totalSeconds), `Tổng thời gian trên app (${days} ngày)`)}
+      ${tile(fmt(s.viewsToday), 'Lượt xem trang hôm nay', `${fmt(s.viewsTotal)} lượt trong ${days} ngày · ${String(s.avgViewsPerUserDay).replace('.', ',')} lượt/người/ngày`)}
     </div>
     <section class="card col"><div class="h2" style="margin:0">Người dùng hoạt động mỗi ngày</div>${bars(r.series, 'dau', { label: 'Người dùng hoạt động mỗi ngày' })}</section>
+    <section class="card col"><div class="h2" style="margin:0">Lượt xem trang mỗi ngày</div>${bars(r.series, 'views', { label: 'Lượt xem trang mỗi ngày' })}</section>
     <section class="card col"><div class="h2" style="margin:0">Thời gian trên app (trung bình mỗi người dùng hoạt động)</div>${bars(r.series, 'avgSeconds', { label: 'Thời gian trung bình mỗi người mỗi ngày', fmtVal: fmtDur })}</section>
+    <section class="card col"><div class="row between wrap"><div class="h2" style="margin:0">Heatmap giờ cao điểm</div><div class="pillnav" role="group" aria-label="Chỉ số heatmap" style="margin:0"><button data-hm="users" aria-pressed="${hmMetric === 'users'}">Người dùng</button><button data-hm="views" aria-pressed="${hmMetric === 'views'}">Lượt xem</button></div></div>
+      ${heatmap(r.heatmap[hmMetric], hmMetric === 'users' ? 'người hoạt động' : 'lượt xem')}
+      <div class="small muted">${r.peak ? `Giờ cao điểm: <b>${WD_LONG[r.peak.weekday]}, ${String(r.peak.hour).padStart(2, '0')}:00 đến ${String(r.peak.hour + 1).padStart(2, '0')}:00</b> (trung bình ${String(r.peak.value).replace('.', ',')} người hoạt động).` : 'Chưa đủ dữ liệu để xác định giờ cao điểm.'} Giá trị là trung bình mỗi ngày trong khoảng đã chọn.</div></section>
     <section class="card col"><div class="h2" style="margin:0">Trang được xem nhiều nhất</div>
       <div class="stat-table" role="table" aria-label="Trang được xem nhiều nhất">
         <div class="stat-row head" role="row"><span role="columnheader">Trang</span><span role="columnheader">Lượt xem</span><span role="columnheader">Tỷ lệ</span><span role="columnheader">Thời gian</span></div>
@@ -68,4 +89,5 @@ export async function renderStats(body, d = days) {
       </div></details>
     <p class="tiny muted">Thống kê tính từ ${r.summary.trackedSince ? esc(r.summary.trackedSince) : 'khi bật tính năng'}, chỉ gồm người đã đăng nhập (chưa tính khách). Thời gian chỉ tính khi bạn đang mở app và có thao tác, ngừng tính sau 3 phút không thao tác. Giờ theo múi giờ Việt Nam.</p>`;
   $$('[data-sd]', body).forEach((b) => (b.onclick = () => renderStats(body, Number(b.dataset.sd)).catch(fail)));
+  $$('[data-hm]', body).forEach((b) => (b.onclick = () => { hmMetric = b.dataset.hm; renderStats(body, days).catch(fail); }));
 }

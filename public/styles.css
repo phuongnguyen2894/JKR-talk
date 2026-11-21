@@ -620,3 +620,4 @@ body { letter-spacing: -0.011em; word-spacing: -0.02em; }
 .stat-row > span:first-child { overflow-wrap: anywhere; }
 .stat-row > :nth-child(n+2) { text-align: right; }
 details.card > summary { font-weight: 700; min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.hm-key { display: inline-block; width: 18px; height: 12px; border-radius: 3px; background: var(--accent); }

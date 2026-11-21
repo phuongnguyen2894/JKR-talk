@@ -1422,5 +1422,17 @@ test('thống kê: ghi lượt xem và thời gian hoạt động, chỉ Admin h
   assert.ok(r.groups[0].name.length > 0);
   assert.equal(r.series[6].dau, 2);
   assert.ok(r.series[6].newUsers >= 2);
+  // lượt xem và heatmap theo giờ: 2 người dùng, 4 lượt xem (A 2 chat, B 1 news); tất cả rơi vào ô (thứ, giờ) hiện tại
+  assert.equal(r.summary.viewsToday, 3);
+  assert.equal(r.summary.viewsTotal, 3);
+  assert.equal(r.summary.avgViewsPerUserDay, 1.5);
+  assert.equal(r.heatmap.users.length, 7);
+  assert.equal(r.heatmap.users[0].length, 24);
+  const nowVn = new Date(Date.now() + 7 * 3600_000);
+  const w = (nowVn.getUTCDay() + 6) % 7, h = nowVn.getUTCHours();
+  const occ = r.series.filter((x) => (new Date(x.day + 'T00:00:00Z').getUTCDay() + 6) % 7 === w).length;
+  assert.equal(r.heatmap.users[w][h], Math.round((2 / occ) * 100) / 100); // 2 người hoạt động trong giờ này
+  assert.equal(r.heatmap.views[w][h], Math.round((3 / occ) * 100) / 100);
+  assert.deepEqual({ weekday: r.peak.weekday, hour: r.peak.hour }, { weekday: w, hour: h });
   assert.equal((await call('GET', '/admin/stats?days=9999', null, adm.token)).data.days, 365);
 });

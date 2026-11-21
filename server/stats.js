@@ -3,6 +3,7 @@
 import { db } from './db.js';
 
 export const dayOf = (t = Date.now()) => new Date(t + 7 * 3600_000).toISOString().slice(0, 10); // ngày theo giờ Việt Nam
+const hourOf = (t = Date.now()) => new Date(t + 7 * 3600_000).getUTCHours(); // giờ theo giờ Việt Nam
 export const PAGES = ['chat', 'news', 'hot', 'level', 'shop', 'titles', 'settings', 'admin', 'topics', 'discover', 'friends', 'tools', 'bugs', 'welcome', 'join'];
 const KEEP_DAYS = 400;
 
@@ -16,6 +17,7 @@ export function track(uid, { page, target, event, seconds }) {
   if (!views && !secs) return false;
   db.prepare('INSERT INTO daily_users (day, user_id, views, seconds) VALUES (?,?,?,?) ON CONFLICT(day, user_id) DO UPDATE SET views = views + excluded.views, seconds = seconds + excluded.seconds').run(day, uid, views, secs);
   db.prepare('INSERT INTO daily_pages (day, page, target, views, seconds) VALUES (?,?,?,?,?) ON CONFLICT(day, page, target) DO UPDATE SET views = views + excluded.views, seconds = seconds + excluded.seconds').run(day, pg, tg, views, secs);
+  db.prepare('INSERT INTO hourly_users (day, hour, user_id, views, seconds) VALUES (?,?,?,?,?) ON CONFLICT(day, hour, user_id) DO UPDATE SET views = views + excluded.views, seconds = seconds + excluded.seconds').run(day, hourOf(), uid, views, secs);
   return true;
 }
 
@@ -40,8 +42,23 @@ export function statsReport(days = 30) {
   const pages = db.prepare("SELECT page, SUM(views) views, SUM(seconds) seconds FROM daily_pages WHERE day >= ? GROUP BY page ORDER BY views DESC, seconds DESC").all(from);
   const groups = db.prepare("SELECT target, SUM(views) views, SUM(seconds) seconds FROM daily_pages WHERE day >= ? AND page = 'chat' AND target > 0 GROUP BY target ORDER BY views DESC, seconds DESC LIMIT 15").all(from)
     .map((r) => { const g = db.prepare('SELECT name, type FROM groups WHERE id = ?').get(r.target); return { id: r.target, name: g?.name || `Nhóm ${r.target}`, type: g?.type || null, views: r.views, seconds: r.seconds }; });
+  // heatmap giờ cao điểm: 7 ngày trong tuần (T2 đến CN) x 24 giờ; giá trị = trung bình mỗi ngày (số người hoạt động, lượt xem)
+  const dowOf = (d) => (new Date(d + 'T00:00:00Z').getUTCDay() + 6) % 7; // 0 = Thứ hai
+  const occ = Array(7).fill(0);
+  for (const d of list) occ[dowOf(d)]++;
+  const hmUsers = Array.from({ length: 7 }, () => Array(24).fill(0));
+  const hmViews = Array.from({ length: 7 }, () => Array(24).fill(0));
+  for (const h of db.prepare('SELECT day, hour, views FROM hourly_users WHERE day >= ?').all(from)) {
+    const w = dowOf(h.day);
+    hmUsers[w][h.hour] += 1;
+    hmViews[w][h.hour] += h.views;
+  }
+  const norm = (g) => g.map((row, w) => row.map((v) => (occ[w] ? Math.round((v / occ[w]) * 100) / 100 : 0)));
+  const heatmap = { users: norm(hmUsers), views: norm(hmViews) };
+  let peak = null;
+  heatmap.users.forEach((row, w) => row.forEach((v, h) => { if (v > 0 && (!peak || v > peak.value)) peak = { weekday: w, hour: h, value: v }; }));
   return {
-    days, from, today,
+    days, from, today, heatmap, peak,
     summary: {
       dauToday: series[series.length - 1].dau,
       dauYesterday: series.length > 1 ? series[series.length - 2].dau : 0,
@@ -50,6 +67,9 @@ export function statsReport(days = 30) {
       totalUsers: db.prepare("SELECT COUNT(*) c FROM users WHERE status = 'active'").get().c,
       avgSecondsPerUserDay: userDays ? Math.round(totalSeconds / userDays) : 0,
       totalSeconds,
+      viewsToday: series[series.length - 1].views,
+      viewsTotal: series.reduce((n, s) => n + s.views, 0),
+      avgViewsPerUserDay: userDays ? Math.round((series.reduce((n, s) => n + s.views, 0) / userDays) * 10) / 10 : 0,
       trackedSince: db.prepare('SELECT MIN(day) d FROM daily_users').get().d || null,
     },
     series, pages, groups,
@@ -60,4 +80,5 @@ export function purgeStats() {
   const cut = dayOf(Date.now() - KEEP_DAYS * 86400_000);
   db.prepare('DELETE FROM daily_users WHERE day < ?').run(cut);
   db.prepare('DELETE FROM daily_pages WHERE day < ?').run(cut);
+  db.prepare('DELETE FROM hourly_users WHERE day < ?').run(cut);
 }

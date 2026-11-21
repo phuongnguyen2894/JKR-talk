@@ -286,3 +286,11 @@ CREATE TABLE IF NOT EXISTS daily_pages (
   PRIMARY KEY (day, page, target)
 );
 `);
+
+// Hoạt động theo giờ (để vẽ heatmap giờ cao điểm): mỗi (ngày, giờ, người dùng) một hàng
+db.exec(`
+CREATE TABLE IF NOT EXISTS hourly_users (
+  day TEXT NOT NULL, hour INTEGER NOT NULL, user_id INTEGER NOT NULL, views INTEGER NOT NULL DEFAULT 0, seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, hour, user_id)
+);
+`);
