@@ -991,12 +991,12 @@ test('cấp bậc: người mới chưa có cấp, xong 3 việc khởi đầu n
   await call('POST', `/groups/${vn.id}/messages`, { body: 'Xin chào cả nhà' }, a.token);
   assert.equal((await call('GET', '/me/level', null, a.token)).data.level.coins, 4);
   for (const t of ['tin thứ hai của A', 'tin thứ ba của A', 'tin thứ tư của A', 'tin thứ năm của A']) await call('POST', `/groups/${vn.id}/messages`, { body: t }, a.token);
-  // tim: B đăng 4 tin, A thả tim (+2 xu cho B mỗi tim, tối đa 3 tim/ngày cho cùng một người)
+  // tim: B đăng 4 tin, A thả tim (+2 xu cho B mỗi tim, không giới hạn số tim mỗi ngày)
   const bm = [];
   for (const t of ['B nói một', 'B nói hai', 'B nói ba', 'B nói bốn']) bm.push((await call('POST', `/groups/${vn.id}/messages`, { body: t }, b.token)).data.message);
   const coinsB0 = (await call('GET', '/me/level', null, b.token)).data.level.coins;
   for (const m of bm) assert.equal((await call('POST', `/messages/${m.id}/heart`, {}, a.token)).status, 200);
-  assert.equal((await call('GET', '/me/level', null, b.token)).data.level.coins, coinsB0 + 6); // 3 tim đầu +2, tim thứ 4 không tính
+  assert.equal((await call('GET', '/me/level', null, b.token)).data.level.coins, coinsB0 + 8); // 4 tim, mỗi tim +2
   // A chưa bật thông báo đẩy nên vẫn chưa có cấp
   assert.equal((await call('GET', '/me', null, a.token)).data.user.level, 0);
   const coinsBefore = (await call('GET', '/me/level', null, a.token)).data.level.coins;
@@ -1208,4 +1208,30 @@ test('danh hiệu Bot trend tự trao khi bấm đủ link X; phần thưởng k
   await call('POST', `/admin/users/${u.id}/titles`, { title: 'bot_trend', grant: false }, adm.token);
   db.prepare("DELETE FROM coin_log WHERE user_id = ? AND kind = 'xlink'").run(u.id); // để không tự trao lại
   assert.equal((await call('GET', '/me', null, u.token)).data.user.frame, null);
+});
+
+test('kiếm xu: gửi link vào Đẩy trend +1 (mỗi link một lần), đăng bản tin +3, tim và trả lời không giới hạn mỗi ngày', async () => {
+  const { db } = await import('../server/db.js');
+  const u = await signup('earnMore', 1), o = await signup('earnMoreB', 1);
+  db.prepare('UPDATE users SET start_done = 1, lvl = 4, lvl_seen = 4 WHERE id = ?').run(u.id);
+  const coins = async (t) => (await call('GET', '/me/level', null, t)).data.level.coins;
+  const trend = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((g) => g.type === 'trend');
+  const c0 = await coins(u.token);
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/earn/status/5' }, u.token)).status, 201);
+  assert.equal(await coins(u.token), c0 + 5); // +3 vào app lần đầu trong ngày, +1 tin nhắn, +1 link
+  // cùng link (khác tham số ?s=) gửi lại: chỉ còn +1 của tin nhắn
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'lại link https://x.com/earn/status/5?s=20' }, u.token)).status, 201);
+  assert.equal(await coins(u.token), c0 + 6);
+  // đăng bản tin +3 xu
+  const before = await coins(u.token);
+  assert.equal((await call('POST', '/news', { title: 'Bản tin kiếm xu', body: 'Nội dung' }, u.token)).status, 201);
+  assert.equal(await coins(u.token), before + 3);
+  // tim: không giới hạn trong ngày (một người thả 12 tim, vượt mức 3 tim/người của bản cũ)
+  const vn = (await call('GET', '/groups/mine', null, o.token)).data.groups.find((g) => g.type === 'country');
+  for (const x of [u, o]) await call('POST', `/groups/${vn.id}/rules-ack`, {}, x.token);
+  const mine = [];
+  for (let i = 0; i < 12; i++) mine.push((await call('POST', `/groups/${vn.id}/messages`, { body: `tin số ${i} của earn` }, u.token)).data.message);
+  const h0 = await coins(u.token);
+  for (const m of mine) await call('POST', `/messages/${m.id}/heart`, {}, o.token);
+  assert.equal(await coins(u.token), h0 + 24); // 12 tim x 2 xu, không bị chặn
 });

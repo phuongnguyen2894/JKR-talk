@@ -5,13 +5,15 @@ import { $, S, api, esc, icon, avatar, actions, fail, openModal, closeModal, lvB
 const fmt = (n) => Number(n).toLocaleString('vi-VN');
 const EARN = [
   ['Gửi tin nhắn trong nhóm', '+1', 'Tin từ 5 ký tự, không trùng tin liền trước, không tính tin nhắn riêng'],
-  ['Tin của bạn được thả tim', '+2 mỗi tim', 'Tối đa 50 xu mỗi ngày, mỗi người tối đa 3 tim mỗi ngày'],
-  ['Có người trả lời tin của bạn', '+2', 'Tối đa 20 xu mỗi ngày'],
+  ['Tin của bạn được thả tim', '+2 mỗi tim', ''],
+  ['Có người trả lời tin của bạn', '+2', ''],
   ['Vào app mỗi ngày', '+3', ''],
   ['Đủ chuỗi 7 ngày vào app liên tiếp', '+20', 'Mỗi lần đủ 7 ngày'],
   ['Chủ đề của bạn được duyệt', '+30', ''],
   ['Chủ đề của bạn được Admin đặt nổi bật', '+50', ''],
   ['Bấm vào link X trong Đẩy trend', '+1', 'Chỉ link x.com hoặc twitter.com, mỗi link tính một lần'],
+  ['Gửi link vào Đẩy trend', '+1', 'Mỗi link tính một lần'],
+  ['Đăng bài lên Bản tin', '+3', 'Mỗi bài'],
 ];
 const PRIVS = [
   [2, 'Khung avatar tím'],

@@ -164,18 +164,30 @@ export function onMessage(user, g, dto, replyOwnerId) {
     const prev = db.prepare('SELECT body FROM messages WHERE group_id = ? AND user_id = ? AND id < ? AND deleted = 0 ORDER BY id DESC LIMIT 3').all(g.id, user.id, dto.id);
     if (!prev.some((p) => p.body.trim() === text)) award(user.id, 'msg', 1, { ref: String(dto.id) });
   }
-  if (replyOwnerId && replyOwnerId !== user.id) award(replyOwnerId, 'reply', 2, { ref: String(dto.id), cap: 20 });
+  if (replyOwnerId && replyOwnerId !== user.id) award(replyOwnerId, 'reply', 2, { ref: String(dto.id) });
+  // gửi link vào Đẩy trend: +1 xu, mỗi link (bỏ phần sau dấu ? và #) mỗi người một lần
+  if (g.type === 'trend') {
+    const key = normalizeLink((text.match(/https?:\/\/[^\s]+/i) || [])[0]);
+    if (key) award(user.id, 'tlink', 1, { ref: key });
+  }
   recompute(user.id);
 }
 
 // Tim: người nhận +2 xu (tối đa 50/ngày, mỗi người thả tối đa 3 tim/ngày cho cùng một người); người thả được tính việc khởi đầu
 export function onHeart(giverId, ownerId, messageId) {
-  if (giverId !== ownerId) {
-    const today = dayOf();
-    const fromGiver = q1("SELECT COUNT(*) c FROM coin_log WHERE user_id = ? AND kind = 'heart' AND day = ? AND ref LIKE ?", ownerId, today, `%:${giverId}`).c;
-    if (fromGiver < 3) award(ownerId, 'heart', 2, { ref: `${messageId}:${giverId}`, cap: 50 });
-  }
+  if (giverId !== ownerId) award(ownerId, 'heart', 2, { ref: `${messageId}:${giverId}` }); // mỗi người một tim cho mỗi tin nên bật tắt tim không cộng thêm
   recompute(giverId);
+}
+// Đăng bài lên Bản tin: +3 xu
+export function onNewsPost(uid, newsId) {
+  award(uid, 'news', 3, { ref: String(newsId) });
+}
+function normalizeLink(raw) {
+  try {
+    const u = new URL(String(raw).replace(/[),.;!?]+$/, ''));
+    if (!['http:', 'https:'].includes(u.protocol)) return null;
+    return `${u.hostname.replace(/^(www|m|mobile)\./, '').toLowerCase()}${u.pathname.replace(/\/+$/, '').toLowerCase()}`;
+  } catch { return null; }
 }
 
 // Bấm vào link X trong Đẩy trend: +1 xu, mỗi link tính một lần

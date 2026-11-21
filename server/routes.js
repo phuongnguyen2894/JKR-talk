@@ -12,7 +12,7 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
-import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onTrendClick, award, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
+import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
 
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
@@ -1708,6 +1708,7 @@ api.post('/admin/news', adminOnly, wrap((req, res) => {
   const pinned = req.body.pinned ? 1 : 0;
   const r = db.prepare('INSERT INTO news (title, body, image_url, images, pinned, author_id, created_at) VALUES (?,?,?,?,?,?,?)').run(title, body, imgs[0] || null, JSON.stringify(imgs), pinned, req.user.id, now());
   const n = db.prepare('SELECT * FROM news WHERE id = ?').get(r.lastInsertRowid);
+  onNewsPost(req.user.id, n.id);
   const recipients = db.prepare("SELECT id FROM users WHERE status='active' AND news_push=1 AND verified=1").all();
   for (const u of recipients) {
     hub.send(u.id, { type: 'news', news: { id: n.id, title: newsLabel(n) } });
@@ -1726,6 +1727,7 @@ api.post('/news', wrap((req, res) => {
   const r = db.prepare('INSERT INTO news (title, body, image_url, images, pinned, author_id, created_at) VALUES (?,?,?,?,0,?,?)').run(title, body, imgs[0] || null, JSON.stringify(imgs), req.user.id, now());
   const n = db.prepare('SELECT * FROM news WHERE id = ?').get(r.lastInsertRowid);
   hub.sendMany(db.prepare("SELECT id FROM users WHERE status='active'").all().map((u) => u.id).filter((id) => id !== req.user.id), { type: 'news_silent' });
+  onNewsPost(req.user.id, n.id);
   recompute(req.user.id);
   res.status(201).json({ news: newsDto(n, req.user.id) });
 }));
