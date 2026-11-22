@@ -39,6 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_mt_ledger_match ON mt_ledger(match_id);
 const CHARACTERS = [
   ['juad', 'Juad', 'JU', '#B45309'], ['lolo', 'Lolo', 'LO', '#047857'], ['abu', 'Abu', 'AB', '#B91C1C'], ['udon', 'Udon', 'UD', '#6D28D9'],
   ['capybara', 'Capybara', 'CA', '#92400E'], ['uni', 'Uni', 'UN', '#0E7490'], ['lingorm', 'LingOrm', 'LO', '#BE185D'], ['ormling', 'OrmLing', 'OL', '#A21CAF'],
+  ['charsiu', 'Charsiu', 'CH', '#B91C5C'], ['tofu', 'Tofu', 'TO', '#4D7C0F'],
 ];
 CHARACTERS.forEach(([id, name, initials, color], i) => db.prepare('INSERT OR IGNORE INTO mt_characters (id, name, initials, color, sort_order) VALUES (?,?,?,?,?)').run(id, name, initials, color, i));
 
