@@ -171,6 +171,7 @@ function connectWs() {
       if (ev.notification.type === 'level') api('GET', '/me').then(async (r) => { S.me = r.user; renderSide(); if (parseHash().name === 'level') await route(); showLevelUp(r.levelUp); }).catch(() => {});
       if (ev.notification.type === 'friend_accept' && parseHash().name === 'friends') route();
     } else if (ev.type === 'news') { S.unreadNews++; renderSide(); toast(`Bản tin mới: ${ev.news.title}`, 7000); }
+    else if (ev.type === 'mt_pvp') window.dispatchEvent(new CustomEvent('mt-pvp', { detail: ev }));
     else if (ev.type === 'news_silent') { S.unreadNews++; renderSide(); }
     else if (ev.type === 'hot_new') { if (parseHash().name === 'hot') api('POST', '/hot/seen').catch(() => {}); else { S.unreadHot++; renderSide(); } }
     else if (ev.type === 'bug_new') { toast('Có báo lỗi mới'); if (parseHash().name === 'bugs') route(); }

@@ -14,6 +14,7 @@ import {
 import { firstUrl, buildPreview } from './preview.js';
 import { track, statsReport, linkVisitor, VID_RE } from './stats.js';
 import { mountMuayThai } from './muaythai.js';
+import { mountPvp } from './pvp.js';
 import { emojiMeta, EMOJI_LIMIT, EMOJI_MAX_PER_MESSAGE, REACTION_MAX_PER_USER, checkReactionKey, checkEmojiFile, checkEmojiName, addEmoji, countCustomTokens, visibleEmoji, activeEmoji, usageOf } from './emoji.js';
 import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
@@ -2109,6 +2110,7 @@ api.post('/admin/bugs/send', superOnly, wrap(async (req, res) => {
 }));
 
 mountMuayThai(api, wrap, adminOnly, checkUploadUrl, UPLOAD_DIR);
+mountPvp(api, wrap);
 
 // ---- lỗi ---------------------------------------------------------------------
 api.use((_req, _res, next) => next(new HttpError(404, 'Không tìm thấy')));

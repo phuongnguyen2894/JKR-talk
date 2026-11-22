@@ -22,7 +22,7 @@ export const PUSH_KINDS = ['mention', 'reply', 'heart', 'dm', 'social', 'system'
 export const PUSH_TYPE_MAP = {
   mention: 'mention', reply: 'reply', heart: 'heart', dm: 'dm',
   welcome: 'social', friend_request: 'social', friend_accept: 'social', group_invite: 'social', join_request: 'social', join_approved: 'social',
-  moderation: 'system', level: 'system', title: 'system', report_done: 'system', mod: 'system', group_dissolved: 'system',
+  mt_invite: 'social', moderation: 'system', level: 'system', title: 'system', report_done: 'system', mod: 'system', group_dissolved: 'system',
 };
 
 // Khóa VAPID tạo một lần, lưu trong cơ sở dữ liệu (volume) nên không đổi sau mỗi lần deploy

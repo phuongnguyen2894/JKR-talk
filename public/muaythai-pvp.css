@@ -1,0 +1,37 @@
+/* thách đấu 1v1 (nạp cùng muaythai.css) */
+.mt-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: #FFC83D; color: #2A1B00; font-size: 11px; font-weight: 800; box-sizing: border-box; }
+.mt-badge[hidden] { display: none; }
+.mt-btn.sm { min-height: 38px; font-size: 13px; }
+.mt-btn.danger { background: none; border: 1.5px solid rgba(217,58,64,.6); color: #FF8A8F; }
+.mt-pair { display: flex; gap: 10px; flex: none; } .mt-pair > * { flex: 1; }
+.mt-urow:disabled { opacity: .55; cursor: not-allowed; } em.rel.off { background: rgba(255,255,255,.1); color: #B4ABD6; }
+.mt-vscard { display: flex; align-items: center; gap: 8px; flex: none; border-radius: 18px; background: #1B1433; border: 1px solid rgba(255,255,255,.1); padding: 10px 12px; }
+.mt-vscard .s { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; } .mt-vscard .s b { font-size: 14px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-vscard .m .vs { display: flex; width: 36px; height: 36px; border-radius: 50%; background: var(--gold); color: #2A1B00; font-weight: 900; font-size: 14px; align-items: center; justify-content: center; }
+.mt-vscard .c { font-size: 11px; font-weight: 700; border-radius: 8px; padding: 1px 8px; color: #fff; } .mt-vscard .c.red { background: var(--red); } .mt-vscard .c.blue { background: var(--blue); }
+.mt-amt small { font-size: 12px; font-weight: 600; color: var(--sub); }
+.mt-sum small { font-size: 11px; }
+.mt-escrow { display: flex; gap: 10px; align-items: flex-start; flex: none; border-radius: 14px; background: rgba(255,200,61,.1); border: 1px solid rgba(255,200,61,.35); padding: 10px 12px; font-size: 12px; line-height: 1.45; color: #FFE08A; }
+.mt-escrow svg { flex: none; margin-top: 1px; color: #FFC83D; }
+.mt-escrow.big { align-items: center; font-size: 13px; color: var(--sub); border-radius: 18px; padding: 14px 16px; border-width: 1.5px; } .mt-escrow.big b { color: var(--ink); font-size: 15px; }
+.mt-status { display: flex; align-items: center; gap: 12px; flex: none; border-radius: 18px; background: var(--surf); padding: 12px 14px; }
+.mt-status > div { flex: 1; min-width: 0; } .mt-status b { display: block; font-size: 16px; } .mt-status small { font-size: 13px; color: var(--sub); } .mt-status small b { display: inline; font-size: 13px; color: var(--ink); }
+.mt-status .ic { width: 44px; height: 44px; border-radius: 50%; background: rgba(255,200,61,.16); display: flex; align-items: center; justify-content: center; color: #FFC83D; flex: none; }
+.mt-arena.wait { height: 300px; } .mt-arena.wait .mt-post { height: 190px; }
+.mt-arena.wait .mt-fslot { bottom: 70px; } .mt-arena.wait .mt-fslot.A { left: 30px; } .mt-arena.wait .mt-fslot.B { right: 30px; } .mt-arena.wait .mt-fslot.dim { opacity: .45; }
+.mt-arena.wait .mt-vs { top: 92px; } .mt-arena.wait .mt-names { bottom: 50px; padding: 0 14px; }
+.mt-steps { list-style: none; margin: 0; padding: 0 4px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--sub); flex: none; }
+.mt-steps li { display: flex; align-items: center; gap: 12px; } .mt-steps li::before { content: ''; width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); box-sizing: border-box; flex: none; }
+.mt-steps li.done { color: var(--ink); } .mt-steps li.done::before { background: #7C3AED; border-color: #7C3AED; } .mt-steps li.now { color: var(--ink); } .mt-steps li.now::before { border-color: #FFC83D; }
+.mt-rows { flex: none; border-radius: 18px; background: var(--surf); padding: 4px 14px; } .mt-rows > div { display: flex; justify-content: space-between; align-items: center; min-height: 38px; font-size: 14px; color: var(--sub); } .mt-rows > div + div { border-top: 1px solid rgba(255,255,255,.1); }
+.mt-rows b { color: var(--ink); font-size: 15px; } .mt-rows b.gold, .mt .gold { color: var(--gold); } .mt-rows small { font-size: 11px; font-weight: 600; color: var(--sub); }
+.mt-stats { display: flex; flex: none; border-radius: 16px; background: var(--surf); padding: 12px 0; } .mt-stats > div { flex: 1; text-align: center; } .mt-stats b { display: block; font-size: 20px; font-weight: 900; } .mt-stats span { font-size: 12px; color: var(--sub); } .mt-stats i { width: 1px; background: rgba(255,255,255,.12); }
+.mt-inrow { display: flex; align-items: center; gap: 10px; min-height: 56px; box-sizing: border-box; border-radius: 14px; background: var(--surf); padding: 8px 12px; }
+.mt-inrow .t { flex: 1; min-width: 0; display: flex; flex-direction: column; } .mt-inrow .t b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .mt-inrow .t small { font-size: 12px; color: var(--sub); }
+.mt-inrow.hist { background: #1B1433; } .mt-inrow b.muted { color: var(--sub); }
+.mt-inrow .chip { font-size: 11px; font-weight: 700; border-radius: 8px; padding: 2px 8px; background: rgba(167,139,250,.2); color: #D9CCFF; white-space: nowrap; } .mt-inrow .chip.win { background: rgba(255,200,61,.2); color: #FFE08A; } .mt-inrow .chip.lose { background: rgba(255,255,255,.12); color: #D9D3F3; }
+.mt-mini { height: 36px; padding: 0 12px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.22); background: none; color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; } .mt-mini.primary { background: #7C3AED; border-color: #7C3AED; color: #fff; } .mt-mini:disabled { opacity: .45; }
+.mt-pref { flex: none; border-radius: 16px; background: var(--surf); padding: 12px 14px; } .mt-pref b { display: block; font-size: 13px; margin-bottom: 8px; } .mt-pref > div { display: flex; gap: 6px; }
+.mt-pref button { flex: 1; height: 40px; border-radius: 12px; border: 2px solid transparent; background: #1B1433; color: #D9D3F3; font-size: 13px; font-weight: 700; cursor: pointer; } .mt-pref button[aria-pressed="true"] { border-color: #8B5CF6; background: #2E2260; color: #fff; }
+.mt-count { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); font-size: 96px; font-weight: 900; color: #FFC83D; text-shadow: 0 6px 24px rgba(0,0,0,.6); z-index: 5; pointer-events: none; }
+.mt-count[hidden] { display: none; }

@@ -95,16 +95,19 @@ export function generateScript(winner, rng = crypto.randomInt) {
 }
 
 // ---- võ sĩ -------------------------------------------------------------------------
-const initialsOf = (name) => {
+// avatar_color của người dùng là chỉ số 0-5 (lớp .av.c0-c5 ở giao diện); trong game cần màu đậm hợp nền tối
+const AVATAR_HEX = ['#6D28D9', '#C2410C', '#0F766E', '#B45309', '#1D4ED8', '#BE185D'];
+export const avatarHex = (i) => AVATAR_HEX[Number(i) || 0] || AVATAR_HEX[0];
+export const initialsOf = (name) => {
   const w = String(name || '?').trim().split(/\s+/).filter(Boolean);
   const s = w.length > 1 ? w[0][0] + w[w.length - 1][0] : (w[0] || '?').slice(0, 2);
   return s.toUpperCase();
 };
-const defaultHead = () => db.prepare("SELECT value FROM mt_settings WHERE key = 'default_user_head_url'").get()?.value || null;
+export const defaultHead = () => db.prepare("SELECT value FROM mt_settings WHERE key = 'default_user_head_url'").get()?.value || null;
 const charRow = (id) => db.prepare('SELECT * FROM mt_characters WHERE id = ?').get(id);
 const activeChars = () => db.prepare('SELECT * FROM mt_characters WHERE active = 1 ORDER BY sort_order').all();
 
-function fighterView(side, type, id) {
+export function fighterView(side, type, id) {
   const base = { side, corner: side === 'A' ? 'red' : 'blue', type, id: String(id), odds: MT.PAYOUT_MULTIPLIER };
   if (type === 'character') {
     const c = charRow(id);
@@ -115,7 +118,7 @@ function fighterView(side, type, id) {
   const own = alive ? u.avatar_url : null;
   return {
     ...base, name: u && u.status !== 'deleted' ? u.display_name : 'Người dùng', initials: initialsOf(u?.display_name),
-    color: u?.avatar_color || '#6D28D9', headUrl: own || defaultHead(), isDefaultHead: !own,
+    color: avatarHex(u?.avatar_color), headUrl: own || defaultHead(), isDefaultHead: !own,
   };
 }
 const fightersOf = (m) => [fighterView('A', m.a_type, m.a_id), fighterView('B', m.b_type, m.b_id)];
@@ -246,16 +249,20 @@ export function mountMuayThai(api, wrap, adminOnly, checkUploadUrl, uploadDir) {
   api.get('/mt/users', wrap((req, res) => {
     rateLimit(`mtsearch:${me(req)}`, 60, 60_000);
     const term = String(req.query.q || '').trim().slice(0, 60).replace(/^@/, '').replace(/[%_]/g, '');
-    if (term.length < 2) return res.json({ users: [] });
-    const rows = db.prepare("SELECT * FROM users WHERE status = 'active' AND is_super = 0 AND display_name LIKE ? ORDER BY display_name LIMIT 60").all(`%${term}%`);
+    const onlyFriends = req.query.friends === '1'; // danh sách bạn bè mặc định (không cần gõ tìm)
+    if (!onlyFriends && term.length < 2) return res.json({ users: [] });
+    const rows = onlyFriends
+      ? db.prepare("SELECT u.* FROM users u WHERE u.status = 'active' AND u.is_super = 0 AND u.id IN (SELECT CASE WHEN a = ? THEN b ELSE a END FROM friends WHERE a = ? OR b = ?) ORDER BY u.display_name LIMIT 60").all(me(req), me(req), me(req))
+      : db.prepare("SELECT * FROM users WHERE status = 'active' AND is_super = 0 AND display_name LIKE ? ORDER BY display_name LIMIT 60").all(`%${term}%`);
     const friends = new Set(db.prepare('SELECT CASE WHEN a = ? THEN b ELSE a END id FROM friends WHERE a = ? OR b = ?').all(me(req), me(req), me(req)).map((r) => r.id));
     const mates = new Set(db.prepare(`SELECT DISTINCT m2.user_id id FROM members m1 JOIN members m2 ON m1.group_id = m2.group_id JOIN groups g ON g.id = m1.group_id
       WHERE m1.user_id = ? AND g.type IN ('private','topic','province','region')`).all(me(req)).map((r) => r.id));
     const rank = { friend: 0, group: 1, none: 2 };
     const users = rows.filter((u) => !isBlockedEither(me(req), u.id)).map((u) => ({
-      id: String(u.id), name: u.display_name, initials: initialsOf(u.display_name), color: u.avatar_color || '#6D28D9', province: locationOf(u).province,
+      id: String(u.id), name: u.display_name, initials: initialsOf(u.display_name), color: avatarHex(u.avatar_color), province: locationOf(u).province,
       headUrl: u.avatar_url || defaultHead(), isDefaultHead: !u.avatar_url,
       relation: friends.has(u.id) ? 'friend' : mates.has(u.id) ? 'group' : 'none', self: u.id === me(req),
+      canChallenge: u.id !== me(req) && (u.mt_invite || 'friends') !== 'none' && ((u.mt_invite || 'friends') === 'everyone' || friends.has(u.id)),
     })).sort((x, y) => rank[x.relation] - rank[y.relation] || x.name.localeCompare(y.name, 'vi')).slice(0, 10);
     res.json({ users });
   }));

@@ -1385,6 +1385,88 @@ test('Muay Thai: Admin đặt ảnh đầu nhân vật và ảnh mặc định, 
   assert.equal((await call('GET', '/mt/characters', null, u.token)).data.characters.find((c) => c.id === 'udon').headUrl, null);
 });
 
+test('Muay Thai 1v1: gửi lời thách giữ xu, chấp nhận chốt kết quả đúng sổ xu, từ chối/hủy/hết hạn hoàn xu', async () => {
+  const { db, now } = await import('../server/db.js');
+  const A = await signup('pvpA', 1), B = await signup('pvpB', 1), C = await signup('pvpC', 1);
+  db.prepare('UPDATE users SET coins = 1000 WHERE id IN (?, ?, ?)').run(A.id, B.id, C.id);
+  const bal = async (u) => (await call('GET', '/mt/wallet', null, u.token)).data.balance;
+  const [lo, hi] = A.id < B.id ? [A.id, B.id] : [B.id, A.id];
+  // không phải bạn bè: mặc định không nhận lời mời
+  let r = await call('POST', '/mt/pvp', { toId: B.id, stake: 50 }, A.token);
+  assert.equal(r.status, 403); assert.equal(r.data.code, 'NOT_ACCEPTING');
+  db.prepare('INSERT INTO friends (a, b, created_at) VALUES (?,?,?)').run(lo, hi, now());
+  // kiểm tra đầu vào
+  assert.equal((await call('POST', '/mt/pvp', { toId: B.id, stake: 5 }, A.token)).data.code, 'INVALID_STAKE');
+  assert.equal((await call('POST', '/mt/pvp', { toId: A.id, stake: 50 }, A.token)).data.code, 'SELF');
+  assert.equal((await call('POST', '/mt/pvp', { toId: 99999, stake: 50 }, A.token)).status, 404);
+  // gửi: xu của A bị giữ ngay
+  r = await call('POST', '/mt/pvp', { toId: B.id, stake: 50, fromRed: true }, A.token);
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  const id = r.data.id;
+  assert.equal(r.data.status, 'pending'); assert.equal(r.data.role, 'from');
+  assert.ok(r.data.expiresAt - r.data.serverNow > 29 * 60_000 && r.data.expiresAt - r.data.serverNow <= 30 * 60_000);
+  assert.equal(await bal(A), 950);
+  assert.equal((await call('POST', '/mt/pvp', { toId: B.id, stake: 50 }, A.token)).data.code, 'ALREADY_PENDING');
+  // người thứ ba không xem / không trả lời được; người mời không tự chấp nhận
+  assert.equal((await call('GET', `/mt/pvp/${id}`, null, C.token)).status, 404);
+  assert.equal((await call('POST', `/mt/pvp/${id}/accept`, null, A.token)).status, 403);
+  assert.equal((await call('POST', `/mt/pvp/${id}/cancel`, null, B.token)).status, 403);
+  // B thấy trong hộp thư
+  const inbox = (await call('GET', '/mt/pvp?box=in', null, B.token)).data;
+  assert.equal(inbox.items.length, 1); assert.equal(inbox.incoming, 1); assert.equal(inbox.items[0].opponent.id, A.id);
+  // B không đủ xu thì không nhận được
+  db.prepare('UPDATE users SET coins = 20 WHERE id = ?').run(B.id);
+  assert.equal((await call('POST', `/mt/pvp/${id}/accept`, null, B.token)).data.code, 'INSUFFICIENT_BALANCE');
+  assert.equal(await bal(A), 950); // không thay đổi gì khi nhận thất bại
+  db.prepare('UPDATE users SET coins = 1000 WHERE id = ?').run(B.id);
+  // chấp nhận: chốt kết quả, giờ bắt đầu chung ở tương lai gần
+  const acc = await call('POST', `/mt/pvp/${id}/accept`, null, B.token);
+  assert.equal(acc.status, 200, JSON.stringify(acc.data));
+  assert.equal(acc.data.status, 'settled');
+  assert.ok(acc.data.startAt > acc.data.serverNow && acc.data.startAt - acc.data.serverNow <= 3000);
+  assert.equal(acc.data.script.finalHp[acc.data.result.winner === 'A' ? 'B' : 'A'], 0);
+  const va = (await call('GET', `/mt/pvp/${id}`, null, A.token)).data;
+  assert.equal(va.result.winner, acc.data.result.winner);
+  assert.equal(va.result.won, !acc.data.result.won); // hai bên thấy kết quả trái ngược
+  assert.equal(va.startAt, acc.data.startAt); // cùng giờ bắt đầu, cùng kịch bản
+  assert.deepEqual(va.script, acc.data.script);
+  const [wBal, lBal] = acc.data.result.won ? [await bal(B), await bal(A)] : [await bal(A), await bal(B)];
+  assert.equal(wBal, 1000 - 50 + 95); assert.equal(lBal, 1000 - 50);
+  assert.equal((wBal + lBal) - 2000, 95 - 100); // phí 5 xu bị loại khỏi nền xu
+  assert.equal(va.balanceAfterStake, va.result.won ? va.balanceFinal - 95 : va.balanceFinal); // lúc đang xem chưa cộng tiền thắng
+  assert.equal((await call('POST', `/mt/pvp/${id}/accept`, null, B.token)).data.code, 'ALREADY_ACCEPTED');
+  const hist = (await call('GET', '/mt/pvp?box=history', null, A.token)).data;
+  assert.equal(hist.stats.wins + hist.stats.losses, 1);
+  assert.equal(hist.stats.net, va.result.won ? 45 : -50);
+  // từ chối: hoàn đủ
+  let r2 = await call('POST', '/mt/pvp', { toId: B.id, stake: 100 }, A.token);
+  const a1 = await bal(A);
+  assert.equal((await call('POST', `/mt/pvp/${r2.data.id}/decline`, null, B.token)).data.status, 'declined');
+  assert.equal(await bal(A), a1 + 100);
+  // hủy: hoàn đủ, chỉ hủy được một lần
+  r2 = await call('POST', '/mt/pvp', { toId: B.id, stake: 70 }, A.token);
+  const a2 = await bal(A);
+  assert.equal((await call('POST', `/mt/pvp/${r2.data.id}/cancel`, null, A.token)).data.status, 'cancelled');
+  assert.equal(await bal(A), a2 + 70);
+  assert.equal((await call('POST', `/mt/pvp/${r2.data.id}/cancel`, null, A.token)).status, 409);
+  // hết hạn: máy chủ tự hoàn, người nhận không chấp nhận được nữa
+  r2 = await call('POST', '/mt/pvp', { toId: B.id, stake: 80 }, A.token);
+  const a3 = await bal(A);
+  db.prepare('UPDATE mt_challenges SET expires_at = ? WHERE id = ?').run(now() - 1000, r2.data.id);
+  assert.equal((await call('POST', `/mt/pvp/${r2.data.id}/accept`, null, B.token)).status, 410);
+  assert.equal((await call('GET', `/mt/pvp/${r2.data.id}`, null, A.token)).data.status, 'expired');
+  assert.equal(await bal(A), a3 + 80);
+  // quyền riêng tư: "không ai" chặn lời mời, "mọi người" cho người lạ mời
+  assert.equal((await call('PUT', '/mt/pvp/settings', { invite: 'none' }, B.token)).data.invite, 'none');
+  assert.equal((await call('POST', '/mt/pvp', { toId: B.id, stake: 50 }, A.token)).data.code, 'NOT_ACCEPTING');
+  assert.equal((await call('PUT', '/mt/pvp/settings', { invite: 'everyone' }, B.token)).status, 200);
+  assert.equal((await call('POST', '/mt/pvp', { toId: B.id, stake: 50 }, C.token)).status, 201);
+  assert.equal((await call('PUT', '/mt/pvp/settings', { invite: 'xx' }, B.token)).status, 400);
+  // sổ xu khép kín: mọi dòng đều đối chiếu được số dư
+  const net = (u) => db.prepare('SELECT COALESCE(SUM(delta),0) s FROM mt_ledger WHERE user_id = ? AND match_id IS NOT NULL').get(u.id).s;
+  for (const u of [A, B, C]) assert.equal(db.prepare('SELECT game_net FROM users WHERE id = ?').get(u.id).game_net, net(u));
+});
+
 test('Muay Thai: không đủ xu, cược song song không âm tiền, chỉ một request thắng', async () => {
   const { db } = await import('../server/db.js');
   const u = await signup('mtRace', 1);
