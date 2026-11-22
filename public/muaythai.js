@@ -1,11 +1,10 @@
 // Mini game Muay Thai: cược xu tím vào 1 trong 2 võ sĩ. Kết quả do máy chủ quyết định, trang này chỉ hiển thị và phát lại kịch bản.
 // Luồng: PICK (chọn cặp + cược) → FIGHT (phát hoạt hình) → RESULT. Tải lại trang: #/muaythai/<mã trận> đưa về đúng màn.
 import { $, $$, esc, S, api, icon, toast, coinIcon } from './core.js';
+import { fighterSvg, CORNER } from './fighter.js';
 
 const fmt = (n) => Number(n || 0).toLocaleString('vi-VN');
 const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
-const CORNER = { red: { shirt: '#D93A40', glove: '#E5484D', gloveDark: '#A02A30', name: 'Góc đỏ' }, blue: { shirt: '#3B6FE0', glove: '#4F83F0', gloveDark: '#2B55B0', name: 'Góc xanh' } };
-const SKIN = '#E8B58C', SKIN_D = '#D49E74';
 const VERB = { punch: 'tung cú đấm', kick: 'tung cú đá', knee: 'tung cú gối', elbow: 'tung cú chỏ' };
 const BURST = { punch: 'BỐP!', kick: 'ĐÙNG!', knee: 'BỊCH!', elbow: 'CHÁT!' };
 
@@ -19,38 +18,6 @@ function loadCss() {
     l.onload = l.onerror = () => { cssLoaded = true; ok(); };
     document.head.appendChild(l);
   });
-}
-
-// ---- võ sĩ (SVG, thân dùng chung, chỉ đổi màu theo góc, tư thế, ảnh đầu) ----------------------------------
-let svgN = 0;
-function fighterSvg(f, { pose = 'guard', crown = false, w = 120 } = {}) {
-  const c = CORNER[f.corner];
-  const id = `mh${++svgN}`;
-  const back = pose === 'kick' ? `<g transform="rotate(-80 70 156)"><rect x="63" y="156" width="15" height="50" rx="7" fill="${SKIN}"/><ellipse cx="70" cy="208" rx="11" ry="6" fill="${SKIN}"/></g>` : `<rect x="63" y="156" width="15" height="50" rx="7" fill="${SKIN}"/><ellipse cx="71" cy="208" rx="11" ry="6" fill="${SKIN}"/>`;
-  let front, rear;
-  if (pose === 'win') {
-    front = `<path d="M76 80L90 56L86 34" stroke="${SKIN_D}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="86" cy="28" r="12" fill="${c.gloveDark}"/>`;
-    rear = `<path d="M44 80L30 56L34 34" stroke="${SKIN}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="34" cy="28" r="13" fill="${c.glove}"/>`;
-  } else if (pose === 'punch') {
-    front = `<path d="M76 80L108 84" stroke="${SKIN_D}" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="112" cy="84" r="13" fill="${c.gloveDark}"/>`;
-    rear = `<path d="M44 80L28 106L48 88" stroke="${SKIN}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="50" cy="84" r="13" fill="${c.glove}"/>`;
-  } else {
-    front = `<path d="M76 80L92 106L74 90" stroke="${SKIN_D}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="72" cy="84" r="12" fill="${c.gloveDark}"/>`;
-    rear = `<path d="M44 80L28 106L48 88" stroke="${SKIN}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="50" cy="84" r="13" fill="${c.glove}"/>`;
-  }
-  const head = `<g${f.corner === 'blue' ? ' transform="translate(120 0) scale(-1 1)"' : ''}><clipPath id="${id}"><circle cx="60" cy="36" r="27"/></clipPath>
-    <circle cx="60" cy="36" r="27" fill="${esc(f.color || '#6D28D9')}"/>
-    <text x="60" y="43" text-anchor="middle" font-family="Be Vietnam Pro,system-ui,sans-serif" font-size="19" font-weight="700" fill="#fff">${esc(f.initials)}</text>
-    ${f.headUrl ? `<image href="${esc(f.headUrl)}" x="33" y="9" width="54" height="54" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})"/>` : ''}
-    <circle cx="60" cy="36" r="27" fill="none" stroke="#fff" stroke-width="3"/></g>`;
-  const body = `<rect x="42" y="156" width="15" height="50" rx="7" fill="${SKIN}"/><ellipse cx="49" cy="208" rx="11" ry="6" fill="${SKIN}"/>${back}
-    <rect x="40" y="64" width="40" height="64" rx="14" fill="${SKIN}"/><path d="M60 80v34M49 92h22M49 104h22" stroke="${SKIN_D}" stroke-width="2" stroke-linecap="round" fill="none"/>
-    <rect x="36" y="118" width="48" height="44" rx="10" fill="${c.shirt}"/><rect x="36" y="118" width="48" height="9" rx="4" fill="#FFC83D"/><path d="M60 128v32" stroke="#fff" stroke-opacity=".5" stroke-width="2"/>
-    ${front}<rect x="54" y="58" width="12" height="12" fill="${SKIN}"/>${head}
-    ${crown ? '<polygon points="44,10 47,-6 54,3 60,-10 66,3 73,-6 76,10" fill="#FFC83D" stroke="#B7791F" stroke-width="2" stroke-linejoin="round"/>' : ''}${rear}`;
-  const flip = f.corner === 'blue' ? `<g transform="translate(120 0) scale(-1 1)">${body}</g>` : body;
-  const tilt = pose === 'stagger' ? `<g transform="rotate(${f.corner === 'blue' ? -12 : 12} 60 210)">${flip}</g>` : flip;
-  return `<svg width="${w}" height="${Math.round((w * 236) / 120)}" viewBox="0 -16 120 236" role="img" aria-label="${esc(f.name)}, ${CORNER[f.corner].name}" style="display:block;overflow:visible">${tilt}</svg>`;
 }
 
 function crowdSvg() {
@@ -228,7 +195,7 @@ function fightHtml() {
       <span class="mt-clock" id="mt-clock" role="timer" aria-label="Thời gian còn lại">0:09</span>
       <div class="hp"><div class="n r">${esc(b.name)}</div><div class="bar r"><i id="hp-B" class="blue" style="width:100%"></i></div></div></div>
     <div class="mt-arena fight" id="mt-ring">${arenaBack()}
-      <div class="mt-fighters"><div class="mt-fslot A" id="f-A" role="presentation">${fighterSvg(a, { w: 140 })}</div><div class="mt-fslot B" id="f-B" role="presentation">${fighterSvg(b, { w: 140 })}</div></div>
+      <div class="mt-fighters"><div class="mt-fslot A" id="f-A" role="presentation">${fighterSvg(a, { pose: 'walk', w: 140 })}</div><div class="mt-fslot B" id="f-B" role="presentation">${fighterSvg(b, { pose: 'walk', w: 140 })}</div></div>
       <div class="mt-burst" id="mt-burst" aria-hidden="true"><svg viewBox="0 0 120 120"><polygon points="60,2 72,34 104,18 88,48 118,60 88,72 104,102 72,86 60,118 48,86 16,102 32,72 2,60 32,48 16,18 48,34" fill="#FFC83D" stroke="#B7791F" stroke-width="3" stroke-linejoin="round"/><text id="mt-burst-t" x="60" y="68" text-anchor="middle" transform="rotate(-8 60 60)" font-family="Be Vietnam Pro,system-ui,sans-serif" font-size="22" font-weight="900" fill="#2A1B00">BỐP!</text></svg></div>
       ${crowdSvg()}</div>
     <div class="mt-log" id="mt-log" role="status" aria-live="polite">Hai võ sĩ vào vị trí…</div>
@@ -252,6 +219,7 @@ function startFight() {
     const left = Math.max(0, Math.ceil(data.script.durationMs - (performance.now() - t0) / sp) / 1000);
     const el = $('#mt-clock'); if (el) el.textContent = `0:${String(Math.ceil(left)).padStart(2, '0')}`;
   }, 200);
+  at(450, () => { setPose('A', 'guard'); setPose('B', 'guard'); });
   const ev = data.script.events;
   ev.forEach((e, i) => {
     at(e.tMs, () => {
@@ -285,7 +253,7 @@ function resultHtml() {
   setBalance(M.res.balanceFinal);
   const ko = r.method === 'KO';
   const conf = won ? Array.from({ length: 12 }, (_, i) => `<i class="cf c${i % 5}" style="left:${(i * 83) % 96 + 2}%;top:${(i * 37) % 40 + 4}%;animation-delay:${(i % 6) * 0.15}s"></i>`).join('') : '';
-  const loserHtml = ko ? `<div class="mt-loser ko"><div>${fighterSvg(L, { w: 70 })}</div></div>` : `<div class="mt-loser sit">${fighterSvg(L, { pose: 'stagger', w: 100 })}</div>`;
+  const loserHtml = ko ? `<div class="mt-loser ko"><div>${fighterSvg(L, { w: 70 })}</div></div>` : `<div class="mt-loser sit">${fighterSvg(L, { pose: 'defeat', w: 100 })}</div>`;
   return `${header('Kết quả')}
     <div class="mt-banner ${won ? 'win' : 'lose'}">${esc(W.name).toUpperCase()} THẮNG ${ko ? 'BẰNG KO' : 'THEO ĐIỂM'}</div>
     <div class="mt-arena result">${arenaBack()}${conf}<div class="mt-winner">${fighterSvg(W, { pose: 'win', crown: true, w: 138 })}</div>${loserHtml}${crowdSvg()}</div>
