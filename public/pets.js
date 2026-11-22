@@ -2,6 +2,7 @@
 import { $, $$, esc, S, api, toast, fail, go, coinIcon, openModal, closeModal, confirmBox, ask } from './core.js';
 
 let P = null;
+const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 const HAB_NAME = { house: 'Nhà', cage: 'Lồng', tank: 'Bể' };
 let cssDone = false;
 function loadCss() {
@@ -17,6 +18,11 @@ const LV = { love: '😍', like: '😊', neutral: '😐', dislike: '🤢' };
 
 // hình tạm: ảnh nếu Admin đã tải, không thì chữ viết tắt trên nền màu kèm biểu tượng loài
 function face(p, size = 64, { scene = false } = {}) {
+  if (p.sprite && p.anim) { // có hoạt hình: ảnh khởi đầu là khung 1 của idle; mountAnims() đổi khung theo trạng thái
+    const s = Math.round(size * (scene ? 1.6 : 1.15)), a = p.anim.idle.urls[0];
+    const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
+    return `<span class="pt-spr" data-pet="${p.id}" ${scene ? 'data-scene="1"' : ''} style="width:${s}px;height:${s}px"><img src="${esc(a)}" alt="" draggable="false" width="${s}" height="${s}">${acc}</span>`;
+  }
   if (p.sprite) { // hình pixel art đầy đủ cơ thể (đã vẽ sẵn kích thước theo giai đoạn): hiển thị bằng nét sắc, không cắt tròn
     const s = Math.round(size * (scene ? 1.6 : 1.15));
     const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
@@ -29,12 +35,13 @@ function face(p, size = 64, { scene = false } = {}) {
 const bar = (v, c) => `<span class="pt-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${v}"><i style="width:${v}%;background:${c}"></i></span>`;
 
 export async function renderPets(view, arg) {
-  P = { s: null, sel: null, closet: null, ev: null, lastEv: 0, visit: null, view: 'home', shop: null, cat: 'food', sp: null, food: false, toy: false, busy: false, tick: 0, off: 0, tools: null };
+  P = { walk: {}, walkAt: {}, s: null, sel: null, closet: null, ev: null, lastEv: 0, visit: null, view: 'home', shop: null, cat: 'food', sp: null, food: false, toy: false, busy: false, tick: 0, off: 0, tools: null };
   view.innerHTML = '<div class="pt-wrap"><div class="pt" id="pt"><p class="pt-hint">Đang tải…</p></div></div>';
   await loadCss();
   const root = $('#pt', view);
   root.onclick = onClick;
   try { await refresh(root); } catch (e) { root.innerHTML = `<p class="pt-hint">${esc(e.message)}</p><a class="pt-btn" href="#/games">Quay lại</a>`; return; }
+  const wt = setInterval(() => { if (!document.body.contains(root)) clearInterval(wt); else walkTick(root); }, 1000);
   P.tick = setInterval(() => {
     if (!document.body.contains(root)) return clearInterval(P?.tick);
     for (const b of $$('[data-cd]', root)) {
@@ -63,7 +70,7 @@ function sceneHtml(pets, { sel, home, readonly = false, habs = null } = {}) {
   return `<div class="pt-scene t${home.tier}" aria-label="Trong nhà: ${esc(home.name)}">
     <span class="pt-deco d1" aria-hidden="true">🖼️</span><span class="pt-deco d2" aria-hidden="true">🪟</span>
     ${home.tier >= 2 ? '<span class="pt-deco d3" aria-hidden="true">🕰️</span>' : ''}${home.tier >= 3 ? '<span class="pt-deco d5" aria-hidden="true">🪴</span>' : ''}${home.tier >= 4 ? '<span class="pt-deco d6" aria-hidden="true">📚</span>' : ''}${home.tier >= 5 ? '<span class="pt-deco d4" aria-hidden="true">🪔</span>' : ''}
-    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${p.sprite ? ' has-spr' : ''}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${slotLeft(i, pets.length)}%;top:${slotTop(i) - (p.sprite ? 12 : 0)}%;--s:${p.sprite ? 1 : SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
+    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${p.sprite ? ' has-spr' : ''}${p.anim ? ` has-anim${P.walk?.[p.id] ? ' walking' : (P.react?.petId === p.id || (P.ev && (P.ev.a === p.id || P.ev.b === p.id)) ? '' : ' still')}` : ''}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${slotLeft(i, pets.length)}%;top:${slotTop(i) - (p.sprite ? 12 : 0)}%;--s:${p.sprite ? 1 : SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-pid="${p.id}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
         <span class="pt-mood" aria-hidden="true">${P.react && P.react.petId === p.id ? LV[P.react.level] : P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? P.ev.emoji : MOOD[p.mood.key] || '🙂'}</span>${face(p, 58, { scene: true })}${p.stage >= 3 ? '<span class="pt-crown" aria-hidden="true">👑</span>' : ''}<small>${esc(p.name)}</small></button>`).join('')
       : '<p class="pt-empty">Khu nhà đang trống. Hãy nhận nuôi một bạn nhé!</p>'}
   </div>`;
@@ -155,6 +162,7 @@ function draw(root) {
     <section class="pt-card"><b>Thăm nhà bạn bè</b><div id="pt-friends" class="pt-sub">Đang tải…</div></section>
     ${S.me?.role === 'admin' ? adminHtml() : ''}
     <p class="pt-foot">Chăm sóc miễn phí, không kiếm xu. Thân thiết tăng khi bạn chăm đúng lúc, mỗi bạn tối đa +${s.dailyCap} mỗi ngày. Nếu để bạn ấy buồn (có chỉ số dưới 20) thì Thân thiết bị trừ theo giờ, nhưng không tụt khỏi giai đoạn đã đạt và thú không bao giờ mất.</p>`;
+  mountAnims(root);
   loadFriends(root);
 }
 async function loadFriends(root) {
@@ -196,6 +204,45 @@ async function openShop(root, cat, sp) {
   P.shop = await api('GET', '/pets/shop'); P.view = 'shop'; if (cat) P.cat = cat; if (sp) P.sp = sp; drawShop(root);
 }
 
+// ---- hoạt hình sprite (idle / walk / happy) ----------------------------------------------------------------------------------------
+// trạng thái đang hiển thị của từng bạn: vui (tâm trạng tốt hoặc vừa được thích) → happy; đang đi dạo → walk; còn lại → idle
+function animMode(id, scene) {
+  const p = P.s.pets.find((x) => x.id === id);
+  if (!p) return 'idle';
+  if (P.react && P.react.petId === id && ['love', 'like'].includes(P.react.level)) return 'happy';
+  if (p.mood.key === 'happy') return 'happy';
+  return scene && P.walk[id] ? 'walk' : 'idle';
+}
+function mountAnims(root) {
+  for (const el of $$('.pt-spr[data-pet]', root)) {
+    const id = Number(el.dataset.pet), p = P.s.pets.find((x) => x.id === id), img = el.querySelector('img');
+    if (!p?.anim || !img) continue;
+    for (const a of Object.values(p.anim)) for (const u of a.urls) { const pre = new Image(); pre.src = u; } // tải sẵn để không nháy
+    if (reducedMotion()) continue; // giảm chuyển động: giữ khung đầu của idle
+    let i = 0, last = '';
+    const step = () => {
+      if (!el.isConnected || !P) return;
+      const mode = animMode(id, el.dataset.scene === '1'), a = p.anim[mode] || p.anim.idle;
+      if (mode !== last) { last = mode; i = 0; }
+      img.src = a.urls[i % a.urls.length]; i++;
+      el._t = setTimeout(step, 1000 / a.fps);
+    };
+    clearTimeout(el._t); step();
+  }
+}
+// thỉnh thoảng các bạn có hoạt hình đứng yên rồi đi dạo một lúc (chỉ ở cảnh khu nhà); đang đi dạo thì mới trôi qua lại
+function walkTick(root) {
+  if (!P?.s || P.view !== 'home' || P.visit) return;
+  const t = Date.now();
+  for (const p of P.s.pets) {
+    if (!p.anim) continue;
+    const w = (P.walkAt ||= {})[p.id] || { on: false, until: t + 2000 + Math.random() * 4000 };
+    if (t >= w.until) { w.on = !w.on; w.until = t + (w.on ? 3000 + Math.random() * 2500 : 4000 + Math.random() * 4000); }
+    P.walkAt[p.id] = w; (P.walk ||= {})[p.id] = w.on;
+    const b = $(`.pt-pet[data-pid="${p.id}"]`, root);
+    if (b && p.anim) { const busy = P.react?.petId === p.id || (P.ev && (P.ev.a === p.id || P.ev.b === p.id)); b.classList.toggle('walking', w.on); b.classList.toggle('still', !w.on && !busy); }
+  }
+}
 // ---- thăm nhà ----------------------------------------------------------------------------------------------------------
 function drawVisit(root) {
   const v = P.visit;

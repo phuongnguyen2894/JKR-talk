@@ -228,6 +228,12 @@ function moodOf(st) {
 // Hình pixel art đầy đủ 4 giai đoạn (đã vẽ sẵn kích thước lớn dần): bạn nào có trong ART thì game hiển thị sprite này thay cho hình tạm
 const ART = { abu: true };
 const spriteUrl = (kind, stage) => (ART[kind] ? `/pets/${kind}/stage_${stage}.webp` : null);
+// Hoạt hình đã có (theo bạn và giai đoạn): idle, walk, happy. Giai đoạn nào chưa có thì hiển thị hình tĩnh.
+const ANIM = { abu: { 0: { idle: { fps: 6, n: 6 }, walk: { fps: 8, n: 6 }, happy: { fps: 8, n: 4 } } } };
+const animFor = (kind, stage) => {
+  const a = ANIM[kind]?.[stage];
+  return a ? Object.fromEntries(Object.entries(a).map(([name, v]) => [name, { fps: v.fps, urls: Array.from({ length: v.n }, (_, i) => `/pets/${kind}/s${stage}/${name}/${String(i + 1).padStart(2, '0')}.webp`) }])) : null;
+};
 const wearInfo = (slot, id) => { const it = id && ITEM[`${slot}:${id}`]; return it ? { id: it.id, name: it.name, emoji: it.emoji } : null; };
 export function petView(p, t, crowd, kinds = imgMap()) {
   const k = KIND[p.kind], st = current(p, t, crowd), cd = (() => { try { return JSON.parse(p.cd || '{}'); } catch { return {}; } })();
@@ -235,7 +241,7 @@ export function petView(p, t, crowd, kinds = imgMap()) {
   const stage = stageOf(intimacy), next = STAGES.find((s) => s.from > intimacy);
   return {
     id: p.id, kind: p.kind, kindName: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, trait: k.trait,
-    sprite: spriteUrl(p.kind, stage.n), outfit: wearInfo('outfit', p.outfit), collar: wearInfo('collar', p.collar), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
+    sprite: spriteUrl(p.kind, stage.n), anim: animFor(p.kind, stage.n), outfit: wearInfo('outfit', p.outfit), collar: wearInfo('collar', p.collar), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
     stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st),
     cooldowns: Object.fromEntries(Object.entries(ACTIONS).map(([a, c]) => [a, Math.max(0, (cd[a] || 0) + c.cd - t)])),
     gainLeft: Math.max(0, DAILY_GAIN_CAP - (p.day === dayKey(t) ? p.day_gain : 0)),

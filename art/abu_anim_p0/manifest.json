@@ -1,0 +1,35 @@
+{
+  "character": "abu",
+  "species": "parrot",
+  "stage": 0,
+  "stage_name": "baby",
+  "style": "pixel_art",
+  "facing": "right",
+  "canvas": [
+    384,
+    384
+  ],
+  "baseline_y": 361,
+  "animations": {
+    "idle": {
+      "frames": 6,
+      "fps": 6,
+      "loop": true,
+      "files": "sprites/final/stage_0_baby/idle/abu_0_idle_{frame:02d}.png"
+    },
+    "walk": {
+      "frames": 6,
+      "fps": 8,
+      "loop": true,
+      "files": "sprites/final/stage_0_baby/walk/abu_0_walk_{frame:02d}.png"
+    },
+    "happy": {
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "files": "sprites/final/stage_0_baby/happy/abu_0_happy_{frame:02d}.png"
+    }
+  },
+  "alpha": "RGBA transparent",
+  "note": "Prototype animation batch. Frames cropped from generated sprite sheet and aligned; no marker files included yet."
+}
