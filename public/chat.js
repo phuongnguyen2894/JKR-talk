@@ -45,6 +45,7 @@ export async function renderChat(view, gid) {
   wireSwipe();
   for (const m of first.messages) appendMsg(m, true);
   scrollBottom(true);
+  if (S.jumpMsg) { const id = S.jumpMsg; S.jumpMsg = null; setTimeout(() => actions['goto-msg']({ dataset: { id } }), 80); } // mở từ thông báo: nhảy tới tin liên quan
   if (joined) {
     markRead();
     if (isPublic(group) && !C.open && !group.rulesAck) showRules();
@@ -828,6 +829,8 @@ async function loadCaps(tries = 0) {
     if (r.pending.length && tries < 5) setTimeout(() => { if (C === mine) loadCaps(tries + 1); }, 4000);
   } catch { /* bỏ qua: bấm link vẫn mở bình thường */ }
 }
+
+window.addEventListener('goto-msg', (e) => { if (C) actions['goto-msg']({ dataset: { id: e.detail } }); });
 
 // Admin đổi chủ đề caption (hoặc công cụ caption đổi hashtag): bỏ caption đã tải, tải lại theo chủ đề mới
 window.addEventListener('trend-caps', () => { if (C?.group?.type === 'trend') { C.caps = {}; loadCaps(); } });

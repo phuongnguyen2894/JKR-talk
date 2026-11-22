@@ -901,9 +901,9 @@ function validMentions(gid, authorId, body, ids) {
   }
   return out;
 }
-function notifyMentions(g, author, ids) {
+function notifyMentions(g, author, ids, msgId) {
   const where = g.type === 'dm' ? 'tin nhắn riêng' : `"${g.name}"`;
-  for (const id of ids) notify(id, 'mention', `${author.display_name} đã nhắc đến bạn trong ${where}`, { url: `/#/chat/${g.id}`, tag: `mention-${g.id}` });
+  for (const id of ids) notify(id, 'mention', `${author.display_name} đã nhắc đến bạn trong ${where}`, { url: `/#/chat/${g.id}`, tag: `mention-${g.id}`, msgId });
 }
 api.get('/groups/:id/mention-search', wrap((req, res) => {
   const tg = getGroup(int(req.params.id));
@@ -1035,7 +1035,7 @@ api.post(
     res.status(201).json({ message: dto });
     touchDaily(req.user.id);
     onMessage(req.user, g, dto, replyTo ? db.prepare('SELECT user_id FROM messages WHERE id = ?').get(replyTo)?.user_id : null);
-    notifyMentions(g, req.user, mentionIds);
+    notifyMentions(g, req.user, mentionIds, dto.id);
     if (mentionAll) {
       const text = `${req.user.display_name} đã nhắc đến mọi người trong "${g.name}"`;
       const previewBody = body.replace(/(^|\s)@everyone(?![\p{L}\p{N}_])/giu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Có thông báo mới';
@@ -1044,7 +1044,7 @@ api.post(
           if (uid === req.user.id || mentionIds.includes(uid)) continue;
           const mm = getMember(gid, uid);
           if (!mm || isMuted(mm) || isBlockedEither(req.user.id, uid)) continue;
-          notify(uid, 'mention', text, { url: `/#/chat/${gid}`, tag: `mention-${gid}`, force: true, pushBody: `📣 ${req.user.display_name} @everyone · ${g.name}: ${previewBody}` });
+          notify(uid, 'mention', text, { url: `/#/chat/${gid}`, tag: `mention-${gid}`, msgId: dto.id, force: true, pushBody: `📣 ${req.user.display_name} @everyone · ${g.name}: ${previewBody}` });
         }
       });
     }
@@ -1052,7 +1052,7 @@ api.post(
     if (replyTo && g.type !== 'dm') {
       const orig = db.prepare('SELECT user_id FROM messages WHERE id = ?').get(replyTo);
       if (orig && orig.user_id !== req.user.id && !mentionIds.includes(orig.user_id) && getMember(gid, orig.user_id) && !isBlockedEither(req.user.id, orig.user_id)) {
-        notify(orig.user_id, 'reply', `${req.user.display_name} đã trả lời tin của bạn trong "${g.name}"`, { url: `/#/chat/${gid}`, tag: `reply-${gid}` });
+        notify(orig.user_id, 'reply', `${req.user.display_name} đã trả lời tin của bạn trong "${g.name}"`, { url: `/#/chat/${gid}`, tag: `reply-${gid}`, msgId: dto.id });
       }
     }
     // tin nhắn riêng: chỉ đẩy thông báo ngoài app (không thêm vào danh sách thông báo)
@@ -1137,7 +1137,7 @@ function reactTo(req, res, key) {
   }
   if (!had) onHeart(req.user.id, root.user_id, root.id, key);
   if (!had && [1, 5, 10, 25, 50, 100].includes(hearts)) {
-    notify(root.user_id, 'heart', hearts === 1 ? `${req.user.display_name} đã react tin nhắn của bạn` : `Tin nhắn của bạn đã nhận được ${hearts} react`, { url: `/#/chat/${root.group_id}`, tag: `heart-${root.id}` });
+    notify(root.user_id, 'heart', hearts === 1 ? `${req.user.display_name} đã react tin nhắn của bạn` : `Tin nhắn của bạn đã nhận được ${hearts} react`, { url: `/#/chat/${root.group_id}`, msgId: root.id, tag: `heart-${root.id}` });
   }
   const mine = new Set(db.prepare('SELECT emoji FROM reactions WHERE message_id = ? AND user_id = ?').all(root.id, req.user.id).map((r) => r.emoji));
   res.json({ hearts, hearted: mine.has('heart'), reactions: summary.map((r) => ({ ...r, mine: mine.has(r.emoji) })) });
@@ -1807,7 +1807,7 @@ function lockUser(actor, uid, days, reason) {
 api.get('/notifications', wrap((req, res) => {
   const rows = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 50').all(req.user.id);
   res.json({
-    notifications: rows.map((n) => ({ id: n.id, type: n.type, text: n.text, read: !!n.read, createdAt: n.created_at })),
+    notifications: rows.map((n) => ({ id: n.id, type: n.type, text: n.text, read: !!n.read, createdAt: n.created_at, url: n.url || null, msgId: n.msg_id || null })),
     unread: db.prepare('SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read = 0').get(req.user.id).c,
   });
 }));

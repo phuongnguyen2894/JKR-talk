@@ -195,11 +195,11 @@ export const isOnline = (uid) => sockets.has(uid);
 // Thông báo trong app (đẩy realtime nếu đang online)
 export function notify(uid, type, text, opts = {}) {
   const r = db
-    .prepare('INSERT INTO notifications (user_id, type, text, created_at) VALUES (?,?,?,?)')
-    .run(uid, type, text, now());
+    .prepare('INSERT INTO notifications (user_id, type, text, created_at, url, msg_id) VALUES (?,?,?,?,?,?)')
+    .run(uid, type, text, now(), opts.url || null, opts.msgId || null);
   hub.send(uid, {
     type: 'notification',
-    notification: { id: Number(r.lastInsertRowid), type, text, read: false, createdAt: now() },
+    notification: { id: Number(r.lastInsertRowid), type, text, read: false, createdAt: now(), url: opts.url || null, msgId: opts.msgId || null },
   });
   const kind = PUSH_TYPE_MAP[type];
   // opts.force: gửi push cả khi đang có kết nối mở (app chạy nền trên điện thoại vẫn giữ kết nối nên bị tính là đang online)

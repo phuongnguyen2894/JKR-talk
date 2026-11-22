@@ -231,9 +231,18 @@ S.hooks.logout = logout;
 actions.notifs = async () => {
   try {
     const { notifications } = await api('GET', '/notifications');
-    openModal(`<h2>Thông báo</h2><div class="list">${notifications.map((n) => `<div class="card col" style="gap:2px;${n.read ? '' : 'border-color:var(--accent)'}"><div class="small">${esc(n.text)}</div><div class="tiny muted">${fmtDateTime(n.createdAt)}</div></div>`).join('') || '<p class="muted small">Chưa có thông báo nào.</p>'}</div>
+    openModal(`<h2>Thông báo</h2><div class="list">${notifications.map((n) => `<div class="card col" ${n.url ? `role="link" tabindex="0" data-nurl="${esc(n.url)}" data-nmsg="${n.msgId || ''}"` : ''} style="gap:2px;${n.url ? 'cursor:pointer;' : ''}${n.read ? '' : 'border-color:var(--accent)'}"><div class="small">${esc(n.text)}</div><div class="tiny muted">${fmtDateTime(n.createdAt)}</div></div>`).join('') || '<p class="muted small">Chưa có thông báo nào.</p>'}</div>
       <div class="btns"><button class="btn primary" data-close>Đóng</button></div>`);
     $('#modal [data-close]').onclick = closeModal;
+    const openNotif = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Enter') return;
+      const card = e.target.closest('[data-nurl]'); if (!card) return;
+      const hash = card.dataset.nurl.replace(/^\/?#?/, '#'), msg = Number(card.dataset.nmsg) || 0;
+      closeModal();
+      if (msg && location.hash === hash) return window.dispatchEvent(new CustomEvent('goto-msg', { detail: msg })); // đã ở đúng nhóm: chỉ cuộn tới tin
+      S.jumpMsg = msg || null; go(hash);
+    };
+    $('#modal .list').addEventListener('click', openNotif); $('#modal .list').addEventListener('keydown', openNotif);
     if (S.unreadNotif) { await api('POST', '/notifications/read'); S.unreadNotif = 0; renderSide(); }
   } catch (e) { fail(e); }
 };
