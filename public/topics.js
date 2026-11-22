@@ -115,5 +115,8 @@ actions['topic-hl'] = async (el) => {
 };
 actions['topic-del'] = async (el) => {
   if (!(await confirmBox(`Đóng chủ đề "${el.dataset.name}"?`, 'Toàn bộ tin nhắn trong chủ đề sẽ bị xóa và thành viên sẽ nhận thông báo.', 'Đóng chủ đề', true))) return;
-  try { await api('DELETE', `/topics/${el.dataset.id}`); await refreshGroups(); toast('Đã đóng chủ đề'); renderTopics($('#view')); } catch (e) { fail(e); }
+  try {
+    await api('DELETE', `/topics/${el.dataset.id}`); await refreshGroups(); toast('Đã đóng chủ đề');
+    if (location.hash.startsWith('#/topics')) renderTopics($('#view')); else go(location.hash.startsWith('#/hot') ? '#/hot' : '#/topics'); // đang ở trong chủ đề vừa đóng thì chuyển sang danh sách
+  } catch (e) { fail(e); }
 };

@@ -697,6 +697,8 @@ function infoHtml() {
     h += `<section><div class="h2">Quản trị viên</div>${g.mods.length ? g.mods.map((u) => `<div class="row" style="min-height:44px">${avatar(u)}<span>${esc(u.displayName)} <span class="muted">· Mod</span></span></div>`).join('') : '<p class="small muted">Chưa có mod.</p>'}
       <p class="small muted" style="margin-top:4px">Mod là tùy chọn, do admin hệ thống chỉ định.</p></section>`;
   }
+  if (g.type === 'topic' && S.me.role === 'admin') h += `<section class="col"><div class="h2">Quản lý chủ đề</div><button class="btn danger block" data-act="topic-del" data-id="${g.id}" data-name="${esc(g.name)}">Đóng chủ đề</button>
+      <p class="small muted" style="margin-top:4px">Xóa toàn bộ tin nhắn trong chủ đề và báo cho thành viên.</p></section>`;
   if (g.type === 'private') {
     const admin = g.role === 'admin';
     h += `<section><div class="h2">Thành viên (${g.members.length}/${g.memberLimit})</div><div class="list">${g.members.map((u) => `

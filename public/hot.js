@@ -26,7 +26,7 @@ export function boardCard(t, tab, guest = false) {
         <b class="topic-name">${esc(t.name)}</b>${t.joined ? ' <span class="pill">Đã tham gia</span>' : ''}
         ${t.description ? `<span class="small muted topic-desc">${esc(t.description)}</span>` : ''}
         <span class="tiny muted">${t.memberCount} thành viên · ${busy}${t.creatorName ? ` · tạo bởi ${esc(t.creatorName)}` : ''}</span></span>
-    </a></article>`;
+    </a>${!guest && S.me?.role === 'admin' ? `<div class="row" style="justify-content:flex-end"><button class="btn sm danger" data-act="topic-del" data-id="${t.id}" data-name="${esc(t.name)}">Đóng chủ đề</button></div>` : ''}</article>`;
 }
 
 const heartCard = (m, i) => `<div class="card col" style="gap:6px">
