@@ -1913,3 +1913,57 @@ test('Nuôi thú: thú buồn bị trừ Thân thiết theo giờ, không tụt 
     assert.equal((await call('GET', '/pets', null, u.token)).data.pets[0].intimacy, 100 + r.data.gained);
   } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
 });
+
+test('Nuôi thú: cửa hàng đồ ăn, đồ chơi, nhà/lồng/bể; vật phẩm tăng chỉ số nhiều hơn', async () => {
+  const { db, now } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('petShop', 1);
+  await call('PUT', '/admin/pets/settings', { mode: 'all' }, adm.token);
+  try {
+    assert.equal((await call('GET', '/pets/shop', null, adm.token)).status, 200);
+    db.prepare('UPDATE users SET coins = 4000, coins_spent = 0, lvl = 5 WHERE id = ?').run(u.id);
+    for (let i = 0; i < 2; i++) await call('POST', '/pets/home/expand', {}, u.token); // đủ chỗ cho 3 bạn
+    const adopt = async (k) => (await call('POST', '/pets/adopt', { kind: k }, u.token)).data;
+    await adopt('uni'); await adopt('juad'); const s0 = await adopt('abu');
+    const bal = async () => (await call('GET', '/pets/shop', null, u.token)).data.balance;
+    const b0 = await bal();
+    // đồ ăn: chưa mua thì không dùng được; mua rồi dùng một lần
+    const uni = s0.pets.find((p) => p.kind === 'uni');
+    db.prepare('UPDATE pets SET food = 20, stat_at = ? WHERE id = ?').run(now(), uni.id);
+    assert.equal((await call('POST', `/pets/${uni.id}/feed`, { food: 'tiec' }, u.token)).status, 400);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'food:tiec', qty: 2 }, u.token)).status, 200);
+    assert.equal(await bal(), b0 - 50);
+    const big = await call('POST', `/pets/${uni.id}/feed`, { food: 'tiec' }, u.token);
+    assert.equal(big.status, 200); assert.ok(big.data.pet.stats.food >= 78); assert.equal(big.data.inv['food:tiec'], 1); // 20 + 60 = 80, hơn hẳn món miễn phí (tối đa +35)
+    // đồ chơi: mua một lần, chơi có đồ chơi vui hơn tay không
+    assert.equal((await call('POST', `/pets/${uni.id}/play`, { toy: 'bong' }, u.token)).status, 400); // chưa có
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:bong' }, u.token)).status, 200);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:bong' }, u.token)).status, 400); // đã có
+    db.prepare('UPDATE pets SET fun = 10, cd = NULL, stat_at = ? WHERE id = ?').run(now(), uni.id);
+    const withToy = (await call('POST', `/pets/${uni.id}/play`, { toy: 'bong' }, u.token)).data;
+    db.prepare('UPDATE pets SET fun = 10, cd = NULL, stat_at = ? WHERE id = ?').run(now(), uni.id);
+    const bare = (await call('POST', `/pets/${uni.id}/play`, {}, u.token)).data;
+    assert.ok(withToy.pet.stats.fun >= bare.pet.stats.fun + 14);
+    // chỗ ở: nhà cho chó, bể cho rùa, lồng cho vẹt; bậc cao thì tụt chậm hơn; đổi bậc được trừ giá món cũ
+    const decay = async (kind) => { const p = (await call('GET', '/pets', null, u.token)).data.pets.find((x) => x.kind === kind); db.prepare('UPDATE pets SET food = 100, fun = 100, clean = 100, health = 100, stat_at = ? WHERE id = ?').run(now() - 10 * 3600_000, p.id); return 100 - (await call('GET', '/pets', null, u.token)).data.pets.find((x) => x.kind === kind).stats.food; };
+    const noHouse = await decay('uni');
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'house:house1' }, u.token)).status, 200);
+    const withHouse = await decay('uni');
+    assert.ok(withHouse < noHouse);
+    const bBefore = await bal();
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'house:house1' }, u.token)).status, 400); // đã có bậc này
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'house:house2' }, u.token)).status, 200);
+    assert.equal(await bal(), bBefore - (500 - 150)); // trừ giá nhà cũ
+    assert.ok((await decay('uni')) < withHouse);
+    assert.equal((await call('GET', '/pets/shop', null, u.token)).data.habitat.house, 2);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'cage:cage1' }, u.token)).status, 200);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'tank:tank1' }, u.token)).status, 200);
+    // thiếu xu và vật phẩm không có thật
+    db.prepare('UPDATE users SET coins_spent = coins WHERE id = ?').run(u.id);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:truot' }, u.token)).status, 400);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:khongco' }, u.token)).status, 400);
+    assert.equal((await call('GET', '/pets/shop', null, f0(u))).status, 401);
+  } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
+  assert.equal((await call('GET', '/pets/shop', null, u.token)).status, 403);
+});
+const f0 = () => ''; // token rỗng: chưa đăng nhập
