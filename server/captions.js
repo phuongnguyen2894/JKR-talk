@@ -13,6 +13,8 @@ CREATE INDEX IF NOT EXISTS idx_trend_cap_msg ON trend_captions(message_id);
 CREATE TABLE IF NOT EXISTS trend_caption_use (user_id INTEGER NOT NULL, message_id INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, message_id));
 `);
 
+try { db.exec('ALTER TABLE trend_captions ADD COLUMN sig TEXT'); } catch { /* đã có cột */ }
+
 const headers = () => ({ 'content-type': 'application/json', 'user-agent': 'JKR-talks/1.0', ...(API_KEY ? { 'x-api-key': API_KEY } : {}) });
 
 // ---- chủ đề caption (lấy từ cấu hình của công cụ caption) ------------------------------------------------------------
@@ -25,8 +27,12 @@ export async function captionTopics() {
   } catch { cfg.t = now() - 45_000; /* lỗi mạng: dùng bản cũ, thử lại sau 15 giây */ }
   return cfg.topics;
 }
+export const refreshTopics = () => { cfg.t = 0; };
 export const selectedTopicLabel = () => db.prepare("SELECT value FROM app_kv WHERE key = 'trend_caption_topic'").get()?.value || '';
 export const setSelectedTopicLabel = (label) => db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('trend_caption_topic', ?)").run(label || '');
+// chữ ký của chủ đề đang dùng: đổi chủ đề, đổi keyword/hashtag hay nội dung chủ đề đều làm caption cũ hết hiệu lực
+const sigOf = (t) => (t ? [t.label, t.topic, t.tagsAndKeywords, t.language, t.charLimit, !!t.allowEmojis, t.fullNames].join('|') : '');
+export async function currentSig() { return sigOf(await activeTopic()); }
 async function activeTopic() {
   const topics = await captionTopics();
   const label = selectedTopicLabel();
@@ -49,11 +55,14 @@ const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 const running = new Set();
 // chạy nền, không chặn người dùng; mỗi bài chỉ tạo một lần
 export function ensureCaptions(messageId) {
-  if (running.has(messageId) || db.prepare('SELECT 1 FROM trend_captions WHERE message_id = ? LIMIT 1').get(messageId)) return;
+  if (running.has(messageId)) return;
   running.add(messageId);
   (async () => {
     const t = await activeTopic();
     if (!t) return;
+    const sig = sigOf(t);
+    if (db.prepare('SELECT 1 FROM trend_captions WHERE message_id = ? AND sig = ? LIMIT 1').get(messageId, sig)) return; // đã có caption của chủ đề hiện tại
+    db.prepare('DELETE FROM trend_captions WHERE message_id = ?').run(messageId); // caption của chủ đề cũ: bỏ, tạo lại theo chủ đề mới
     const found = [];
     for (let round = 0; round < 2 && found.length < CAPTIONS_PER_LINK; round++) {
       const batch = await Promise.allSettled(Array.from({ length: 3 }, () => oneCaption(t)));
@@ -61,14 +70,14 @@ export function ensureCaptions(messageId) {
     }
     const texts = found.length ? found.map((c) => compose(c, t.tagsAndKeywords)) : [compose('', t.tagsAndKeywords)]; // dịch vụ lỗi: ít nhất vẫn có keyword và hashtag
     if (!texts[0]) return;
-    const ins = db.prepare('INSERT INTO trend_captions (message_id, text, created_at) VALUES (?,?,?)');
-    for (const x of texts) ins.run(messageId, x, now());
+    const ins = db.prepare('INSERT INTO trend_captions (message_id, text, created_at, sig) VALUES (?,?,?,?)');
+    for (const x of texts) ins.run(messageId, x, now(), sig);
   })().catch(() => {}).finally(() => running.delete(messageId));
 }
 
 // mỗi người một caption khác nhau cho cùng một bài (tránh hàng loạt bình luận giống hệt nhau); cùng người, cùng bài thì luôn cùng caption
-export function captionFor(userId, messageId) {
-  const rows = db.prepare('SELECT text FROM trend_captions WHERE message_id = ? ORDER BY id').all(messageId);
+export function captionFor(userId, messageId, sig) {
+  const rows = db.prepare('SELECT text FROM trend_captions WHERE message_id = ? AND sig = ? ORDER BY id').all(messageId, sig);
   return rows.length ? { text: rows[(userId + messageId) % rows.length].text, n: rows.length } : null;
 }
 export function recordUse(userId, messageId) {

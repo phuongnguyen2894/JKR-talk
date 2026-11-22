@@ -819,6 +819,9 @@ async function loadCaps(tries = 0) {
   } catch { /* bỏ qua: bấm link vẫn mở bình thường */ }
 }
 
+// Admin đổi chủ đề caption (hoặc công cụ caption đổi hashtag): bỏ caption đã tải, tải lại theo chủ đề mới
+window.addEventListener('trend-caps', () => { if (C?.group?.type === 'trend') { C.caps = {}; loadCaps(); } });
+
 // Bấm vào link X trong Đẩy trend: server cộng 1 xu tím (mỗi link một lần), link vẫn mở bình thường
 document.addEventListener('click', (e) => {
   const a = e.target.closest?.('.msg a.ext-link, .msg a.lp');

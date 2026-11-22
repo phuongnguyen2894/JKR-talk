@@ -15,7 +15,7 @@ import { firstUrl, buildPreview } from './preview.js';
 import { track, statsReport, linkVisitor, VID_RE } from './stats.js';
 import { mountMuayThai } from './muaythai.js';
 import { mountPvp } from './pvp.js';
-import { ensureCaptions, captionFor, recordUse, captionTopics, selectedTopicLabel, setSelectedTopicLabel } from './captions.js';
+import { ensureCaptions, captionFor, recordUse, captionTopics, selectedTopicLabel, setSelectedTopicLabel, currentSig, refreshTopics } from './captions.js';
 import { emojiMeta, EMOJI_LIMIT, EMOJI_MAX_PER_MESSAGE, REACTION_MAX_PER_USER, checkReactionKey, checkEmojiFile, checkEmojiName, addEmoji, countCustomTokens, visibleEmoji, activeEmoji, usageOf } from './emoji.js';
 import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
@@ -300,14 +300,15 @@ api.post('/me/level-seen', wrap((req, res) => {
 // id bài viết X đầu tiên trong nội dung (x.com/<tên>/status/<id>), null nếu không có
 const xStatusId = (body) => String(body || '').match(/https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/[^\s/]+\/status\/(\d+)/i)?.[1] || null;
 // Caption cho các bài X trong Đẩy trend: mỗi người một caption (tránh trùng nhau); bài chưa có thì tạo nền và báo "pending" để máy khách hỏi lại
-api.get('/trend/captions', wrap((req, res) => {
+api.get('/trend/captions', wrap(async (req, res) => {
   rateLimit(`tcap:${req.user.id}`, 60, 60_000);
+  const sig = await currentSig();
   const ids = [...new Set(String(req.query.ids || '').split(',').map((x) => Number(x)).filter((x) => Number.isInteger(x) && x > 0))].slice(0, 40);
   const captions = {}, pending = [];
   for (const id of ids) {
     const m = db.prepare('SELECT id, body FROM messages WHERE id = ? AND deleted = 0 AND group_id = ?').get(id, trendGroupId());
     if (!m || !xStatusId(m.body)) continue;
-    const c = captionFor(req.user.id, id);
+    const c = captionFor(req.user.id, id, sig);
     if (c) captions[id] = c; else { pending.push(id); ensureCaptions(id); }
   }
   res.json({ captions, pending });
@@ -321,7 +322,9 @@ api.put('/admin/trend/caption-topic', adminOnly, wrap(async (req, res) => {
   const label = String(req.body.label || '');
   if (label && !(await captionTopics()).some((t) => t.label === label)) throw bad('Không có chủ đề caption này');
   setSelectedTopicLabel(label);
+  refreshTopics();
   log(req.user.id, 'set_caption_topic', { reason: label || 'tự động' });
+  hub.sendMany(memberIds(trendGroupId()), { type: 'trend_caps' }); // máy đang mở Đẩy trend tải lại caption theo chủ đề mới
   res.json({ selected: label });
 }));
 // Bấm vào link X được gửi trong Đẩy trend: +1 xu tím, mỗi link tính một lần

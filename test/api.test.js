@@ -1432,6 +1432,11 @@ test('Đẩy trend: tạo sẵn caption cho link X, mỗi người một caption
   assert.deepEqual(topics.topics.map((t) => t.label), ['T1', 'T2']);
   assert.equal((await call('PUT', '/admin/trend/caption-topic', { label: 'khong-co' }, adm.token)).status, 400);
   assert.equal((await call('PUT', '/admin/trend/caption-topic', { label: 'T2' }, adm.token)).data.selected, 'T2');
+  // đổi chủ đề: link cũ cũng chuyển sang caption của chủ đề mới (caption cũ bị bỏ)
+  let r3;
+  for (let i = 0; i < 40; i++) { r3 = await ask(users[0], [mid]); if (r3.data.captions[mid]) break; await new Promise((x) => setTimeout(x, 100)); }
+  assert.match(r3.data.captions[mid].text, /^Caption T2 số \d+\n\n#tag2$/);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM trend_captions WHERE message_id = ? AND text LIKE '%#tag1%'").get(mid).c, 0);
   const post2 = await call('POST', `/groups/${tg.id}/messages`, { body: 'https://x.com/other/status/99887766' }, adm.token);
   let r2;
   for (let i = 0; i < 40; i++) { r2 = await ask(users[0], [post2.data.message.id]); if (r2.data.captions[post2.data.message.id]) break; await new Promise((x) => setTimeout(x, 100)); }
