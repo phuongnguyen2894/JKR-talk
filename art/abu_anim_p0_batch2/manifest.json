@@ -1,0 +1,63 @@
+{
+  "character": "Abu",
+  "stage": 0,
+  "batch": "P0 Batch 2",
+  "animations": {
+    "hungry": {
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "files": [
+        "abu_0_hungry_01.png",
+        "abu_0_hungry_02.png",
+        "abu_0_hungry_03.png",
+        "abu_0_hungry_04.png"
+      ]
+    },
+    "bored": {
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "files": [
+        "abu_0_bored_01.png",
+        "abu_0_bored_02.png",
+        "abu_0_bored_03.png",
+        "abu_0_bored_04.png"
+      ]
+    },
+    "dirty": {
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "files": [
+        "abu_0_dirty_01.png",
+        "abu_0_dirty_02.png",
+        "abu_0_dirty_03.png",
+        "abu_0_dirty_04.png"
+      ]
+    },
+    "sleepy": {
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "files": [
+        "abu_0_sleepy_01.png",
+        "abu_0_sleepy_02.png",
+        "abu_0_sleepy_03.png",
+        "abu_0_sleepy_04.png"
+      ]
+    },
+    "sad": {
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "files": [
+        "abu_0_sad_01.png",
+        "abu_0_sad_02.png",
+        "abu_0_sad_03.png",
+        "abu_0_sad_04.png"
+      ]
+    }
+  },
+  "note": "Prototype crops extracted from a labeled overview image; not production QA."
+}

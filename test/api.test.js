@@ -1943,7 +1943,7 @@ test('Nuôi thú: cửa hàng đồ ăn, đồ chơi, nhà/lồng/bể; vật ph
     assert.equal(s0.kinds.find((k) => k.id === 'abu').sprite, '/pets/abu/stage_0.webp');
     for (let n = 0; n < 4; n++) assert.ok((await import('node:fs')).existsSync(`public/pets/abu/stage_${n}.webp`));
     // hoạt hình: Abu giai đoạn Bé có idle (6), walk (6), happy (4); tệp có thật; bạn khác chưa có
-    assert.deepEqual(Object.fromEntries(Object.entries(abuPet.anim).map(([k, v]) => [k, v.urls.length])), { idle: 6, walk: 6, happy: 4 });
+    assert.deepEqual(Object.fromEntries(Object.entries(abuPet.anim).map(([k, v]) => [k, v.urls.length])), { idle: 6, walk: 6, happy: 4, hungry: 2, bored: 4, dirty: 4, sleepy: 3, sad: 4 });
     assert.equal(abuPet.anim.walk.fps, 8); assert.equal(uni.anim, null);
     for (const a of Object.values(abuPet.anim)) for (const u of a.urls) assert.ok((await import('node:fs')).existsSync(`public${u}`), u);
     db.prepare('UPDATE pets SET food = 20, stat_at = ? WHERE id = ?').run(now(), uni.id);

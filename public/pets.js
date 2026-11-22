@@ -210,6 +210,9 @@ function animMode(id, scene) {
   const p = P.s.pets.find((x) => x.id === id);
   if (!p) return 'idle';
   if (P.react && P.react.petId === id && ['love', 'like'].includes(P.react.level)) return 'happy';
+  const low = Object.values(p.stats).filter((v) => v < 25).length; // nhiều chỉ số thấp cùng lúc: buồn vì bị bỏ mặc
+  if (low >= 2 && p.anim?.sad) return 'sad';
+  if (['hungry', 'bored', 'dirty', 'sleepy'].includes(p.mood.key) && p.anim?.[p.mood.key]) return p.mood.key; // đói, chán, bẩn, buồn ngủ
   if (p.mood.key === 'happy') return 'happy';
   return scene && P.walk[id] ? 'walk' : 'idle';
 }
@@ -238,6 +241,7 @@ function walkTick(root) {
     if (!p.anim) continue;
     const w = (P.walkAt ||= {})[p.id] || { on: false, until: t + 2000 + Math.random() * 4000 };
     if (t >= w.until) { w.on = !w.on; w.until = t + (w.on ? 3000 + Math.random() * 2500 : 4000 + Math.random() * 4000); }
+    if (!['idle', 'walk'].includes(animMode(p.id, false)) && w.on) { w.on = false; w.until = t + 3000; } // đang đói, buồn, vui...: đứng tại chỗ, không đi dạo
     P.walkAt[p.id] = w; (P.walk ||= {})[p.id] = w.on;
     const b = $(`.pt-pet[data-pid="${p.id}"]`, root);
     if (b && p.anim) { const busy = P.react?.petId === p.id || (P.ev && (P.ev.a === p.id || P.ev.b === p.id)); b.classList.toggle('walking', w.on); b.classList.toggle('still', !w.on && !busy); }
