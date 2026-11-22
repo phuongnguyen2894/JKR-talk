@@ -4,7 +4,7 @@ import { $, $$, S, api, esc, fail } from './core.js';
 const PAGE_NAMES = {
   chat: 'Chat nhóm', news: 'Bản tin', hot: 'Chủ đề nóng', level: 'Thăng cấp', shop: 'Cửa hàng xu tím', titles: 'Danh hiệu', settings: 'Cài đặt',
   admin: 'Quản trị', topics: 'Tất cả chủ đề', discover: 'Khám phá nhóm', friends: 'Bạn bè', tools: 'Công cụ', bugs: 'Danh sách lỗi',
-  welcome: 'Chào thành viên mới', join: 'Tham gia bằng link', other: 'Khác',
+  welcome: 'Chào thành viên mới', games: 'Game', muaythai: 'Muay Thai', pets: 'Nuôi thú', join: 'Tham gia bằng link', other: 'Khác',
 };
 const fmt = (n) => Number(n).toLocaleString('vi-VN');
 export function fmtDur(s) {

@@ -1815,3 +1815,75 @@ test('Đẩy trend: người dùng dưới cấp 3 gửi bài chờ admin duyệ
   for (let i = 0; i < 5; i++) assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: `https://x.com/a/status/91${i}` }, u.token)).status, 202);
   assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/a/status/9199' }, u.token)).status, 400);
 });
+
+test('Nuôi thú: chỉ Admin thử khi chưa mở; chăm sóc, thân thiết, khu nhà mở rộng bằng xu theo cấp, thăm nhà', async () => {
+  const { db, now } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('petU', 1), f = await signup('petF', 1);
+  // chưa mở: người thường bị chặn, admin dùng được
+  assert.equal((await call('GET', '/pets/access', null, u.token)).data.open, false);
+  assert.equal((await call('GET', '/pets', null, u.token)).status, 403);
+  assert.equal((await call('POST', '/pets/adopt', { kind: 'udon' }, u.token)).status, 403);
+  assert.equal((await call('GET', '/pets/access', null, adm.token)).data.open, true);
+  assert.equal((await call('GET', '/pets', null, adm.token)).status, 200);
+  assert.equal((await call('PUT', '/admin/pets/settings', { mode: 'all' }, u.token)).status, 403);
+  assert.equal((await call('PUT', '/admin/pets/settings', { mode: 'all' }, adm.token)).status, 200);
+  try {
+    let s = (await call('GET', '/pets', null, u.token)).data;
+    assert.equal(s.home.capacity, 1); assert.equal(s.pets.length, 0); assert.equal(s.kinds.length, 6);
+    assert.equal((await call('POST', '/pets/adopt', { kind: 'khongco' }, u.token)).status, 400);
+    s = (await call('POST', '/pets/adopt', { kind: 'charsiu' }, u.token)).data;
+    assert.equal(s.pets.length, 1);
+    assert.equal((await call('POST', '/pets/adopt', { kind: 'udon' }, u.token)).status, 400); // khu nhà đầy
+    const pet = s.pets[0];
+    // cho ăn: món yêu thích cộng thêm, có thời gian chờ
+    const fed = await call('POST', `/pets/${pet.id}/feed`, { food: 'thit' }, u.token);
+    assert.equal(fed.status, 200); assert.equal(fed.data.liked, true); assert.ok(fed.data.gained >= 3);
+    assert.ok(fed.data.pet.stats.food > pet.stats.food);
+    assert.equal((await call('POST', `/pets/${pet.id}/feed`, { food: 'thit' }, u.token)).status, 400);
+    assert.equal((await call('POST', `/pets/${fed.data.pet.id}/feed`, { food: 'xxx' }, u.token)).status, 400);
+    // thú của người khác không chăm được
+    assert.equal((await call('POST', `/pets/${pet.id}/play`, {}, f.token)).status, 404);
+    // thời gian trôi: chỉ số tụt, không bao giờ âm và thú không mất
+    db.prepare('UPDATE pets SET stat_at = stat_at - ?, cd = NULL WHERE id = ?').run(48 * 3600_000, pet.id);
+    s = (await call('GET', '/pets', null, u.token)).data;
+    assert.equal(s.pets.length, 1);
+    assert.ok(s.pets[0].stats.food === 0 && s.pets[0].mood.key === 'hungry');
+    // trần Thân thiết mỗi ngày
+    db.prepare('UPDATE pets SET day = ?, day_gain = 80 WHERE id = ?').run(new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10), pet.id);
+    const before = s.pets[0].intimacy;
+    const capped = await call('POST', `/pets/${pet.id}/wash`, {}, u.token);
+    assert.equal(capped.status, 200); assert.equal(capped.data.gained, 0); assert.equal(capped.data.pet.intimacy, before);
+    // mở rộng: cần đủ cấp và đủ xu
+    assert.equal((await call('POST', '/pets/home/expand', {}, u.token)).status, 400); // chưa đủ cấp
+    db.prepare('UPDATE users SET lvl = 2, coins = 200, coins_spent = 0 WHERE id = ?').run(u.id);
+    assert.equal((await call('POST', '/pets/home/expand', {}, u.token)).status, 400); // chưa đủ xu (300)
+    assert.equal((await call('PUT', '/admin/pets/settings', { prices: [300, 800, 1800] }, adm.token)).status, 400);
+    db.prepare('UPDATE users SET coins = 1000 WHERE id = ?').run(u.id);
+    s = (await call('POST', '/pets/home/expand', {}, u.token)).data;
+    assert.equal(s.home.capacity, 2); assert.equal(s.balance, 700);
+    assert.equal((await call('POST', '/pets/home/expand', {}, u.token)).status, 400); // bậc 3 cần cấp 3
+    assert.equal((await call('POST', '/pets/adopt', { kind: 'udon' }, u.token)).status, 201);
+    assert.equal((await call('POST', '/pets/adopt', { kind: 'udon' }, u.token)).status, 400);
+    assert.equal((await call('PATCH', `/pets/${pet.id}`, { name: 'Xíu Mại' }, u.token)).status, 200);
+    // thăm nhà: chỉ bạn bè, mỗi ngày một lần
+    assert.equal((await call('GET', `/pets/visit/${u.id}`, null, f.token)).status, 403);
+    const [lo, hi] = u.id < f.id ? [u.id, f.id] : [f.id, u.id];
+    db.prepare('INSERT INTO friends (a, b, created_at) VALUES (?,?,?)').run(lo, hi, now());
+    const v = (await call('GET', `/pets/visit/${u.id}`, null, f.token)).data;
+    assert.equal(v.pets.length, 2); assert.equal(v.patted, false);
+    assert.equal((await call('POST', `/pets/visit/${u.id}/pat`, { petId: v.pets[0].id }, f.token)).status, 200);
+    assert.equal((await call('POST', `/pets/visit/${u.id}/pat`, { petId: v.pets[0].id }, f.token)).status, 400);
+    assert.ok((await call('GET', '/notifications', null, u.token)).data.notifications.some((n) => n.text.includes('ghé thăm')));
+    // không kiếm xu trong game: số dư không tăng sau khi chăm
+    assert.equal((await call('GET', '/pets', null, u.token)).data.balance, 700);
+    // admin: công cụ thử chỉ tác động tới chính admin
+    assert.equal((await call('POST', '/admin/pets/reset', {}, u.token)).status, 403);
+    assert.equal((await call('POST', '/admin/pets/skip', { hours: 5 }, adm.token)).status, 200);
+    assert.equal((await call('POST', '/admin/pets/reset', {}, adm.token)).status, 200);
+    assert.equal((await call('GET', '/pets', null, u.token)).data.pets.length, 2);
+  } finally {
+    await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token);
+  }
+  assert.equal((await call('GET', '/pets', null, u.token)).status, 403);
+});
