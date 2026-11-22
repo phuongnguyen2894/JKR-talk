@@ -209,6 +209,7 @@ async function openShop(root, cat, sp) {
 function animMode(id, scene) {
   const p = P.s.pets.find((x) => x.id === id);
   if (!p) return 'idle';
+  if (P.act && P.act.petId === id && Date.now() < P.act.until && p.anim?.[P.act.mode]) return P.act.mode; // vừa cho ăn / chơi / tắm / ngủ: diễn hoạt cảnh tương ứng
   if (P.react && P.react.petId === id && ['love', 'like'].includes(P.react.level)) return 'happy';
   const low = Object.values(p.stats).filter((v) => v < 25).length; // nhiều chỉ số thấp cùng lúc: buồn vì bị bỏ mặc
   if (low >= 2 && p.anim?.sad) return 'sad';
@@ -311,6 +312,8 @@ async function onClick(e) {
       const r = await api('POST', `/pets/${id}/${a === 'food' ? 'feed' : a === 'toy' ? 'play' : a}`, a === 'food' ? { food: t.dataset.food } : a === 'toy' ? { toy: t.dataset.toy || undefined } : {});
       P.food = false; P.toy = false; if (r.inv) P.s.inv = r.inv;
       const i = P.s.pets.findIndex((p) => p.id === id); if (i >= 0) P.s.pets[i] = r.pet;
+      const actMode = { feed: 'eat', food: 'eat', toy: 'play', play: 'play', wash: 'wash', sleep: 'sleep' }[a];
+      if (actMode) P.act = { petId: id, mode: actMode, until: Date.now() + (actMode === 'sleep' ? 4500 : 3200) };
       if (r.reaction) { P.react = { petId: id, level: r.reaction.level }; clearTimeout(P.reactT); P.reactT = setTimeout(() => { P.react = null; if (P.view === 'home' && !P.visit && document.body.contains(root)) draw(root); }, 3500); }
       draw(root);
       if (r.reaction) toast(`${r.reaction.emoji} ${r.reaction.text}`, 4200);

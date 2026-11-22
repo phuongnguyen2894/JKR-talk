@@ -1,0 +1,67 @@
+{
+  "package": "Abu_Animation_P0_Batch3",
+  "character": "Abu",
+  "stage": 0,
+  "animations": {
+    "eat": {
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "files": [
+        "abu_0_eat_01.png",
+        "abu_0_eat_02.png",
+        "abu_0_eat_03.png",
+        "abu_0_eat_04.png"
+      ]
+    },
+    "play": {
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "files": [
+        "abu_0_play_01.png",
+        "abu_0_play_02.png",
+        "abu_0_play_03.png",
+        "abu_0_play_04.png"
+      ]
+    },
+    "wash": {
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "files": [
+        "abu_0_wash_01.png",
+        "abu_0_wash_02.png",
+        "abu_0_wash_03.png",
+        "abu_0_wash_04.png"
+      ]
+    },
+    "sleep": {
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "files": [
+        "abu_0_sleep_01.png",
+        "abu_0_sleep_02.png",
+        "abu_0_sleep_03.png",
+        "abu_0_sleep_04.png"
+      ]
+    }
+  },
+  "frame_grid": "4 columns x 4 rows; row order eat, play, wash, sleep",
+  "frame_size": [
+    315,
+    312
+  ],
+  "source_sheet_size": [
+    1261,
+    1247
+  ],
+  "format": "PNG RGBA",
+  "notes": [
+    "Generated sprite sheet split into 16 individual frames.",
+    "Generated background checkerboard was removed by color threshold; review edges before production use.",
+    "Effects (food, bubbles, splashes, sleep symbols) are included in frame crops and are not separate layers.",
+    "Not production-QA verified for loop continuity, anchors, or per-frame file-size budgets."
+  ]
+}
