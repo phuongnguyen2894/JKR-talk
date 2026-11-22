@@ -18,12 +18,13 @@ const LV = { love: '😍', like: '😊', neutral: '😐', dislike: '🤢' };
 // hình tạm: ảnh nếu Admin đã tải, không thì chữ viết tắt trên nền màu kèm biểu tượng loài
 function face(p, size = 64) {
   const inner = p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="" draggable="false">` : `<b>${esc(p.initials)}</b>`;
-  return `<span class="pt-face" style="width:${size}px;height:${size}px;background:${esc(p.color)};font-size:${Math.round(size * 0.34)}px">${inner}<i class="pt-sp" aria-hidden="true">${p.emoji}</i></span>`;
+  const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
+  return `<span class="pt-face" style="width:${size}px;height:${size}px;background:${esc(p.color)};font-size:${Math.round(size * 0.34)}px">${inner}<i class="pt-sp" aria-hidden="true">${p.emoji}</i>${acc}</span>`;
 }
 const bar = (v, c) => `<span class="pt-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${v}"><i style="width:${v}%;background:${c}"></i></span>`;
 
 export async function renderPets(view, arg) {
-  P = { s: null, sel: null, visit: null, view: 'home', shop: null, cat: 'food', sp: null, food: false, toy: false, busy: false, tick: 0, off: 0, tools: null };
+  P = { s: null, sel: null, closet: null, ev: null, lastEv: 0, visit: null, view: 'home', shop: null, cat: 'food', sp: null, food: false, toy: false, busy: false, tick: 0, off: 0, tools: null };
   view.innerHTML = '<div class="pt-wrap"><div class="pt" id="pt"><p class="pt-hint">Đang tải…</p></div></div>';
   await loadCss();
   const root = $('#pt', view);
@@ -46,6 +47,7 @@ async function refresh(root) {
   P.s = s; P.off = s.serverNow - Date.now();
   if (!s.pets.some((p) => p.id === P.sel)) P.sel = s.pets[0]?.id || null;
   if (S.me) S.me.balance = s.balance;
+  playNewEvents(root, s.events);
   draw(root);
 }
 
@@ -54,8 +56,8 @@ function sceneHtml(pets, { sel, home, readonly = false, habs = null } = {}) {
     <span class="pt-deco d1" aria-hidden="true">${home.tier >= 2 ? '🌳' : '🌿'}</span><span class="pt-deco d2" aria-hidden="true">${home.tier >= 3 ? '🏡' : '🏠'}</span>
     ${habs ? Object.entries(habs).filter(([ty, h]) => h.tier > 0 && pets.some((p) => p.homeType === ty)).map(([, h], i) => `<span class="pt-hab h${i}" title="${esc(h.name)}" aria-hidden="true">${h.emoji}</span>`).join('') : ''}
     ${home.tier >= 4 ? '<span class="pt-deco d3" aria-hidden="true">⛲</span>' : ''}${home.tier >= 5 ? '<span class="pt-deco d4" aria-hidden="true">🎠</span>' : ''}
-    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}" style="left:${8 + ((i * 29 + 11) % 62)}%;top:${34 + ((i * 17) % 38)}%;--s:${SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
-        <span class="pt-mood" aria-hidden="true">${P.react && P.react.petId === p.id ? LV[P.react.level] : MOOD[p.mood.key] || '🙂'}</span>${face(p, 58)}${p.stage >= 3 ? '<span class="pt-crown" aria-hidden="true">👑</span>' : ''}<small>${esc(p.name)}</small></button>`).join('')
+    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${8 + ((i * 29 + 11) % 62)}%;top:${34 + ((i * 17) % 38)}%;--s:${SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
+        <span class="pt-mood" aria-hidden="true">${P.react && P.react.petId === p.id ? LV[P.react.level] : P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? P.ev.emoji : MOOD[p.mood.key] || '🙂'}</span>${face(p, 58)}${p.stage >= 3 ? '<span class="pt-crown" aria-hidden="true">👑</span>' : ''}<small>${esc(p.name)}</small></button>`).join('')
       : '<p class="pt-empty">Khu nhà đang trống. Hãy nhận nuôi một bạn nhé!</p>'}
   </div>`;
 }
@@ -73,6 +75,8 @@ function petPanel(p) {
     <div class="pt-stats">${STAT.map(([k, n, c]) => `<div class="pt-stat"><span>${n}</span>${bar(p.stats[k], c)}<b>${p.stats[k]}</b></div>`).join('')}</div>
     <p class="pt-sub" style="margin:2px 0">${esc(p.trait)}</p>
     ${habLine(p)}
+    <button type="button" class="pt-btn" data-pt="closet" data-id="${p.id}" aria-expanded="${P.closet === p.id}">👕 Trang phục${p.outfit || p.collar ? ` · ${[p.outfit?.name, p.collar?.name].filter(Boolean).map(esc).join(', ')}` : ''}</button>
+    ${P.closet === p.id ? closetHtml(p) : ''}
     <div class="pt-acts">${ACT.map(([a, e, n]) => `<button type="button" class="pt-act" data-pt="${a}" data-id="${p.id}" data-cd="${cdAt(a)}" ${p.cooldowns[a] > 0 ? 'disabled' : ''}><span aria-hidden="true">${e}</span>${n}<em class="pt-cd">${p.cooldowns[a] > 0 ? `${Math.ceil(p.cooldowns[a] / 1000)}s` : ''}</em></button>`).join('')}</div>
     ${P.food ? `<div class="pt-foods" role="group" aria-label="Chọn món ăn">${P.s.foodsBySp[p.sp].map((f) => `<button type="button" class="pt-food${f.id === p.favFood ? ' fav' : ''}" data-pt="food" data-id="${p.id}" data-food="${f.id}"><span aria-hidden="true">${f.emoji}</span>${esc(f.name)}<small>${LV[p.tastes[f.id]] || ''}</small></button>`).join('')}
       ${P.s.shopFoods.filter((f) => f.sp === p.sp && (P.s.inv[`food:${f.id}`] || 0) > 0).map((f) => `<button type="button" class="pt-food prem" data-pt="food" data-id="${p.id}" data-food="${f.id}"><span aria-hidden="true">${f.emoji}</span>${esc(f.name)}<small>${LV[p.tastes[f.id]] || ''} x${P.s.inv[`food:${f.id}`]} · ${effText(f)}</small></button>`).join('')}
@@ -86,6 +90,17 @@ function habLine(p) {
   const h = P.s.habitat[p.homeType];
   return h.tier > 0 ? `<p class="pt-sub" style="margin:0">${h.emoji} ${esc(h.name)}: tụt chỉ số chậm hơn ${h.slow}%, ngủ hồi thêm</p>`
     : `<p class="pt-sub" style="margin:0">Chưa có ${HAB_NAME[p.homeType].toLowerCase()} cho ${esc(p.name)}. <button type="button" class="pt-mini" data-pt="shop-open" data-cat="home" data-sp="${p.sp}">Mua ở cửa hàng</button></p>`;
+}
+function closetHtml(p) {
+  const mine = P.s.closet.filter((c) => c.sp === p.sp);
+  const row = (slot, title) => {
+    const list = mine.filter((c) => c.slot === slot), cur = p[slot]?.id;
+    return `<div class="pt-foods" role="group" aria-label="${title}"><span class="pt-sub" style="width:100%">${title}</span>
+      ${list.map((c) => `<button type="button" class="pt-food${c.id === cur ? ' fav' : ''}" data-pt="wear" data-id="${p.id}" data-slot="${slot}" data-item="${c.id}" aria-pressed="${c.id === cur}"><span aria-hidden="true">${c.emoji}</span>${esc(c.name)}</button>`).join('') || '<span class="pt-sub">Chưa có món nào.</span>'}
+      ${cur ? `<button type="button" class="pt-food" data-pt="wear" data-id="${p.id}" data-slot="${slot}" data-item="">Bỏ ra</button>` : ''}
+      <button type="button" class="pt-food" data-pt="shop-open" data-cat="${slot}" data-sp="${p.sp}"><span aria-hidden="true">🛒</span>Mua thêm</button></div>`;
+  };
+  return `<div class="pt-closet">${row('outfit', 'Quần áo')}${row('collar', 'Vòng cổ')}</div>`;
 }
 const STAGE_FROM = (n) => P.s.stages[n]?.from ?? 0;
 const STAGE_NAME = (n) => P.s.stages[n]?.name ?? '';
@@ -101,6 +116,23 @@ function homeCard(s) {
   </section>`;
 }
 
+function eventsHtml(s) {
+  if (s.pets.length < 2) return `<section class="pt-card"><b>Các bạn chơi với nhau</b><p class="pt-sub" style="margin:0">Khi có từ 2 bạn trở lên, các bạn sẽ tự chơi, ôm, ngủ chung, chải lông cho nhau. Hãy mở rộng khu nhà để nuôi thêm bạn nhé!</p></section>`;
+  const ago = (at) => { const m = Math.max(0, Math.round((Date.now() + P.off - at) / 60000)); return m < 1 ? 'vừa xong' : m < 60 ? `${m} phút trước` : `${Math.round(m / 60)} giờ trước`; };
+  return `<section class="pt-card"><b>Các bạn chơi với nhau</b><p class="pt-sub" style="margin:0">Mỗi ${s.socialEveryMin} phút các bạn tự tương tác (kể cả khi bạn không mở app), mỗi bạn +1 Thân thiết.</p>
+    <ul class="pt-log">${s.events.map((e) => `<li><span aria-hidden="true">${e.emoji}</span><span class="grow">${esc(e.text)}<small>${esc(e.label)} · ${ago(e.at)}</small></span></li>`).join('') || '<li class="pt-sub">Chưa có tương tác nào, lát nữa quay lại xem nhé.</li>'}</ul></section>`;
+}
+// sự kiện mới đến khi đang mở trang: hai bạn làm hoạt cảnh và có thông báo
+function playNewEvents(root, evs) {
+  const fresh = evs.filter((e) => e.id > P.lastEv).reverse();
+  if (P.loaded && fresh.length) {
+    const e = fresh[fresh.length - 1];
+    P.ev = e; clearTimeout(P.evT); P.evT = setTimeout(() => { P.ev = null; if (P.view === 'home' && !P.visit && document.body.contains(root)) draw(root); }, 5000);
+    toast(`${e.emoji} ${e.text}`, 4500);
+  }
+  P.lastEv = Math.max(P.lastEv, ...evs.map((e) => e.id), 0);
+  P.loaded = true;
+}
 function draw(root) {
   const s = P.s;
   if (P.view === 'shop') return drawShop(root);
@@ -111,6 +143,7 @@ function draw(root) {
     ${sceneHtml(s.pets, { sel: P.sel, home: s.home, habs: s.habitat })}
     ${sel ? petPanel(sel) : ''}
     ${homeCard(s)}
+    ${eventsHtml(s)}
     <section class="pt-card"><b>Thăm nhà bạn bè</b><div id="pt-friends" class="pt-sub">Đang tải…</div></section>
     ${S.me?.role === 'admin' ? adminHtml() : ''}
     <p class="pt-foot">Chăm sóc miễn phí, không kiếm xu. Thân thiết tăng khi bạn chăm đúng lúc, mỗi bạn tối đa +${s.dailyCap} mỗi ngày. Nếu để bạn ấy buồn (có chỉ số dưới 20) thì Thân thiết bị trừ theo giờ, nhưng không tụt khỏi giai đoạn đã đạt và thú không bao giờ mất.</p>`;
@@ -126,12 +159,13 @@ async function loadFriends(root) {
 }
 
 // ---- cửa hàng ---------------------------------------------------------------------------------------------------------------
-const CATS = [['food', 'Đồ ăn'], ['toy', 'Đồ chơi'], ['home', 'Chỗ ở']];
+const CATS = [['food', 'Đồ ăn'], ['toy', 'Đồ chơi'], ['outfit', 'Quần áo'], ['collar', 'Vòng cổ'], ['home', 'Chỗ ở']];
 function drawShop(root) {
   const d = P.shop;
   if (!d.species.some((x) => x.id === P.sp)) P.sp = (d.species.find((x) => x.mine) || d.species[0]).id;
   const sp = d.species.find((x) => x.id === P.sp), cat = CATS.some((c) => c[0] === P.cat) ? P.cat : 'food';
   const hint = cat === 'food' ? `Đồ ăn dành cho ${sp.name.toLowerCase()}, dùng một lần. Tăng nhiều chỉ số hơn món miễn phí và cộng thêm Thân thiết.`
+    : cat === 'outfit' || cat === 'collar' ? `${cat === 'outfit' ? 'Quần áo' : 'Vòng cổ'} dành cho ${sp.name.toLowerCase()}, mua một lần dùng mãi. Chỉ để làm đẹp: vào mục Trang phục của từng bạn để mặc.`
     : cat === 'toy' ? `Đồ chơi dành cho ${sp.name.toLowerCase()}, mua một lần dùng mãi. Chơi với đồ chơi thì Vui tăng nhiều hơn và thêm Thân thiết.`
       : `${sp.home.name} dành cho ${sp.pets.join(', ')}. Bậc càng cao thì thú tụt chỉ số càng chậm và ngủ hồi nhiều hơn. Nâng bậc được trừ giá món cũ.`;
   const items = cat === 'home' ? sp.home.items : sp[cat];
@@ -140,9 +174,10 @@ function drawShop(root) {
     <div class="pt-tabs" role="tablist" aria-label="Loại vật phẩm">${CATS.map(([id, name]) => `<button type="button" role="tab" aria-selected="${id === cat}" class="pt-tab sub" data-pt="shop-cat" data-cat="${id}">${id === 'home' ? esc(sp.home.name) : name}</button>`).join('')}</div>
     <p class="pt-sub">${esc(hint)}</p>
     <div class="pt-items">${items.map((it) => {
-      const eff = it.tier ? `Tụt chỉ số chậm hơn ${Math.round((1 - d.habMult[it.tier]) * 100)}% · ngủ hồi +${d.sleepBonus * it.tier} Khỏe` : [effText(it), it.int ? `Thân thiết +${it.int}` : ''].filter(Boolean).join(' · ');
+      const eff = it.tier ? `Tụt chỉ số chậm hơn ${Math.round((1 - d.habMult[it.tier]) * 100)}% · ngủ hồi +${d.sleepBonus * it.tier} Khỏe` : (cat === 'outfit' || cat === 'collar') ? 'Chỉ để làm đẹp' : [effText(it), it.int ? `Thân thiết +${it.int}` : ''].filter(Boolean).join(' · ');
       const act = cat === 'food'
         ? `<div class="pt-fr"><button type="button" class="pt-btn" data-pt="buy" data-item="food:${it.id}" data-qty="1">${coinIcon(14)} ${fmt(it.price)}</button><button type="button" class="pt-btn" data-pt="buy" data-item="food:${it.id}" data-qty="5">x5 · ${fmt(it.price * 5)}</button></div>`
+        : cat === 'outfit' || cat === 'collar' ? (it.owned ? '<span class="pt-own">Đã có</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="${cat}:${it.id}">${coinIcon(14)} ${fmt(it.price)}</button>`)
         : cat === 'home' ? (it.current ? '<span class="pt-own">Đang dùng</span>' : it.worse ? '<span class="pt-own off">Đã có bậc cao hơn</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="${sp.home.type}:${it.id}">${coinIcon(14)} ${fmt(it.cost)}${it.cost !== it.price ? ` <small>(giá ${fmt(it.price)})</small>` : ''}</button>`)
         : it.owned ? '<span class="pt-own">Đã có</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="toy:${it.id}">${coinIcon(14)} ${fmt(it.price)}</button>`;
       return `<div class="pt-item"><span class="pt-ie" aria-hidden="true">${it.emoji}</span><div class="grow"><b>${esc(it.name)}</b>${cat === 'food' && it.qty ? ` <span class="pt-own">Đang có ${it.qty}</span>` : ''}<div class="pt-sub">${esc(eff)}</div>${it.react ? `<div class="pt-sub pt-react">${it.react.map((x) => `${esc(x.name)} ${LV[x.level]}`).join(' · ')}</div>` : ''}</div>${act}</div>`;
@@ -176,7 +211,7 @@ async function loadAdmin(root) {
     <div class="pt-prices">${d.tiers.slice(1).map((t) => `<input class="pt-in" inputmode="numeric" data-price value="${t.price}" aria-label="Giá lên ${esc(t.name)}">`).join('')}</div>
     <button type="button" class="pt-btn" data-pt="a-save">Lưu cài đặt</button>
     <div class="pt-sub">Công cụ thử (chỉ tác động tài khoản của bạn):</div>
-    <div class="pt-fr"><button type="button" class="pt-btn" data-pt="a-skip" data-h="6">Tua +6 giờ</button><button type="button" class="pt-btn" data-pt="a-skip" data-h="24">Tua +24 giờ</button><button type="button" class="pt-btn" data-pt="a-coins">+1.000 xu thử</button><button type="button" class="pt-btn danger" data-pt="a-reset">Làm lại từ đầu</button></div>
+    <div class="pt-fr"><button type="button" class="pt-btn" data-pt="a-skip" data-h="6">Tua +6 giờ</button><button type="button" class="pt-btn" data-pt="a-skip" data-h="24">Tua +24 giờ</button><button type="button" class="pt-btn" data-pt="a-social">Tạo tương tác ngay</button><button type="button" class="pt-btn" data-pt="a-coins">+1.000 xu thử</button><button type="button" class="pt-btn danger" data-pt="a-reset">Làm lại từ đầu</button></div>
     <div class="pt-sub">Ảnh các bạn thú (đang dùng hình tạm nếu chưa có ảnh):</div>
     <div class="pt-fr">${d.kinds.map((k) => `<div class="pt-kimg">${face({ ...k, color: k.color }, 48)}<b>${esc(k.name)}</b><button type="button" class="pt-mini" data-pt="a-img" data-id="${esc(k.id)}">${k.imageUrl ? 'Đổi' : 'Chọn'}</button>${k.imageUrl ? `<button type="button" class="pt-mini" data-pt="a-imgdel" data-id="${esc(k.id)}">Bỏ</button>` : ''}</div>`).join('')}</div>
     <input type="file" id="pt-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></div>`;
@@ -206,6 +241,8 @@ async function onClick(e) {
   });
   if (a === 'pick') { P.sel = id; P.food = false; return draw(root); }
   if (a === 'v-pick') { P.vsel = id; return drawVisit(root); }
+  if (a === 'closet') { P.closet = P.closet === id ? null : id; return draw(root); }
+  if (a === 'wear') return run(async () => { P.s = await api('POST', `/pets/${id}/wear`, { slot: t.dataset.slot, item: t.dataset.item || null }); draw(root); toast(t.dataset.item ? 'Đã mặc cho bạn ấy!' : 'Đã bỏ ra', 1800); });
   if (a === 'feed') { P.food = !P.food; P.toy = false; return draw(root); }
   if (a === 'play' && P.s.shopToys.some((x) => x.sp === P.s.pets.find((q) => q.id === id)?.sp && P.s.inv[`toy:${x.id}`] > 0)) { P.toy = !P.toy; P.food = false; return draw(root); } // có đồ chơi: chọn đồ chơi trước
   if (['play', 'wash', 'sleep', 'food', 'toy'].includes(a)) {
@@ -258,6 +295,7 @@ async function onClick(e) {
     await api('PUT', '/admin/pets/settings', { mode: $('#pt-mode', root).value, prices }); toast('Đã lưu'); await refresh(root);
   });
   if (a === 'a-skip') return run(async () => { await api('POST', '/admin/pets/skip', { hours: Number(t.dataset.h) }); await refresh(root); toast('Đã tua thời gian'); });
+  if (a === 'a-social') return run(async () => { const r = await api('POST', '/admin/pets/social', { n: 1 }); if (!r.events) toast('Cần từ 2 bạn thú trở lên'); await refresh(root); });
   if (a === 'a-coins') return run(async () => { const r = await api('POST', '/admin/pets/coins', { amount: 1000 }); toast(`Số dư: ${fmt(r.balance)} xu`); await refresh(root); });
   if (a === 'a-reset') return run(async () => { if (!(await confirmBox('Làm lại từ đầu?', 'Xóa toàn bộ thú và khu nhà của bạn (không hoàn xu đã mua mở rộng).', 'Xóa', true))) return; await api('POST', '/admin/pets/reset'); await refresh(root); });
   if (a === 'a-img') {

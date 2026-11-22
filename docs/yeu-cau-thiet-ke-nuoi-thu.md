@@ -51,6 +51,7 @@ Từ bản Bé đến Trưởng thành vẫn **nhận ra là cùng một nhân v
 - Đang tắm (bọt xà phòng)
 - Đang ngủ (nằm cuộn, "Zzz")
 - Buồn / bị bỏ mặc (mặt xệ)
+- **Tương tác giữa hai bạn** (7 hoạt hình cặp, xem mục 9): `pair_play`, `pair_cuddle`, `pair_nap`, `pair_groom`, `pair_share`, `pair_chat`, `pair_comfort`
 - **Phản ứng với đồ ăn / đồ chơi** (8 hoạt hình, xem mục 7): `feed_love`, `feed_like`, `feed_neutral`, `feed_dislike`, `play_love`, `play_like`, `play_neutral`, `play_dislike`
 
 ### Quy cách sprite
@@ -195,3 +196,83 @@ Mỗi ô là **một hoạt hình** cho bạn đó (4 giai đoạn lớn lên, m
 - Vẽ **bong bóng cảm xúc** (😍 😊 😐 🤢) kiểu bong bóng thoại nhỏ, 4 icon vector 64px, cùng phong cách.
 - Vật phẩm (đồ ăn, đồ chơi) xuất hiện **trong cảnh** lúc phản ứng (ví dụ bát thịt trước mặt Charsiu), nên mỗi icon vật phẩm cần thêm **bản nhỏ để đặt trong cảnh** (128px, nền trong suốt).
 - Đặc biệt chú ý các bạn có dáng riêng: **Udon** thân dài uốn lượn, **Uni** lông xù xẹp xuống khi sợ, **Juad** rụt vào mai (cần vẽ mai khép lại), **Abu** xù lông và xòe cánh.
+
+## 8. Quần áo và vòng cổ (theo từng loài)
+
+Mỗi bạn mặc được **một bộ quần áo** và **một vòng cổ** cùng lúc. Chỉ để làm đẹp (không đổi chỉ số), mua một lần dùng mãi, thay đổi được bất cứ lúc nào. Mỗi loài có bộ **riêng**, **số lượng và giá bằng nhau** (4 quần áo và 4 vòng cổ mỗi loài, giá 80 / 150 / 280 / 450 xu tím). Đồ của loài này không mặc được cho loài khác.
+
+| Loài | Quần áo (từ rẻ đến đắt) | Vòng cổ (từ rẻ đến đắt) |
+|---|---|---|
+| Chó | Áo thun, Áo mưa, Áo len, Bộ vest | Vòng da, Vòng chuông, Vòng ngọc, Vòng hoàng gia |
+| Vẹt | Áo gile nhỏ, Mũ lưỡi trai, Áo choàng, Bộ lễ phục | Vòng chân, Vòng lông vũ, Vòng hạt, Vòng ngọc |
+| Rùa | Áo mai hoa, Mũ rơm, Áo choàng mai, Mai lễ phục | Dây vải, Vòng vỏ sò, Vòng ngọc trai, Vòng vàng |
+
+**Yêu cầu vẽ**
+
+- **Mỗi món là một lớp riêng chồng lên nhân vật** (layer trong suốt), để ghép được với **mọi bạn cùng loài, mọi giai đoạn** mà không phải vẽ lại cả nhân vật. Mỗi lớp cần **bản cho từng dáng**:
+  - **Chó** có 4 dáng khác nhau: Uni (Pomeranian nhỏ tròn xù), Charsiu và Tofu (golden, to), Udon (xúc xích, thân dài). Áo cho Udon phải **dài hơn**, vòng cổ cho Uni phải **lọt giữa lớp lông xù**.
+  - **Vẹt**: quần áo đặt vừa trên thân và cánh, không che mắt và mỏ; vòng cổ đeo quanh cổ.
+  - **Rùa**: quần áo mặc lên **mai** (hoặc đội lên đầu với mũ), vòng cổ đeo quanh cổ khi rùa thò đầu ra, khi rụt vào mai thì ẩn đi hoặc nằm trên mép mai.
+- Vẽ cho **cả 4 giai đoạn lớn lên** (kích thước thay đổi theo nhân vật), và giữ nguyên vị trí khi nhân vật chạy các hoạt hình (idle, ăn, chơi, ngủ, phản ứng, tương tác).
+- **Bậc càng đắt càng cầu kỳ** (bậc 1 trơn đơn giản, bậc 4 nhiều chi tiết, có ánh kim hoặc đá quý), nhưng vẫn **đọc được ở kích thước nhỏ** (khoảng 58px trong cảnh).
+- **Icon cửa hàng** cho từng món, vuông 256×256, nền trong suốt (24 icon quần áo + 24 icon vòng cổ: 3 loài × 8 món).
+- Khi một bạn mặc đồ, **các huy hiệu nhỏ** (biểu tượng loài, bong bóng cảm xúc) không được bị đồ che mất.
+
+## 9. Tương tác tự động giữa các bạn thú
+
+Khi khu nhà có **từ 2 bạn trở lên**, các bạn **tự tương tác với nhau** (không cần người chơi bấm), kể cả lúc người chơi không mở app. Mỗi lần có **hoạt cảnh cặp**: hai bạn cùng diễn một hành động, kèm bong bóng cảm xúc, và một dòng nhật ký.
+
+### 9.1 Bảy kiểu tương tác
+
+| Kiểu | Tên hoạt hình | Bong bóng | Khi nào xảy ra | Hiệu quả |
+|---|---|---|---|---|
+| Chơi đuổi bắt | `pair_play` | 🏃 | Cả hai không quá vui | Cả hai Vui +8, No −3 |
+| Rúc vào nhau | `pair_cuddle` | 🤗 | Luôn có thể | Cả hai Khỏe +6, Vui +3 |
+| Ngủ chung | `pair_nap` | 💤 | Có bạn đang mệt | Cả hai Khỏe +10 |
+| Chải lông | `pair_groom` | 🪮 | Bạn kia hơi bẩn | Bạn kia Sạch +10, bạn chải Vui +3 |
+| Chia đồ ăn | `pair_share` | 🍖 | Một bạn no, một bạn đói | Bạn đói No +10, bạn chia No −5 |
+| Kể chuyện | `pair_chat` | 💬 | Luôn có thể | Bạn nghe Vui +8 |
+| An ủi | `pair_comfort` | 🫂 | Một bạn đang buồn, một bạn đang khỏe | Bạn buồn Vui +10, bạn an ủi Vui +2 |
+
+Mỗi lần tương tác, **cả hai bạn được +1 Thân thiết** (vẫn tính vào trần mỗi ngày). Cứ **10 phút** có một lần, dồn lại tối đa 6 lần khi người chơi vắng.
+
+### 9.2 Tính cách quyết định tương tác
+
+Mỗi bạn **thích kiểu tương tác khác nhau**, nên cặp nào ở cạnh nhau cũng có "chuyện" riêng:
+
+| Bạn | Hay làm nhất | Ít làm nhất |
+|---|---|---|
+| **Juad** | Ngủ chung, rúc vào nhau, chia đồ ăn | Chơi đuổi bắt (rất chậm) |
+| **Abu** | **Kể chuyện** (bắt chước giọng các bạn), chải lông | Ngủ chung, chơi |
+| **Uni** | Rúc vào nhau, chải lông | Kể chuyện |
+| **Charsiu** | **Chơi đuổi bắt**, rúc vào nhau | Chia đồ ăn (hiếm, vì tham ăn) |
+| **Tofu** | **Ngủ chung**, rúc vào nhau | Chơi đuổi bắt |
+| **Udon** | **Chơi đuổi bắt** (rất hay) | Ngủ chung |
+
+### 9.3 Hành động riêng của từng bạn khi chủ động ({a} là bạn chủ động, {b} là bạn còn lại)
+
+| Bạn | `pair_play` | `pair_cuddle` | `pair_nap` |
+|---|---|---|---|
+| **Juad** | Chầm chậm bò theo {b}, rượt nhau kiểu rùa | Rúc đầu vào bên {b} | Rụt vào mai ngủ cạnh {b} |
+| **Abu** | Bay lượn quanh {b} hót líu lo | Đậu lên lưng {b}, rúc cánh | Rúc đầu vào cánh ngủ cạnh {b} |
+| **Uni** | Lăn tròn như cục bông quanh {b} | Xù bông, nép sát {b} | Cuộn tròn ngủ cạnh {b} |
+| **Charsiu** | Đuổi theo {b} khắp sân, lưỡi thè dài | Nằm đè lên {b} ôm ấp | Ngáy khò khò cạnh {b} |
+| **Tofu** | Chơi vài phút rồi ngáp dài | Gối đầu lên {b} lim dim | Cùng {b} ngủ một giấc ngon |
+| **Udon** | Phóng vụt đuổi {b}, thân dài uốn lượn | Cuộn thân dài quanh {b} | Duỗi dài ngủ cạnh {b} |
+
+| Bạn | `pair_groom` | `pair_share` | `pair_chat` | `pair_comfort` |
+|---|---|---|---|---|
+| **Juad** | Nhẹ nhàng rửa mai cho {b} | Đẩy phần rau sang cho {b} | Lẩm bẩm kể chuyện xưa | Chậm rãi ở bên an ủi |
+| **Abu** | Rỉa lông giúp {b} gọn gàng | Nhả hạt nhường {b} | Bắt chước giọng {b} cả nhà cười ầm | Hót một bài ngọt để dỗ |
+| **Uni** | Liếm lông cho {b} cẩn thận | Đẩy bát về phía {b} | Sủa nhỏ như tâm sự | Dụi vào {b} an ủi |
+| **Charsiu** | Liếm mặt {b} nhiệt tình | Nhường nửa phần ăn (hiếm!) | Khoe món ngon đã ăn | Cái ôm to bự |
+| **Tofu** | Lim dim liếm nhẹ lông | Đẩy bánh sang rồi nằm xuống | Thì thầm ngái ngủ kể chuyện | Nằm im bên cạnh cho ấm lòng |
+| **Udon** | Liếm tai cho {b} | Cắn đôi miếng ăn chia | Sủa vang kể chuyện rượt bóng | Đưa đồ chơi để dỗ |
+
+### 9.4 Yêu cầu vẽ cho phần này
+
+- **7 hoạt hình cặp**, mỗi cặp cần **hai nhân vật cùng khung** (chạy cùng lúc), nên làm theo **bố cục chuẩn có hai vị trí** (bạn chủ động bên trái, bạn còn lại bên phải, hoặc ngược lại) để ghép bất kỳ hai bạn nào mà không phải vẽ riêng từng cặp (6 bạn có 15 cặp khác nhau).
+- Thể hiện **tính cách từng bạn** trong cử động (ví dụ Udon chạy uốn lượn, Juad chậm rãi, Tofu hay ngáp, Uni xù bông) chứ không chỉ cùng một động tác.
+- **Bong bóng cảm xúc** cho 7 kiểu (🏃 🤗 💤 🪮 🍖 💬 🫂): vector 64px, cùng phong cách với 4 bong bóng phản ứng ở mục 7.
+- **Hiệu ứng nhỏ trong cảnh**: bụi khi chạy, vòng tim khi ôm, bọt "Zzz" khi ngủ chung, bong bóng thoại khi kể chuyện.
+- Chừa khoảng trống trong cảnh khu nhà để hai bạn có chỗ diễn (cảnh bậc 1 chỉ chứa 1 bạn nên không có tương tác).

@@ -2,6 +2,7 @@
 // Chăm sóc miễn phí; phần thưởng duy nhất là điểm Thân thiết (không kiếm xu). Chỉ mở rộng khu nhà mới tốn xu tím.
 // Số thú nuôi được = sức chứa của khu nhà; cấp bậc quyết định bậc khu nhà tối đa được mua. Thú không bao giờ mất.
 // Chỉ số tính theo thời gian thật (tụt dần), máy chủ quyết định mọi thay đổi. Thú buồn (chỉ số dưới 20) bị trừ Thân thiết theo giờ.
+import crypto from 'node:crypto';
 import { db, tx, now } from './db.js';
 import { bad, notFound, forbidden, getUser, rateLimit, areFriends, isBlockedEither, notify, pushOnly, isOnline, isSystemAdmin, log } from './lib.js';
 import { balanceOf } from './levels.js';
@@ -69,9 +70,23 @@ const TOY_NAMES = {
   parrot: { bong: ['Chuông nhỏ', '🔔'], gam: ['Gương nhỏ', '🪞'], xich: ['Xích đu', '🎠'], truot: ['Cầu leo', '🪜'] },
   turtle: { bong: ['Bóng nổi', '🏐'], gam: ['Hòn đá ngộ nghĩnh', '🪨'], xich: ['Thác nước mini', '⛲'], truot: ['Đảo cát', '🏝️'] },
 };
+// quần áo và vòng cổ: chỉ để làm đẹp, mua một lần, mặc cho từng bạn (mỗi bạn một bộ và một vòng cổ); cùng khuôn, cùng giá cho mọi loài
+const WEAR_TPL = [{ k: '1', price: 80 }, { k: '2', price: 150 }, { k: '3', price: 280 }, { k: '4', price: 450 }];
+const OUTFIT_NAMES = {
+  dog: { 1: ['Áo thun', '👕'], 2: ['Áo mưa', '🧥'], 3: ['Áo len', '🧶'], 4: ['Bộ vest', '🤵'] },
+  parrot: { 1: ['Áo gile nhỏ', '🦺'], 2: ['Mũ lưỡi trai', '🧢'], 3: ['Áo choàng', '🧣'], 4: ['Bộ lễ phục', '🎩'] },
+  turtle: { 1: ['Áo mai hoa', '🌺'], 2: ['Mũ rơm', '👒'], 3: ['Áo choàng mai', '🥋'], 4: ['Mai lễ phục', '🎓'] },
+};
+const COLLAR_NAMES = {
+  dog: { 1: ['Vòng da', '📿'], 2: ['Vòng chuông', '🔔'], 3: ['Vòng ngọc', '💎'], 4: ['Vòng hoàng gia', '👑'] },
+  parrot: { 1: ['Vòng chân', '⭕'], 2: ['Vòng lông vũ', '🪶'], 3: ['Vòng hạt', '🔮'], 4: ['Vòng ngọc', '💠'] },
+  turtle: { 1: ['Dây vải', '🎀'], 2: ['Vòng vỏ sò', '🐚'], 3: ['Vòng ngọc trai', '🦪'], 4: ['Vòng vàng', '🏅'] },
+};
 export const SHOP = {
   food: FOOD_TPL.flatMap((t) => Object.keys(SPECIES).map((sp) => ({ id: `${sp}_${t.k}`, sp, name: FOOD_NAMES[sp][t.k][0], emoji: FOOD_NAMES[sp][t.k][1], price: t.price, food: t.food, fun: t.fun || 0, health: t.health || 0, int: t.int }))),
   toy: TOY_TPL.flatMap((t) => Object.keys(SPECIES).map((sp) => ({ id: `${sp}_${t.k}`, sp, name: TOY_NAMES[sp][t.k][0], emoji: TOY_NAMES[sp][t.k][1], price: t.price, fun: t.fun, health: t.health || 0, int: t.int }))),
+  outfit: WEAR_TPL.flatMap((t) => Object.keys(SPECIES).map((sp) => ({ id: `${sp}_o${t.k}`, sp, name: OUTFIT_NAMES[sp][t.k][0], emoji: OUTFIT_NAMES[sp][t.k][1], price: t.price }))),
+  collar: WEAR_TPL.flatMap((t) => Object.keys(SPECIES).map((sp) => ({ id: `${sp}_c${t.k}`, sp, name: COLLAR_NAMES[sp][t.k][0], emoji: COLLAR_NAMES[sp][t.k][1], price: t.price }))),
   house: [
     { id: 'house1', tier: 1, name: 'Nhà gỗ', emoji: '🛖', price: 150 }, { id: 'house2', tier: 2, name: 'Nhà mái đỏ', emoji: '🏠', price: 500 }, { id: 'house3', tier: 3, name: 'Nhà vườn', emoji: '🏡', price: 1200 },
   ],
@@ -150,6 +165,9 @@ CREATE TABLE IF NOT EXISTS pet_inventory (user_id INTEGER NOT NULL, item TEXT NO
 CREATE TABLE IF NOT EXISTS pet_visits (visitor_id INTEGER NOT NULL, owner_id INTEGER NOT NULL, day TEXT NOT NULL, PRIMARY KEY (visitor_id, owner_id, day));
 `);
 for (const k of KINDS) db.prepare('INSERT OR IGNORE INTO pet_kinds (id) VALUES (?)').run(k.id);
+for (const sql of ['ALTER TABLE pets ADD COLUMN outfit TEXT', 'ALTER TABLE pets ADD COLUMN collar TEXT', 'ALTER TABLE pet_home ADD COLUMN social_at INTEGER NOT NULL DEFAULT 0']) { try { db.exec(sql); } catch { /* đã có cột */ } }
+db.exec(`CREATE TABLE IF NOT EXISTS pet_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, at INTEGER NOT NULL, type TEXT NOT NULL, a_id INTEGER NOT NULL, b_id INTEGER NOT NULL, text TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_pet_events_user ON pet_events(user_id, id);`);
 
 // ---- tên thú: phải riêng biệt (không trùng tên thú của ai khác) và không được trùng tên mặc định của các bạn ----------------------
 const nameKey = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -202,13 +220,14 @@ function moodOf(st) {
   if (low[1] < 25) return { key: { food: 'hungry', fun: 'bored', clean: 'dirty', health: 'sleepy' }[low[0]], label: { food: 'Đang đói bụng', fun: 'Đang buồn chán', clean: 'Cần được tắm', health: 'Đang buồn ngủ' }[low[0]] };
   return (st.food + st.fun + st.clean + st.health) / 4 >= 70 ? { key: 'happy', label: 'Đang rất vui' } : { key: 'ok', label: 'Ổn' };
 }
+const wearInfo = (slot, id) => { const it = id && ITEM[`${slot}:${id}`]; return it ? { id: it.id, name: it.name, emoji: it.emoji } : null; };
 export function petView(p, t, crowd, kinds = imgMap()) {
   const k = KIND[p.kind], st = current(p, t, crowd), cd = (() => { try { return JSON.parse(p.cd || '{}'); } catch { return {}; } })();
   const loss = lossOf(p, t, crowd), intimacy = p.intimacy - loss; // điểm hiển thị đã trừ phần mất do bỏ mặc
   const stage = stageOf(intimacy), next = STAGES.find((s) => s.from > intimacy);
   return {
     id: p.id, kind: p.kind, kindName: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, trait: k.trait,
-    favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
+    outfit: wearInfo('outfit', p.outfit), collar: wearInfo('collar', p.collar), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
     stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st),
     cooldowns: Object.fromEntries(Object.entries(ACTIONS).map(([a, c]) => [a, Math.max(0, (cd[a] || 0) + c.cd - t)])),
     gainLeft: Math.max(0, DAILY_GAIN_CAP - (p.day === dayKey(t) ? p.day_gain : 0)),
@@ -286,6 +305,80 @@ function care(uid, petId, action, body) {
   });
 }
 
+// ---- tương tác tự động giữa các bạn thú trong cùng khu nhà ------------------------------------------------------------------------
+// Khi có từ 2 bạn trở lên, cứ mỗi SOCIAL_EVERY phút các bạn tự chơi, ôm, ngủ chung, chải lông, chia đồ ăn, kể chuyện hoặc an ủi nhau
+// (cả khi người chơi không mở app; dồn lại tối đa SOCIAL_BACKLOG lần). Mỗi lần: chỉ số hai bạn đổi nhẹ và mỗi bạn +1 Thân thiết (có trần mỗi ngày).
+export const SOCIAL_EVERY = 10 * 60_000;
+export const SOCIAL_BACKLOG = 6;
+export const SOCIAL = {
+  play: { emoji: '🏃', label: 'Chơi đuổi bắt' }, cuddle: { emoji: '🤗', label: 'Rúc vào nhau' }, nap: { emoji: '💤', label: 'Ngủ chung' },
+  groom: { emoji: '🪮', label: 'Chải lông' }, share: { emoji: '🍖', label: 'Chia đồ ăn' }, chat: { emoji: '💬', label: 'Kể chuyện' }, comfort: { emoji: '🫂', label: 'An ủi' },
+};
+// độ thích mỗi kiểu tương tác của từng bạn (tính cách)
+const SOCIAL_W = {
+  juad: { play: 0, cuddle: 2, nap: 3, groom: 1, share: 2, chat: 1 }, abu: { play: 1, cuddle: 1, nap: 1, groom: 2, share: 1, chat: 4 },
+  uni: { play: 2, cuddle: 3, nap: 1, groom: 3, share: 1, chat: 1 }, charsiu: { play: 3, cuddle: 2, nap: 1, groom: 1, share: 1, chat: 1 },
+  tofu: { play: 1, cuddle: 3, nap: 4, groom: 1, share: 1, chat: 1 }, udon: { play: 4, cuddle: 1, nap: 1, groom: 1, share: 1, chat: 1 },
+};
+// lời mô tả theo bạn thực hiện ({a} là bạn chủ động, {b} là bạn kia). Tên hoạt hình cho thiết kế: pair_play, pair_cuddle, ...
+export const SOCIAL_TEXT = {
+  juad: { play: '{a} chầm chậm bò theo {b}, hai bạn rượt nhau theo kiểu của rùa!', cuddle: '{a} rúc đầu vào bên {b}, ấm áp lắm.', nap: '{a} rụt vào mai ngủ cạnh {b}.', groom: '{a} nhẹ nhàng rửa mai cho {b}.', share: '{a} đẩy phần rau của mình sang cho {b}.', chat: '{a} lẩm bẩm kể chuyện xưa cho {b} nghe.', comfort: '{a} chậm rãi ở bên cạnh an ủi {b}.' },
+  abu: { play: '{a} bay lượn quanh {b} hót líu lo!', cuddle: '{a} đậu lên lưng {b}, rúc cánh vào nhau.', nap: '{a} rúc đầu vào cánh, ngủ cạnh {b}.', groom: '{a} rỉa lông giúp {b} gọn gàng.', share: '{a} nhả hạt nhường {b} ăn cùng.', chat: '{a} bắt chước giọng {b} khiến cả khu nhà cười ầm.', comfort: '{a} hót một bài thật ngọt để dỗ {b}.' },
+  uni: { play: '{a} lăn tròn như cục bông quanh {b}!', cuddle: '{a} xù bông, nép sát vào {b}.', nap: '{a} cuộn tròn ngủ cạnh {b}.', groom: '{a} liếm lông cho {b} thật cẩn thận.', share: '{a} đẩy bát về phía {b}.', chat: '{a} sủa nhỏ như đang tâm sự với {b}.', comfort: '{a} dụi vào {b} để an ủi.' },
+  charsiu: { play: '{a} đuổi theo {b} khắp sân, lưỡi thè dài!', cuddle: '{a} nằm đè lên {b} ôm ấp.', nap: '{a} ngáy khò khò cạnh {b}.', groom: '{a} liếm mặt {b} nhiệt tình.', share: '{a} nhường nửa phần ăn cho {b} (hiếm lắm đó!).', chat: '{a} khoe với {b} đủ thứ món ngon đã ăn.', comfort: '{a} dành cho {b} một cái ôm to bự.' },
+  tofu: { play: '{a} chơi với {b} được vài phút rồi ngáp dài.', cuddle: '{a} gối đầu lên {b} lim dim.', nap: '{a} và {b} cùng ngủ một giấc ngon lành.', groom: '{a} lim dim liếm nhẹ lông cho {b}.', share: '{a} đẩy bánh sang cho {b} rồi nằm xuống.', chat: '{a} thì thầm ngái ngủ kể chuyện cho {b}.', comfort: '{a} nằm im bên cạnh {b} cho ấm lòng.' },
+  udon: { play: '{a} phóng vụt đuổi {b}, thân dài uốn lượn khắp sân!', cuddle: '{a} cuộn thân dài quanh {b}.', nap: '{a} duỗi dài ngủ cạnh {b}.', groom: '{a} liếm tai cho {b}.', share: '{a} cắn đôi miếng ăn chia cho {b}.', chat: '{a} sủa vang kể chuyện rượt bóng cho {b}.', comfort: '{a} đưa đồ chơi cho {b} để dỗ.' },
+};
+const sadOf = (s) => Math.min(s.food, s.fun, s.clean, s.health) < 25;
+// điều kiện và hiệu quả: a là bạn chủ động, b là bạn kia
+const SOCIAL_RULES = {
+  play: { ok: (a, b) => a.fun < 90 && b.fun < 90, fx: () => [{ fun: 8, food: -3 }, { fun: 8, food: -3 }] },
+  cuddle: { ok: () => true, fx: () => [{ health: 6, fun: 3 }, { health: 6, fun: 3 }] },
+  nap: { ok: (a, b) => a.health < 70 || b.health < 70, fx: () => [{ health: 10 }, { health: 10 }] },
+  groom: { ok: (a, b) => b.clean < 85, fx: () => [{ fun: 3 }, { clean: 10 }] },
+  share: { ok: (a, b) => a.food >= 50 && b.food < 50, fx: () => [{ food: -5 }, { food: 10 }] },
+  chat: { ok: () => true, fx: () => [{}, { fun: 8 }] },
+  comfort: { ok: (a, b) => sadOf(b) && !sadOf(a), fx: () => [{ fun: 2 }, { fun: 10 }] },
+};
+const pickWeighted = (items) => { const total = items.reduce((n, x) => n + x.w, 0); let r = crypto.randomInt(Math.max(1, total)); for (const x of items) { if (r < x.w) return x; r -= x.w; } return items[items.length - 1]; };
+function socialEvent(uid, at) {
+  const list = myPets(uid); if (list.length < 2) return null;
+  const fx = factorFn(uid, list.length), t = now();
+  const i = crypto.randomInt(list.length); let j = crypto.randomInt(list.length - 1); if (j >= i) j++;
+  const rows = [list[i], list[j]].map((p) => settle(p, t, fx(p)).row), st = rows.map((p) => ({ p, s: { food: p.food, fun: p.fun, clean: p.clean, health: p.health } }));
+  const cands = [];
+  for (const [ai, bi] of [[0, 1], [1, 0]]) for (const type of Object.keys(SOCIAL_RULES)) {
+    if (!SOCIAL_RULES[type].ok(st[ai].s, st[bi].s)) continue;
+    const w = type === 'comfort' ? 8 : SOCIAL_W[st[ai].p.kind][type] * 2 + SOCIAL_W[st[bi].p.kind][type];
+    if (w > 0) cands.push({ ai, bi, type, w });
+  }
+  const c = cands.length ? pickWeighted(cands) : { ai: 0, bi: 1, type: 'cuddle' };
+  const [da, db_] = SOCIAL_RULES[c.type].fx(), A = st[c.ai], B = st[c.bi];
+  for (const [x, d] of [[A, da], [B, db_]]) {
+    const n = { ...x.s }; for (const [s, v] of Object.entries(d)) n[s] = clamp(n[s] + v);
+    db.prepare('UPDATE pets SET food = ?, fun = ?, clean = ?, health = ?, stat_at = ? WHERE id = ?').run(n.food, n.fun, n.clean, n.health, t, x.p.id);
+    gain(db.prepare('SELECT * FROM pets WHERE id = ?').get(x.p.id), 1, t);
+  }
+  const text = SOCIAL_TEXT[A.p.kind][c.type].replaceAll('{a}', A.p.name).replaceAll('{b}', B.p.name);
+  db.prepare('INSERT INTO pet_events (user_id, at, type, a_id, b_id, text) VALUES (?,?,?,?,?,?)').run(uid, at, c.type, A.p.id, B.p.id, text);
+  db.prepare('DELETE FROM pet_events WHERE user_id = ? AND id NOT IN (SELECT id FROM pet_events WHERE user_id = ? ORDER BY id DESC LIMIT 50)').run(uid, uid);
+  return { type: c.type, text };
+}
+// chạy các lần tương tác còn nợ kể từ lần cuối (gọi khi người chơi mở game); force = số lần buộc chạy ngay (công cụ thử của Admin)
+export function socialTick(uid, force = 0) {
+  return tx(() => {
+    const h = homeOf(uid), t = now();
+    if (myPets(uid).length < 2 || (!h.social_at && !force)) { db.prepare('UPDATE pet_home SET social_at = ? WHERE user_id = ?').run(t, uid); if (!force || myPets(uid).length < 2) return 0; }
+    const due = force || Math.floor((t - h.social_at) / SOCIAL_EVERY);
+    if (due <= 0) return 0;
+    const n = Math.min(due, SOCIAL_BACKLOG);
+    for (let i = 0; i < n; i++) socialEvent(uid, t - (n - 1 - i) * 60_000);
+    // còn nợ: giữ phần lẻ để lần sau tính tiếp; nợ quá nhiều thì bỏ phần dư
+    db.prepare('UPDATE pet_home SET social_at = ? WHERE user_id = ?').run(force || due > SOCIAL_BACKLOG ? t : h.social_at + due * SOCIAL_EVERY, uid);
+    return n;
+  });
+}
+
 // ---- nhắc chăm thú (push, gộp một tin, tối đa 2 lần mỗi ngày) ------------------------------------------------------------
 export function petsSweep() {
   const t = now(), day = dayKey(t);
@@ -313,6 +406,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
   api.use('/pets', (req, _res, next) => { if (!canUsePets(me(req))) throw forbidden('Game Nuôi thú chưa mở cho bạn'); next(); });
 
   const state = (uid) => {
+    socialTick(uid);
     const h = homeOf(uid), t = now(), list = myPets(uid), fx = factorFn(uid, list.length), T = tiers(), cur = T.find((x) => x.tier === h.tier), nxt = T.find((x) => x.tier === h.tier + 1) || null, u = getUser(uid), kinds = imgMap();
     const mine = new Set(list.map((p) => p.kind));
     return {
@@ -320,6 +414,9 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
       home: { tier: cur.tier, name: cur.name, capacity: cur.capacity, used: list.length, tiers: T,
         next: nxt && { tier: nxt.tier, name: nxt.name, capacity: nxt.capacity, price: nxt.price, minLevel: nxt.minLevel, minLevelName: LEVEL_NAMES[nxt.minLevel], levelOk: (u.lvl || 0) >= nxt.minLevel } },
       pets: list.map((p) => petView(p, t, fx(p), kinds)),
+      events: db.prepare('SELECT * FROM pet_events WHERE user_id = ? ORDER BY id DESC LIMIT 15').all(uid).map((e) => ({ id: e.id, at: e.at, type: e.type, emoji: SOCIAL[e.type].emoji, label: SOCIAL[e.type].label, a: e.a_id, b: e.b_id, text: e.text })),
+      socialEveryMin: SOCIAL_EVERY / 60_000, social: SOCIAL,
+      closet: Object.entries(owned(uid)).filter(([k, q]) => q > 0 && /^(outfit|collar):/.test(k) && ITEM[k]).map(([k]) => ({ slot: ITEM[k].cat, id: ITEM[k].id, sp: ITEM[k].sp, name: ITEM[k].name, emoji: ITEM[k].emoji })),
       inv: owned(uid), habitat: Object.fromEntries(Object.entries(habTiers(uid)).map(([t, n]) => { const it = SHOP[t].find((x) => x.tier === n); return [t, { tier: n, emoji: it?.emoji || null, name: it?.name || null, slow: Math.round((1 - HAB_MULT[n]) * 100) }]; })), shopFoods: SHOP.food.map((f) => ({ id: f.id, sp: f.sp, name: f.name, emoji: f.emoji, food: f.food, fun: f.fun || 0, health: f.health || 0, int: f.int })), shopToys: SHOP.toy.map((x) => ({ id: x.id, sp: x.sp, name: x.name, emoji: x.emoji, fun: x.fun, health: x.health || 0, int: x.int })),
       kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, adopted: mine.has(k.id) })),
       levels: LEVELS, foodsBySp: FREE_FOODS, species: Object.entries(SPECIES).map(([id, v]) => ({ id, name: v.name })), stages: STAGES, dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
@@ -373,16 +470,35 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     res.json(state(uid));
   }));
 
+  // mặc quần áo / vòng cổ cho một bạn (phải đã mua, đúng loài); item rỗng = bỏ ra
+  api.post('/pets/:id/wear', wrap((req, res) => {
+    const slot = req.body?.slot; if (!['outfit', 'collar'].includes(slot)) throw bad('Chỉ mặc được quần áo hoặc vòng cổ');
+    const p = db.prepare('SELECT * FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), me(req));
+    if (!p) throw notFound('Không tìm thấy bạn thú này');
+    let id = null;
+    if (req.body?.item) {
+      const it = ITEM[`${slot}:${req.body.item}`];
+      if (!it) throw bad('Vật phẩm không tồn tại');
+      if (it.sp !== KIND[p.kind].sp) throw bad(`${it.name} không dành cho ${SPECIES[KIND[p.kind].sp].name.toLowerCase()}`);
+      if (!(owned(me(req))[`${slot}:${it.id}`] > 0)) throw bad('Bạn chưa có món này, hãy mua ở cửa hàng');
+      id = it.id;
+    }
+    db.prepare(`UPDATE pets SET ${slot} = ? WHERE id = ?`).run(id, p.id);
+    res.json(state(me(req)));
+  }));
+
   // ---- cửa hàng -------------------------------------------------------------------------------------------------------
   const shopView = (uid) => {
     const inv = owned(uid), hab = habTiers(uid), mine = new Set(myPets(uid).map((p) => KIND[p.kind].sp));
-    const withState = (cat, it) => ({ ...it, qty: inv[`${cat}:${it.id}`] || 0, owned: (inv[`${cat}:${it.id}`] || 0) > 0, react: KINDS.filter((k) => k.sp === it.sp).map((k) => ({ name: k.name, level: TASTE[k.id][cat][it.id] })) });
+    const withState = (cat, it) => ({ ...it, qty: inv[`${cat}:${it.id}`] || 0, owned: (inv[`${cat}:${it.id}`] || 0) > 0, react: ['food', 'toy'].includes(cat) ? KINDS.filter((k) => k.sp === it.sp).map((k) => ({ name: k.name, level: TASTE[k.id][cat][it.id] })) : null });
     const species = Object.entries(SPECIES).map(([sp, v]) => {
       const t = v.home, trade = SHOP[t].find((x) => x.tier === hab[t])?.price || 0;
       return {
         id: sp, name: v.name, mine: mine.has(sp), pets: KINDS.filter((k) => k.sp === sp).map((k) => k.name),
         food: SHOP.food.filter((x) => x.sp === sp).map((x) => withState('food', x)),
         toy: SHOP.toy.filter((x) => x.sp === sp).map((x) => withState('toy', x)),
+        outfit: SHOP.outfit.filter((x) => x.sp === sp).map((x) => withState('outfit', x)),
+        collar: SHOP.collar.filter((x) => x.sp === sp).map((x) => withState('collar', x)),
         home: { type: t, name: v.homeName, items: SHOP[t].map((it) => ({ ...it, current: hab[t] === it.tier, worse: it.tier <= hab[t], cost: Math.max(0, it.price - trade) })) },
       };
     });
@@ -397,7 +513,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     tx(() => {
       const u = getUser(uid), inv = owned(uid), hab = habTiers(uid);
       let cost = it.price * qty;
-      if (it.cat === 'toy' && inv[key] > 0) throw bad('Bạn đã có món đồ chơi này rồi');
+      if (['toy', 'outfit', 'collar'].includes(it.cat) && inv[key] > 0) throw bad('Bạn đã có món này rồi');
       if (it.tier) {
         if (it.tier <= hab[it.cat]) throw bad('Bạn đã có chỗ ở bậc này hoặc cao hơn');
         cost = it.price - (SHOP[it.cat].find((x) => x.tier === hab[it.cat])?.price || 0); // đổi lên bậc cao: trừ giá món cũ
@@ -426,7 +542,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     if (ownerId !== viewer && (!areFriends(viewer, ownerId) || isBlockedEither(viewer, ownerId))) throw forbidden('Chỉ thăm được nhà của bạn bè');
     const h = homeOf(ownerId), list = myPets(ownerId), t = now(), fx = factorFn(ownerId, list.length), cur = tiers().find((x) => x.tier === h.tier);
     return { owner: { id: o.id, displayName: o.display_name }, home: { tier: cur.tier, name: cur.name, capacity: cur.capacity },
-      pets: list.map((p) => { const v = petView(p, t, fx(p)); return { id: v.id, kind: v.kind, emoji: v.emoji, initials: v.initials, color: v.color, imageUrl: v.imageUrl, name: v.name, stageName: v.stageName, stage: v.stage, mood: v.mood }; }),
+      pets: list.map((p) => { const v = petView(p, t, fx(p)); return { id: v.id, outfit: v.outfit, collar: v.collar, kind: v.kind, emoji: v.emoji, initials: v.initials, color: v.color, imageUrl: v.imageUrl, name: v.name, stageName: v.stageName, stage: v.stage, mood: v.mood }; }),
       patted: !!db.prepare('SELECT 1 FROM pet_visits WHERE visitor_id = ? AND owner_id = ? AND day = ?').get(viewer, ownerId, dayKey()) };
   };
   api.get('/pets/visit/:userId', wrap((req, res) => res.json(visitView(me(req), Number(req.params.userId)))));
@@ -470,6 +586,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     db.prepare('DELETE FROM pets WHERE user_id = ?').run(me(req));
     db.prepare('DELETE FROM pet_home WHERE user_id = ?').run(me(req));
     db.prepare('DELETE FROM pet_inventory WHERE user_id = ?').run(me(req));
+    db.prepare('DELETE FROM pet_events WHERE user_id = ?').run(me(req));
     db.prepare('DELETE FROM pet_visits WHERE visitor_id = ? OR owner_id = ?').run(me(req), me(req));
     res.json({ ok: true });
   }));
@@ -477,8 +594,10 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     const h = Number(req.body?.hours);
     if (!Number.isFinite(h) || h <= 0 || h > 72) throw bad('Số giờ từ 1 đến 72');
     db.prepare('UPDATE pets SET stat_at = stat_at - ?, cd = NULL WHERE user_id = ?').run(Math.round(h * 3600_000), me(req));
+    db.prepare('UPDATE pet_home SET social_at = CASE WHEN social_at > 0 THEN social_at - ? ELSE 0 END WHERE user_id = ?').run(Math.round(h * 3600_000), me(req));
     res.json({ ok: true });
   }));
+  api.post('/admin/pets/social', adminOnly, wrap((req, res) => res.json({ events: socialTick(me(req), Math.max(1, Math.min(SOCIAL_BACKLOG, Math.floor(Number(req.body?.n) || 1)))) })));
   api.post('/admin/pets/coins', adminOnly, wrap((req, res) => {
     const n = Number(req.body?.amount);
     if (!Number.isInteger(n) || n < 1 || n > 10_000) throw bad('Số xu từ 1 đến 10.000');
