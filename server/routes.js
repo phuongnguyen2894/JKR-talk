@@ -1038,12 +1038,13 @@ api.post(
     notifyMentions(g, req.user, mentionIds);
     if (mentionAll) {
       const text = `${req.user.display_name} đã nhắc đến mọi người trong "${g.name}"`;
+      const previewBody = body.replace(/(^|\s)@everyone(?![\p{L}\p{N}_])/giu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Có thông báo mới';
       tx(() => {
         for (const uid of memberIds(gid)) {
           if (uid === req.user.id || mentionIds.includes(uid)) continue;
           const mm = getMember(gid, uid);
           if (!mm || isMuted(mm) || isBlockedEither(req.user.id, uid)) continue;
-          notify(uid, 'mention', text, { url: `/#/chat/${gid}`, tag: `mention-${gid}` });
+          notify(uid, 'mention', text, { url: `/#/chat/${gid}`, tag: `mention-${gid}`, force: true, pushBody: `📣 ${req.user.display_name} @everyone · ${g.name}: ${previewBody}` });
         }
       });
     }

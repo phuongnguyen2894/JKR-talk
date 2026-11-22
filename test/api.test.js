@@ -782,6 +782,14 @@ test('@everyone: chỉ Admin dùng được, báo cho mọi thành viên (trừ 
   const muted = (await call('GET', '/groups/mine', null, c.token)).data.groups.find((x) => x.id === vn.id).muted;
   if (muted) assert.equal(await cnt(c.token), 0);
   assert.equal(await cnt(adm.token), 0); // không tự báo cho mình
+  // push ngoài app: người có đăng ký thiết bị nhận push kèm nội dung tin
+  const { pushLog } = await import('../server/push.js');
+  await call('POST', '/push/subscribe', { subscription: { endpoint: 'https://push.example/dev-every-b', keys: { p256dh: 'pk', auth: 'ak' } } }, b.token);
+  pushLog.length = 0;
+  await call('POST', `/groups/${vn.id}/messages`, { body: 'Họp lúc 8h @everyone' }, adm.token);
+  const pb = pushLog.filter((p) => p.endpoint === 'https://push.example/dev-every-b' && p.kind === 'mention');
+  assert.equal(pb.length, 1);
+  assert.match(pb[0].payload.body, /@everyone.*Họp lúc 8h/);
 });
 
 test('ghim tin: Admin ghim / bỏ ghim một tin lên đầu nhóm; người thường không được', async () => {

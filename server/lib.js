@@ -202,7 +202,8 @@ export function notify(uid, type, text, opts = {}) {
     notification: { id: Number(r.lastInsertRowid), type, text, read: false, createdAt: now() },
   });
   const kind = PUSH_TYPE_MAP[type];
-  if (kind && !isOnline(uid)) pushToUser(uid, kind, { body: text, url: opts.url || '/', tag: opts.tag });
+  // opts.force: gửi push cả khi đang có kết nối mở (app chạy nền trên điện thoại vẫn giữ kết nối nên bị tính là đang online)
+  if (kind && (opts.force || !isOnline(uid))) pushToUser(uid, kind, { body: opts.pushBody || text, url: opts.url || '/', tag: opts.tag });
 }
 // Chỉ gửi thông báo đẩy (không lưu vào danh sách thông báo), bỏ qua nếu người dùng đang mở app
 export function pushOnly(uid, kind, payload) {
