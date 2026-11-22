@@ -1,7 +1,7 @@
 // Mini game Muay Thai: cược xu tím vào 1 trong 2 võ sĩ. Kết quả do máy chủ quyết định, trang này chỉ hiển thị và phát lại kịch bản.
 // Luồng: PICK (chọn cặp + cược) → FIGHT (phát hoạt hình) → RESULT. Tải lại trang: #/muaythai/<mã trận> đưa về đúng màn.
 import { $, $$, esc, S, api, icon, toast, coinIcon } from './core.js';
-import { fighterSvg, CORNER } from './fighter.js';
+import { fighterHtml, mountSprites, loadSprites, CORNER } from './sprite.js';
 
 const fmt = (n) => Number(n || 0).toLocaleString('vi-VN');
 const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
@@ -41,7 +41,7 @@ export async function renderMuayThai(view, arg) {
   M?.stop?.();
   M = { screen: 'load', tab: 'random', sub: 'char', slots: { A: null, B: null }, active: 'A', q: '', users: [], chars: [], match: null, pick: null, stake: 50, balance: S.me?.balance || 0, stop: null, busy: false, last: null, res: null };
   view.innerHTML = '<div class="mt-wrap"><div class="mt" id="mt"><div class="mt-load">Đang tải…</div></div></div>';
-  await loadCss();
+  await Promise.all([loadCss(), loadSprites()]);
   const root = $('#mt', view);
   root.onclick = onClick;
   root.oninput = onInput;
@@ -76,6 +76,7 @@ function draw(screen) {
   const root = $('#mt');
   if (!root) return;
   root.innerHTML = screen === 'pick' ? pickHtml() : screen === 'custom' ? customHtml() : screen === 'fight' ? fightHtml() : resultHtml();
+  mountSprites(root);
   if (screen === 'fight') startFight();
   if (screen === 'custom' && M.sub === 'user') $('#mt-q')?.focus();
 }
@@ -100,7 +101,7 @@ function pickHtml() {
   const [a, b] = M.match.fighters;
   const st = startState();
   const slot = (f, side) => `<button type="button" class="mt-fslot ${side}${M.pick === side ? ' on' : M.pick ? ' dim' : ''}" data-mt="pick-${side}" aria-pressed="${M.pick === side}" aria-label="Cược cho ${esc(f.name)}, ${CORNER[f.corner].name}, thưởng x${f.odds}">
-      ${M.pick === side ? '<span class="mt-you">Bạn chọn</span>' : ''}<span class="mt-shadow"></span>${fighterSvg(f, { w: 108 })}</button>`;
+      ${M.pick === side ? '<span class="mt-you">Bạn chọn</span>' : ''}<span class="mt-shadow"></span>${fighterHtml(f, { w: 170 })}</button>`;
   const name = (f, side) => `<div class="mt-fname ${side}${M.pick && M.pick !== side ? ' dim' : ''}">${esc(f.name)} <span class="x">x${f.odds}</span><small>${CORNER[f.corner].name}</small></div>`;
   const lowCoins = M.balance < M.match.stake.min;
   return `${header('Muay Thai')}${tabsHtml()}
@@ -195,7 +196,7 @@ function fightHtml() {
       <span class="mt-clock" id="mt-clock" role="timer" aria-label="Thời gian còn lại">0:09</span>
       <div class="hp"><div class="n r">${esc(b.name)}</div><div class="bar r"><i id="hp-B" class="blue" style="width:100%"></i></div></div></div>
     <div class="mt-arena fight" id="mt-ring">${arenaBack()}
-      <div class="mt-fighters"><div class="mt-fslot A" id="f-A" role="presentation">${fighterSvg(a, { pose: 'walk', w: 140 })}</div><div class="mt-fslot B" id="f-B" role="presentation">${fighterSvg(b, { pose: 'walk', w: 140 })}</div></div>
+      <div class="mt-fighters"><div class="mt-fslot A" id="f-A" role="presentation">${fighterHtml(a, { pose: 'walk', w: 200 })}</div><div class="mt-fslot B" id="f-B" role="presentation">${fighterHtml(b, { pose: 'walk', w: 200 })}</div></div>
       <div class="mt-burst" id="mt-burst" aria-hidden="true"><svg viewBox="0 0 120 120"><polygon points="60,2 72,34 104,18 88,48 118,60 88,72 104,102 72,86 60,118 48,86 16,102 32,72 2,60 32,48 16,18 48,34" fill="#FFC83D" stroke="#B7791F" stroke-width="3" stroke-linejoin="round"/><text id="mt-burst-t" x="60" y="68" text-anchor="middle" transform="rotate(-8 60 60)" font-family="Be Vietnam Pro,system-ui,sans-serif" font-size="22" font-weight="900" fill="#2A1B00">BỐP!</text></svg></div>
       ${crowdSvg()}</div>
     <div class="mt-log" id="mt-log" role="status" aria-live="polite">Hai võ sĩ vào vị trí…</div>
@@ -209,7 +210,7 @@ function startFight() {
   let done = false, clock = 0;
   const alive = () => !done && M.screen === 'fight' && $('#mt-fight');
   const at = (ms, fn) => timers.push(setTimeout(() => { if (alive()) fn(); }, ms * sp));
-  const setPose = (side, pose) => { const el = $(`#f-${side}`); if (el) el.innerHTML = fighterSvg(F[side], { pose, w: 140 }); };
+  const setPose = (side, pose) => { const el = $(`#f-${side}`); if (el) { el.innerHTML = fighterHtml(F[side], { pose, w: 200 }); mountSprites(el); } };
   const stop = () => { done = true; timers.forEach(clearTimeout); clearInterval(clock); };
   M.stop = stop;
   const finish = () => { if (done) return; stop(); draw('result'); };
@@ -237,7 +238,7 @@ function startFight() {
   const last = ev[ev.length - 1];
   if (last.ko) {
     const loser = data.script.winner === 'A' ? 'B' : 'A';
-    at(last.tMs + 420, () => { setPose(data.script.winner, 'guard'); $(`#f-${data.script.winner}`)?.classList.remove('lunge'); setPose(loser, 'guard'); $(`#f-${loser}`)?.classList.add('down'); const log = $('#mt-log'); if (log) log.textContent = `${F[loser].name} nằm sàn, trọng tài đếm…`; });
+    at(last.tMs + 420, () => { setPose(data.script.winner, 'guard'); $(`#f-${data.script.winner}`)?.classList.remove('lunge'); setPose(loser, 'ko'); const log = $('#mt-log'); if (log) log.textContent = `${F[loser].name} nằm sàn, trọng tài đếm…`; });
     at(last.tMs + 1700, finish);
   } else {
     at(data.script.durationMs, () => { const log = $('#mt-log'); if (log) log.textContent = 'Hết giờ! Trọng tài chấm điểm…'; });
@@ -253,10 +254,10 @@ function resultHtml() {
   setBalance(M.res.balanceFinal);
   const ko = r.method === 'KO';
   const conf = won ? Array.from({ length: 12 }, (_, i) => `<i class="cf c${i % 5}" style="left:${(i * 83) % 96 + 2}%;top:${(i * 37) % 40 + 4}%;animation-delay:${(i % 6) * 0.15}s"></i>`).join('') : '';
-  const loserHtml = ko ? `<div class="mt-loser ko"><div>${fighterSvg(L, { w: 70 })}</div></div>` : `<div class="mt-loser sit">${fighterSvg(L, { pose: 'defeat', w: 100 })}</div>`;
+  const loserHtml = ko ? `<div class="mt-loser ko">${fighterHtml(L, { pose: 'ko', w: 140 })}</div>` : `<div class="mt-loser sit">${fighterHtml(L, { pose: 'defeat', w: 150 })}</div>`;
   return `${header('Kết quả')}
     <div class="mt-banner ${won ? 'win' : 'lose'}">${esc(W.name).toUpperCase()} THẮNG ${ko ? 'BẰNG KO' : 'THEO ĐIỂM'}</div>
-    <div class="mt-arena result">${arenaBack()}${conf}<div class="mt-winner">${fighterSvg(W, { pose: 'win', crown: true, w: 138 })}</div>${loserHtml}${crowdSvg()}</div>
+    <div class="mt-arena result">${arenaBack()}${conf}<div class="mt-winner">${fighterHtml(W, { pose: 'win', crown: true, w: 200 })}</div>${loserHtml}${crowdSvg()}</div>
     <div class="mt-card ${won ? 'win' : 'lose'}" role="status"><div class="a">${won ? 'Bạn đoán đúng!' : 'Tiếc quá, bạn đoán chưa trúng'}</div>
       <div class="b">${won ? '+' + fmt(r.payout) : '−' + fmt(r.stake)} xu</div>
       <div class="c">${won ? `Cược ${fmt(r.stake)} xu · thưởng x${M.match.payoutMultiplier}` : `Mất ${fmt(r.stake)} xu cược`}</div></div>
