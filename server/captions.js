@@ -32,7 +32,7 @@ export const refreshTopics = () => { cfg.t = 0; };
 export const selectedTopicLabel = () => db.prepare("SELECT value FROM app_kv WHERE key = 'trend_caption_topic'").get()?.value || '';
 export const setSelectedTopicLabel = (label) => db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('trend_caption_topic', ?)").run(label || '');
 // chữ ký của chủ đề đang dùng: đổi chủ đề, đổi keyword/hashtag hay nội dung chủ đề đều làm caption cũ hết hiệu lực
-const sigOf = (t) => (t ? [t.label, t.topic, t.tagsAndKeywords, t.language, t.charLimit, !!t.allowEmojis, t.fullNames].join('|') : '');
+const sigOf = (t) => (t ? ['v2', t.label, t.topic, t.tagsAndKeywords, t.language, t.charLimit, !!t.allowEmojis, t.fullNames].join('|') : '');
 export async function currentSig() { return sigOf(await activeTopic()); }
 async function activeTopic() {
   const topics = await captionTopics();
@@ -50,7 +50,12 @@ async function oneCaption(t) {
   const j = await r.json();
   return j.fallback ? '' : String(j.caption || '').trim(); // bỏ caption mẫu dự phòng của dịch vụ để khỏi trùng nhau
 }
-const compose = (caption, tags) => [caption, (tags || '').trim()].filter(Boolean).join('\n\n').slice(0, 280);
+// caption, rồi keyword, rồi hashtag ở dòng dưới cùng
+export function compose(caption, tags) {
+  const toks = (tags || '').split(/\s+/).filter(Boolean);
+  const kw = toks.filter((x) => !x.startsWith('#')).join(' '), ht = toks.filter((x) => x.startsWith('#')).join(' ');
+  return [caption, [kw, ht].filter(Boolean).join('\n')].filter(Boolean).join('\n\n').slice(0, 280);
+}
 const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
 const running = new Set();

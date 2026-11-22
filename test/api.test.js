@@ -1417,7 +1417,7 @@ test('Đẩy trend: tạo sẵn caption cho link X, mỗi người một caption
   const c = r.data.captions[mid];
   assert.ok(c.n >= 3 && c.n <= 6);
   assert.equal(c.texts.length, c.n);
-  for (const t of c.texts) { assert.match(t, /^Caption T1 số \d+\n\n#tag1 kw1$/); assert.ok(t.length <= 280); } // caption + keyword + hashtag
+  for (const t of c.texts) { assert.match(t, /^Caption T1 số \d+\n\nkw1\n#tag1$/); assert.ok(t.length <= 280); } // caption + keyword + hashtag
   assert.equal(new Set(c.texts).size, c.n); // không trùng nhau
   // cùng người xem lại thì cùng caption; nhiều người thì có caption khác nhau
   assert.deepEqual((await ask(users[0], [mid])).data.captions[mid], c); // cùng người: cùng bộ, cùng vị trí bắt đầu
