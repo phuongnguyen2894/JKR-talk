@@ -79,7 +79,9 @@
 .pt-food.prem small { color: #6D28D9; }
 .pt-tabs { display: flex; gap: 6px; overflow-x: auto; }
 .pt-tab { flex: none; padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-weight: 700; font-size: 13px; cursor: pointer; }
-.pt-tab[aria-selected="true"] { background: #6D28D9; border-color: #6D28D9; color: #fff; }
+.pt-tab[aria-selected="true"], .pt-tab.sub[aria-selected="true"] { background: #6D28D9; border-color: #6D28D9; color: #fff; }
+.pt-tab.sub { background: var(--soft); }
+.pt-tab small { font-weight: 500; opacity: .7; }
 .pt-items { display: flex; flex-direction: column; gap: 8px; }
 .pt-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); }
 .pt-ie { font-size: 34px; width: 46px; text-align: center; flex: none; }

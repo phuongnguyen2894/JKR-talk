@@ -1938,17 +1938,17 @@ test('Nuôi thú: cửa hàng đồ ăn, đồ chơi, nhà/lồng/bể; vật ph
     // đồ ăn: chưa mua thì không dùng được; mua rồi dùng một lần
     const uni = s0.pets.find((p) => p.kind === 'uni');
     db.prepare('UPDATE pets SET food = 20, stat_at = ? WHERE id = ?').run(now(), uni.id);
-    assert.equal((await call('POST', `/pets/${uni.id}/feed`, { food: 'tiec' }, u.token)).status, 400);
-    assert.equal((await call('POST', '/pets/shop/buy', { item: 'food:tiec', qty: 2 }, u.token)).status, 200);
+    assert.equal((await call('POST', `/pets/${uni.id}/feed`, { food: 'dog_tiec' }, u.token)).status, 400);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'food:dog_tiec', qty: 2 }, u.token)).status, 200);
     assert.equal(await bal(), b0 - 50);
-    const big = await call('POST', `/pets/${uni.id}/feed`, { food: 'tiec' }, u.token);
-    assert.equal(big.status, 200); assert.ok(big.data.pet.stats.food >= 78); assert.equal(big.data.inv['food:tiec'], 1); // 20 + 60 = 80, hơn hẳn món miễn phí (tối đa +35)
+    const big = await call('POST', `/pets/${uni.id}/feed`, { food: 'dog_tiec' }, u.token);
+    assert.equal(big.status, 200); assert.ok(big.data.pet.stats.food >= 78); assert.equal(big.data.inv['food:dog_tiec'], 1); // 20 + 60 = 80, hơn hẳn món miễn phí (tối đa +35)
     // đồ chơi: mua một lần, chơi có đồ chơi vui hơn tay không
-    assert.equal((await call('POST', `/pets/${uni.id}/play`, { toy: 'bong' }, u.token)).status, 400); // chưa có
-    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:bong' }, u.token)).status, 200);
-    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:bong' }, u.token)).status, 400); // đã có
+    assert.equal((await call('POST', `/pets/${uni.id}/play`, { toy: 'dog_bong' }, u.token)).status, 400); // chưa có
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:dog_bong' }, u.token)).status, 200);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:dog_bong' }, u.token)).status, 400); // đã có
     db.prepare('UPDATE pets SET fun = 10, cd = NULL, stat_at = ? WHERE id = ?').run(now(), uni.id);
-    const withToy = (await call('POST', `/pets/${uni.id}/play`, { toy: 'bong' }, u.token)).data;
+    const withToy = (await call('POST', `/pets/${uni.id}/play`, { toy: 'dog_bong' }, u.token)).data;
     db.prepare('UPDATE pets SET fun = 10, cd = NULL, stat_at = ? WHERE id = ?').run(now(), uni.id);
     const bare = (await call('POST', `/pets/${uni.id}/play`, {}, u.token)).data;
     assert.ok(withToy.pet.stats.fun >= bare.pet.stats.fun + 14);
@@ -1964,11 +1964,26 @@ test('Nuôi thú: cửa hàng đồ ăn, đồ chơi, nhà/lồng/bể; vật ph
     assert.equal(await bal(), bBefore - (500 - 150)); // trừ giá nhà cũ
     assert.ok((await decay('uni')) < withHouse);
     assert.equal((await call('GET', '/pets/shop', null, u.token)).data.habitat.house, 2);
+    // vật phẩm đúng loài: rùa không ăn đồ ăn của chó, không dùng đồ chơi của chó; mỗi loài cùng số lượng vật phẩm
+    const juad = (await call('GET', '/pets', null, u.token)).data.pets.find((x) => x.kind === 'juad');
+    assert.equal((await call('POST', `/pets/${juad.id}/feed`, { food: 'dog_tiec' }, u.token)).status, 400);
+    assert.equal((await call('POST', `/pets/${juad.id}/feed`, { food: 'thit' }, u.token)).status, 400); // thịt là món của chó
+    assert.equal((await call('POST', `/pets/${juad.id}/feed`, { food: 'tom' }, u.token)).status, 200); // tôm là món của rùa
+    assert.equal((await call('POST', `/pets/${juad.id}/play`, { toy: 'dog_bong' }, u.token)).status, 400);
+    const cat = (await call('GET', '/pets/shop', null, u.token)).data.species;
+    assert.equal(cat.length, 3);
+    for (const k of ['food', 'toy']) assert.equal(new Set(cat.map((x) => x[k].length)).size, 1); // cùng số lượng mỗi loài
+    assert.equal(new Set(cat.map((x) => x.home.items.length)).size, 1);
+    for (const k of ['food', 'toy']) for (let i = 0; i < cat[0][k].length; i++) { // cùng giá và mức tăng chỉ số
+      const row = (x) => JSON.stringify([x[k][i].price, x[k][i].food, x[k][i].fun, x[k][i].health, x[k][i].int]);
+      assert.equal(new Set(cat.map(row)).size, 1);
+    }
+    assert.equal(new Set(cat.map((x) => x.food.map((f) => f.name).join())).size, 3); // tên khác nhau theo loài
     assert.equal((await call('POST', '/pets/shop/buy', { item: 'cage:cage1' }, u.token)).status, 200);
     assert.equal((await call('POST', '/pets/shop/buy', { item: 'tank:tank1' }, u.token)).status, 200);
     // thiếu xu và vật phẩm không có thật
     db.prepare('UPDATE users SET coins_spent = coins WHERE id = ?').run(u.id);
-    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:truot' }, u.token)).status, 400);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:dog_truot' }, u.token)).status, 400);
     assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:khongco' }, u.token)).status, 400);
     assert.equal((await call('GET', '/pets/shop', null, f0(u))).status, 401);
   } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }

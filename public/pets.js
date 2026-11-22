@@ -22,7 +22,7 @@ function face(p, size = 64) {
 const bar = (v, c) => `<span class="pt-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${v}"><i style="width:${v}%;background:${c}"></i></span>`;
 
 export async function renderPets(view, arg) {
-  P = { s: null, sel: null, visit: null, view: 'home', shop: null, cat: 'food', food: false, toy: false, busy: false, tick: 0, off: 0, tools: null };
+  P = { s: null, sel: null, visit: null, view: 'home', shop: null, cat: 'food', sp: null, food: false, toy: false, busy: false, tick: 0, off: 0, tools: null };
   view.innerHTML = '<div class="pt-wrap"><div class="pt" id="pt"><p class="pt-hint">Đang tải…</p></div></div>';
   await loadCss();
   const root = $('#pt', view);
@@ -73,18 +73,18 @@ function petPanel(p) {
     <p class="pt-sub" style="margin:2px 0">${esc(p.trait)}</p>
     ${habLine(p)}
     <div class="pt-acts">${ACT.map(([a, e, n]) => `<button type="button" class="pt-act" data-pt="${a}" data-id="${p.id}" data-cd="${cdAt(a)}" ${p.cooldowns[a] > 0 ? 'disabled' : ''}><span aria-hidden="true">${e}</span>${n}<em class="pt-cd">${p.cooldowns[a] > 0 ? `${Math.ceil(p.cooldowns[a] / 1000)}s` : ''}</em></button>`).join('')}</div>
-    ${P.food ? `<div class="pt-foods" role="group" aria-label="Chọn món ăn">${P.s.foods.map((f) => `<button type="button" class="pt-food${f.id === p.favFood ? ' fav' : ''}" data-pt="food" data-id="${p.id}" data-food="${f.id}"><span aria-hidden="true">${f.emoji}</span>${esc(f.name)}${f.id === p.favFood ? '<small>Thích</small>' : ''}</button>`).join('')}
-      ${P.s.shopFoods.filter((f) => (P.s.inv[`food:${f.id}`] || 0) > 0).map((f) => `<button type="button" class="pt-food prem" data-pt="food" data-id="${p.id}" data-food="${f.id}"><span aria-hidden="true">${f.emoji}</span>${esc(f.name)}<small>x${P.s.inv[`food:${f.id}`]} · ${effText(f)}</small></button>`).join('')}
-      <button type="button" class="pt-food" data-pt="shop-open" data-cat="food"><span aria-hidden="true">🛒</span>Mua thêm</button></div>` : ''}
+    ${P.food ? `<div class="pt-foods" role="group" aria-label="Chọn món ăn">${P.s.foodsBySp[p.sp].map((f) => `<button type="button" class="pt-food${f.id === p.favFood ? ' fav' : ''}" data-pt="food" data-id="${p.id}" data-food="${f.id}"><span aria-hidden="true">${f.emoji}</span>${esc(f.name)}${f.id === p.favFood ? '<small>Thích</small>' : ''}</button>`).join('')}
+      ${P.s.shopFoods.filter((f) => f.sp === p.sp && (P.s.inv[`food:${f.id}`] || 0) > 0).map((f) => `<button type="button" class="pt-food prem" data-pt="food" data-id="${p.id}" data-food="${f.id}"><span aria-hidden="true">${f.emoji}</span>${esc(f.name)}<small>x${P.s.inv[`food:${f.id}`]} · ${effText(f)}</small></button>`).join('')}
+      <button type="button" class="pt-food" data-pt="shop-open" data-cat="food" data-sp="${p.sp}"><span aria-hidden="true">🛒</span>Mua thêm</button></div>` : ''}
     ${P.toy ? `<div class="pt-foods" role="group" aria-label="Chọn đồ chơi"><button type="button" class="pt-food" data-pt="toy" data-id="${p.id}" data-toy=""><span aria-hidden="true">🖐️</span>Chơi tay không</button>
-      ${P.s.shopToys.filter((x) => (P.s.inv[`toy:${x.id}`] || 0) > 0).map((x) => `<button type="button" class="pt-food prem" data-pt="toy" data-id="${p.id}" data-toy="${x.id}"><span aria-hidden="true">${x.emoji}</span>${esc(x.name)}<small>Vui +${x.fun}</small></button>`).join('')}</div>` : ''}
+      ${P.s.shopToys.filter((x) => x.sp === p.sp && (P.s.inv[`toy:${x.id}`] || 0) > 0).map((x) => `<button type="button" class="pt-food prem" data-pt="toy" data-id="${p.id}" data-toy="${x.id}"><span aria-hidden="true">${x.emoji}</span>${esc(x.name)}<small>Vui +${x.fun}</small></button>`).join('')}</div>` : ''}
   </section>`;
 }
 const effText = (f) => [f.food ? `No +${f.food}` : '', f.fun ? `Vui +${f.fun}` : '', f.health ? `Khỏe +${f.health}` : ''].filter(Boolean).join(' ');
 function habLine(p) {
   const h = P.s.habitat[p.homeType];
   return h.tier > 0 ? `<p class="pt-sub" style="margin:0">${h.emoji} ${esc(h.name)}: tụt chỉ số chậm hơn ${h.slow}%, ngủ hồi thêm</p>`
-    : `<p class="pt-sub" style="margin:0">Chưa có ${HAB_NAME[p.homeType].toLowerCase()} cho ${esc(p.name)}. <button type="button" class="pt-mini" data-pt="shop-open" data-cat="${p.homeType}">Mua ở cửa hàng</button></p>`;
+    : `<p class="pt-sub" style="margin:0">Chưa có ${HAB_NAME[p.homeType].toLowerCase()} cho ${esc(p.name)}. <button type="button" class="pt-mini" data-pt="shop-open" data-cat="home" data-sp="${p.sp}">Mua ở cửa hàng</button></p>`;
 }
 const STAGE_FROM = (n) => P.s.stages[n]?.from ?? 0;
 const STAGE_NAME = (n) => P.s.stages[n]?.name ?? '';
@@ -125,27 +125,30 @@ async function loadFriends(root) {
 }
 
 // ---- cửa hàng ---------------------------------------------------------------------------------------------------------------
-const CAT_HINT = {
-  food: 'Đồ ăn dùng một lần, tăng nhiều chỉ số hơn món miễn phí và cộng thêm Thân thiết.',
-  toy: 'Đồ chơi mua một lần dùng mãi: chơi với đồ chơi thì Vui tăng nhiều hơn và thêm Thân thiết.',
-};
+const CATS = [['food', 'Đồ ăn'], ['toy', 'Đồ chơi'], ['home', 'Chỗ ở']];
 function drawShop(root) {
-  const d = P.shop, cat = d.cats.find((c) => c.id === P.cat) || d.cats[0];
-  const hint = CAT_HINT[cat.id] || `${cat.name} dành cho ${cat.for.join(', ')}. Bậc càng cao thì thú tụt chỉ số càng chậm và ngủ hồi nhiều hơn. Nâng bậc được trừ giá món cũ.`;
+  const d = P.shop;
+  if (!d.species.some((x) => x.id === P.sp)) P.sp = (d.species.find((x) => x.mine) || d.species[0]).id;
+  const sp = d.species.find((x) => x.id === P.sp), cat = CATS.some((c) => c[0] === P.cat) ? P.cat : 'food';
+  const hint = cat === 'food' ? `Đồ ăn dành cho ${sp.name.toLowerCase()}, dùng một lần. Tăng nhiều chỉ số hơn món miễn phí và cộng thêm Thân thiết.`
+    : cat === 'toy' ? `Đồ chơi dành cho ${sp.name.toLowerCase()}, mua một lần dùng mãi. Chơi với đồ chơi thì Vui tăng nhiều hơn và thêm Thân thiết.`
+      : `${sp.home.name} dành cho ${sp.pets.join(', ')}. Bậc càng cao thì thú tụt chỉ số càng chậm và ngủ hồi nhiều hơn. Nâng bậc được trừ giá món cũ.`;
+  const items = cat === 'home' ? sp.home.items : sp[cat];
   root.innerHTML = `<header class="pt-top"><button type="button" class="pt-back" data-pt="shop-close" aria-label="Quay lại">‹</button><h1>Cửa hàng</h1><span class="pt-coin" aria-label="Số dư">${coinIcon(18)} ${fmt(d.balance)}</span></header>
-    <div class="pt-tabs" role="tablist" aria-label="Loại vật phẩm">${d.cats.map((c) => `<button type="button" role="tab" aria-selected="${c.id === cat.id}" class="pt-tab" data-pt="shop-cat" data-cat="${c.id}">${esc(c.name)}</button>`).join('')}</div>
+    <div class="pt-tabs" role="tablist" aria-label="Loài thú">${d.species.map((x) => `<button type="button" role="tab" aria-selected="${x.id === sp.id}" class="pt-tab" data-pt="shop-sp" data-sp="${x.id}">${esc(x.name)}${x.mine ? '' : ' <small>(chưa nuôi)</small>'}</button>`).join('')}</div>
+    <div class="pt-tabs" role="tablist" aria-label="Loại vật phẩm">${CATS.map(([id, name]) => `<button type="button" role="tab" aria-selected="${id === cat}" class="pt-tab sub" data-pt="shop-cat" data-cat="${id}">${id === 'home' ? esc(sp.home.name) : name}</button>`).join('')}</div>
     <p class="pt-sub">${esc(hint)}</p>
-    <div class="pt-items">${cat.items.map((it) => {
-      const eff = it.tier ? `Tụt chỉ số chậm hơn ${Math.round((1 - d.habMult[it.tier]) * 100)}% · ngủ hồi +${d.sleepBonus * it.tier} Khỏe` : [effText(it), it.int ? `Thân thiết +${it.int}` : ''].filter(Boolean).join(' · ') + (cat.id === 'toy' ? '' : '');
-      const act = cat.id === 'food'
+    <div class="pt-items">${items.map((it) => {
+      const eff = it.tier ? `Tụt chỉ số chậm hơn ${Math.round((1 - d.habMult[it.tier]) * 100)}% · ngủ hồi +${d.sleepBonus * it.tier} Khỏe` : [effText(it), it.int ? `Thân thiết +${it.int}` : ''].filter(Boolean).join(' · ');
+      const act = cat === 'food'
         ? `<div class="pt-fr"><button type="button" class="pt-btn" data-pt="buy" data-item="food:${it.id}" data-qty="1">${coinIcon(14)} ${fmt(it.price)}</button><button type="button" class="pt-btn" data-pt="buy" data-item="food:${it.id}" data-qty="5">x5 · ${fmt(it.price * 5)}</button></div>`
-        : it.tier ? (it.current ? '<span class="pt-own">Đang dùng</span>' : it.worse ? '<span class="pt-own off">Đã có bậc cao hơn</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="${cat.id}:${it.id}">${coinIcon(14)} ${fmt(it.cost)}${it.cost !== it.price ? ` <small>(giá ${fmt(it.price)})</small>` : ''}</button>`)
+        : cat === 'home' ? (it.current ? '<span class="pt-own">Đang dùng</span>' : it.worse ? '<span class="pt-own off">Đã có bậc cao hơn</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="${sp.home.type}:${it.id}">${coinIcon(14)} ${fmt(it.cost)}${it.cost !== it.price ? ` <small>(giá ${fmt(it.price)})</small>` : ''}</button>`)
         : it.owned ? '<span class="pt-own">Đã có</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="toy:${it.id}">${coinIcon(14)} ${fmt(it.price)}</button>`;
-      return `<div class="pt-item"><span class="pt-ie" aria-hidden="true">${it.emoji}</span><div class="grow"><b>${esc(it.name)}</b>${cat.id === 'food' && it.qty ? ` <span class="pt-own">Đang có ${it.qty}</span>` : ''}<div class="pt-sub">${esc(eff)}</div></div>${act}</div>`;
+      return `<div class="pt-item"><span class="pt-ie" aria-hidden="true">${it.emoji}</span><div class="grow"><b>${esc(it.name)}</b>${cat === 'food' && it.qty ? ` <span class="pt-own">Đang có ${it.qty}</span>` : ''}<div class="pt-sub">${esc(eff)}</div></div>${act}</div>`;
     }).join('')}</div>`;
 }
-async function openShop(root, cat) {
-  P.shop = await api('GET', '/pets/shop'); P.view = 'shop'; if (cat) P.cat = cat; drawShop(root);
+async function openShop(root, cat, sp) {
+  P.shop = await api('GET', '/pets/shop'); P.view = 'shop'; if (cat) P.cat = cat; if (sp) P.sp = sp; drawShop(root);
 }
 
 // ---- thăm nhà ----------------------------------------------------------------------------------------------------------
@@ -192,7 +195,8 @@ async function onClick(e) {
   const root = e.currentTarget, a = t.dataset.pt, id = Number(t.dataset.id);
   if (P.busy) return;
   const run = async (fn) => { P.busy = true; try { await fn(); } catch (er) { fail(er); } finally { P.busy = false; } };
-  if (a === 'shop-open') return run(async () => { await openShop(root, t.dataset.cat); });
+  if (a === 'shop-open') return run(async () => { await openShop(root, t.dataset.cat, t.dataset.sp || P.s.pets.find((q) => q.id === P.sel)?.sp); });
+  if (a === 'shop-sp') { P.sp = t.dataset.sp; return drawShop(root); }
   if (a === 'shop-close') { P.view = 'home'; return refresh(root); }
   if (a === 'shop-cat') { P.cat = t.dataset.cat; return drawShop(root); }
   if (a === 'buy') return run(async () => {
@@ -202,7 +206,7 @@ async function onClick(e) {
   if (a === 'pick') { P.sel = id; P.food = false; return draw(root); }
   if (a === 'v-pick') { P.vsel = id; return drawVisit(root); }
   if (a === 'feed') { P.food = !P.food; P.toy = false; return draw(root); }
-  if (a === 'play' && Object.keys(P.s.inv).some((k) => k.startsWith('toy:') && P.s.inv[k] > 0)) { P.toy = !P.toy; P.food = false; return draw(root); } // có đồ chơi: chọn đồ chơi trước
+  if (a === 'play' && P.s.shopToys.some((x) => x.sp === P.s.pets.find((q) => q.id === id)?.sp && P.s.inv[`toy:${x.id}`] > 0)) { P.toy = !P.toy; P.food = false; return draw(root); } // có đồ chơi: chọn đồ chơi trước
   if (['play', 'wash', 'sleep', 'food', 'toy'].includes(a)) {
     return run(async () => {
       const r = await api('POST', `/pets/${id}/${a === 'food' ? 'feed' : a === 'toy' ? 'play' : a}`, a === 'food' ? { food: t.dataset.food } : a === 'toy' ? { toy: t.dataset.toy || undefined } : {});

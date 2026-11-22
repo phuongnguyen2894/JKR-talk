@@ -16,11 +16,17 @@ export const TIERS = [
   { tier: 4, name: 'Biệt thự nhỏ', capacity: 4, minLevel: 4, price: 1800 },
   { tier: 5, name: 'Công viên riêng', capacity: 6, minLevel: 5, price: 3500 },
 ];
-export const FOODS = [
-  { id: 'rau', name: 'Rau củ', emoji: '🥕', food: 20 }, { id: 'hat', name: 'Hạt', emoji: '🌰', food: 20 },
-  { id: 'banh', name: 'Bánh quy', emoji: '🍪', food: 25 }, { id: 'thit', name: 'Thịt', emoji: '🍖', food: 35 },
-  { id: 'xuong', name: 'Xương gặm', emoji: '🦴', food: 25 },
-];
+// loài: mỗi loài có bộ vật phẩm riêng, số lượng và mức tăng chỉ số bằng nhau giữa các loài
+export const SPECIES = {
+  dog: { name: 'Chó', home: 'house', homeName: 'Nhà' },
+  parrot: { name: 'Vẹt', home: 'cage', homeName: 'Lồng' },
+  turtle: { name: 'Rùa', home: 'tank', homeName: 'Bể' },
+};
+export const FREE_FOODS = {
+  dog: [{ id: 'banh', name: 'Bánh quy', emoji: '🍪', food: 20 }, { id: 'xuong', name: 'Xương gặm', emoji: '🦴', food: 25 }, { id: 'thit', name: 'Thịt', emoji: '🍖', food: 35 }],
+  parrot: [{ id: 'hat', name: 'Hạt', emoji: '🌰', food: 20 }, { id: 'traicay', name: 'Trái cây', emoji: '🍎', food: 25 }, { id: 'ngo', name: 'Ngô', emoji: '🌽', food: 35 }],
+  turtle: [{ id: 'rau', name: 'Rau củ', emoji: '🥕', food: 20 }, { id: 'rongbien', name: 'Rong biển', emoji: '🌿', food: 25 }, { id: 'tom', name: 'Tôm tép', emoji: '🦐', food: 35 }],
+};
 export const STAGES = [{ n: 0, name: 'Bé', from: 0 }, { n: 1, name: 'Con nhỏ', from: 100 }, { n: 2, name: 'Thiếu niên', from: 400 }, { n: 3, name: 'Trưởng thành', from: 1000 }];
 export const LOSS_PER_HOUR = 2; // thú buồn (có chỉ số dưới 20): trừ Thân thiết mỗi giờ, không tụt xuống dưới mốc của giai đoạn hiện tại
 export const SAD_BELOW = 20;
@@ -35,26 +41,37 @@ export const KINDS = [
   { id: 'tofu', name: 'Tofu', species: 'Chó', emoji: '🦮', initials: 'TO', color: '#4D7C0F', mult: { health: 1.3 }, fav: 'banh', trait: 'Hay ngủ: ngủ hồi sức nhiều hơn', sleepBoost: 1.5 },
   { id: 'udon', name: 'Udon', species: 'Chó', emoji: '🐩', initials: 'UD', color: '#6D28D9', mult: { fun: 1.5 }, fav: 'thit', trait: 'Nghịch ngợm: cần chơi nhiều, chơi đúng thì thân thiết nhanh', playBoost: 1.3 },
 ];
+const SP_OF = { juad: 'turtle', abu: 'parrot', uni: 'dog', charsiu: 'dog', tofu: 'dog', udon: 'dog' };
+for (const k of KINDS) k.sp = SP_OF[k.id];
 const KIND = Object.fromEntries(KINDS.map((k) => [k.id, k]));
 // ---- cửa hàng: đồ ăn (dùng một lần), đồ chơi (dùng mãi), nhà / lồng / bể (giúp thú tụt chỉ số chậm hơn) -------------------------------
 // bạn thú nào ở loại chỗ ở nào: chó ở nhà, vẹt ở lồng, rùa ở bể
-const HOME_OF = { juad: 'tank', abu: 'cage', uni: 'house', charsiu: 'house', tofu: 'house', udon: 'house' };
+const HOME_OF = Object.fromEntries(KINDS.map((k) => [k.id, SPECIES[k.sp].home]));
 export const HAB_TYPES = { house: 'Nhà', cage: 'Lồng', tank: 'Bể' };
 export const HAB_MULT = [1, 0.85, 0.7, 0.55]; // hệ số tốc độ tụt chỉ số theo bậc chỗ ở đang có
 const HAB_SLEEP = 8; // mỗi bậc chỗ ở: ngủ hồi thêm chừng này Khỏe
+// cùng một khuôn cho mọi loài: cùng giá, cùng mức tăng chỉ số; chỉ khác tên và hình cho hợp với từng loài
+const FOOD_TPL = [
+  { k: 'kem', price: 12, food: 25, fun: 30, int: 1 }, { k: 'bo', price: 18, food: 50, health: 15, int: 2 },
+  { k: 'vitamin', price: 20, food: 15, health: 40, int: 2 }, { k: 'tiec', price: 25, food: 60, fun: 15, int: 2 },
+];
+const FOOD_NAMES = {
+  dog: { kem: ['Kem sữa', '🍦'], bo: ['Thịt bò', '🥩'], vitamin: ['Vitamin cho chó', '💊'], tiec: ['Tiệc xương', '🍗'] },
+  parrot: { kem: ['Kẹo trái cây', '🍇'], bo: ['Hạt dinh dưỡng', '🥜'], vitamin: ['Vitamin cho vẹt', '💊'], tiec: ['Tiệc hạt', '🥗'] },
+  turtle: { kem: ['Dưa hấu mát', '🍉'], bo: ['Tôm hùm nhỏ', '🦞'], vitamin: ['Canxi mai rùa', '💊'], tiec: ['Tiệc rong biển', '🍣'] },
+};
+const TOY_TPL = [
+  { k: 'bong', price: 60, fun: 15, int: 1 }, { k: 'gam', price: 90, fun: 20, int: 1 },
+  { k: 'xich', price: 220, fun: 30, health: 10, int: 2 }, { k: 'truot', price: 380, fun: 40, health: 15, int: 3 },
+];
+const TOY_NAMES = {
+  dog: { bong: ['Quả bóng', '⚽'], gam: ['Xương cao su', '🦴'], xich: ['Đĩa bay', '🥏'], truot: ['Cầu trượt', '🛝'] },
+  parrot: { bong: ['Chuông nhỏ', '🔔'], gam: ['Gương nhỏ', '🪞'], xich: ['Xích đu', '🎠'], truot: ['Cầu leo', '🪜'] },
+  turtle: { bong: ['Bóng nổi', '🏐'], gam: ['Hòn đá ngộ nghĩnh', '🪨'], xich: ['Thác nước mini', '⛲'], truot: ['Đảo cát', '🏝️'] },
+};
 export const SHOP = {
-  food: [
-    { id: 'kem', name: 'Kem lạnh', emoji: '🍦', price: 12, food: 25, fun: 30, int: 1 },
-    { id: 'bo', name: 'Thịt bò', emoji: '🥩', price: 18, food: 50, health: 15, int: 2 },
-    { id: 'vitamin', name: 'Vitamin', emoji: '💊', price: 20, food: 15, health: 40, int: 2 },
-    { id: 'tiec', name: 'Bữa tiệc', emoji: '🍱', price: 25, food: 60, fun: 15, int: 2 },
-  ],
-  toy: [
-    { id: 'bong', name: 'Quả bóng', emoji: '⚽', price: 60, fun: 15, int: 1 },
-    { id: 'gam', name: 'Gương nhỏ', emoji: '🪞', price: 90, fun: 20, int: 1 },
-    { id: 'xich', name: 'Xích đu', emoji: '🎠', price: 220, fun: 30, health: 10, int: 2 },
-    { id: 'truot', name: 'Cầu trượt', emoji: '🛝', price: 380, fun: 40, health: 15, int: 3 },
-  ],
+  food: FOOD_TPL.flatMap((t) => Object.keys(SPECIES).map((sp) => ({ id: `${sp}_${t.k}`, sp, name: FOOD_NAMES[sp][t.k][0], emoji: FOOD_NAMES[sp][t.k][1], price: t.price, food: t.food, fun: t.fun || 0, health: t.health || 0, int: t.int }))),
+  toy: TOY_TPL.flatMap((t) => Object.keys(SPECIES).map((sp) => ({ id: `${sp}_${t.k}`, sp, name: TOY_NAMES[sp][t.k][0], emoji: TOY_NAMES[sp][t.k][1], price: t.price, fun: t.fun, health: t.health || 0, int: t.int }))),
   house: [
     { id: 'house1', tier: 1, name: 'Nhà gỗ', emoji: '🛖', price: 150 }, { id: 'house2', tier: 2, name: 'Nhà mái đỏ', emoji: '🏠', price: 500 }, { id: 'house3', tier: 3, name: 'Nhà vườn', emoji: '🏡', price: 1200 },
   ],
@@ -146,7 +163,7 @@ export function petView(p, t, crowd, kinds = imgMap()) {
   const stage = stageOf(intimacy), next = STAGES.find((s) => s.from > intimacy);
   return {
     id: p.id, kind: p.kind, kindName: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, trait: k.trait,
-    favFood: k.fav, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
+    favFood: k.fav, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
     stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st),
     cooldowns: Object.fromEntries(Object.entries(ACTIONS).map(([a, c]) => [a, Math.max(0, (cd[a] || 0) + c.cd - t)])),
     gainLeft: Math.max(0, DAILY_GAIN_CAP - (p.day === dayKey(t) ? p.day_gain : 0)),
@@ -180,7 +197,8 @@ function care(uid, petId, action, body) {
     if (wait > 0) throw bad(`Đợi ${Math.ceil(wait / 1000)} giây nữa nhé`);
     let stat, delta = {}, base = 0, fav = false, bonusInt = 0, use = null;
     if (action === 'feed') {
-      const prem = ITEM[`food:${body?.food}`], f = prem || FOODS.find((x) => x.id === body?.food); if (!f) throw bad('Món ăn không hợp lệ');
+      const prem = ITEM[`food:${body?.food}`], f = prem || FREE_FOODS[k.sp].find((x) => x.id === body?.food); if (!f) throw bad('Món ăn không hợp lệ');
+      if (prem && prem.sp !== k.sp) throw bad(`${prem.name} không dành cho ${SPECIES[k.sp].name.toLowerCase()}`);
       if (st.food >= 95) throw bad(`${p.name} no rồi`);
       if (prem && !(inv[`food:${prem.id}`] > 0)) throw bad(`Bạn chưa có ${prem.name}, hãy mua ở cửa hàng`);
       stat = 'food'; delta.food = f.food;
@@ -189,6 +207,7 @@ function care(uid, petId, action, body) {
       if (st.fun >= 95) throw bad(`${p.name} đang rất vui rồi`);
       const toy = body?.toy ? ITEM[`toy:${body.toy}`] : null;
       if (body?.toy && !(toy && inv[`toy:${toy.id}`] > 0)) throw bad('Bạn chưa có đồ chơi này, hãy mua ở cửa hàng');
+      if (toy && toy.sp !== k.sp) throw bad(`${toy.name} không dành cho ${SPECIES[k.sp].name.toLowerCase()}`);
       stat = 'fun'; delta = { fun: Math.round(25 * (k.playBoost || 1)) + (toy?.fun || 0), food: -5, clean: -5 };
       if (toy) { if (toy.health) delta.health = toy.health; bonusInt = toy.int || 0; }
     } else if (action === 'wash') {
@@ -245,9 +264,9 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
       home: { tier: cur.tier, name: cur.name, capacity: cur.capacity, used: list.length, tiers: T,
         next: nxt && { tier: nxt.tier, name: nxt.name, capacity: nxt.capacity, price: nxt.price, minLevel: nxt.minLevel, minLevelName: LEVEL_NAMES[nxt.minLevel], levelOk: (u.lvl || 0) >= nxt.minLevel } },
       pets: list.map((p) => petView(p, t, fx(p), kinds)),
-      inv: owned(uid), habitat: Object.fromEntries(Object.entries(habTiers(uid)).map(([t, n]) => { const it = SHOP[t].find((x) => x.tier === n); return [t, { tier: n, emoji: it?.emoji || null, name: it?.name || null, slow: Math.round((1 - HAB_MULT[n]) * 100) }]; })), shopFoods: SHOP.food.map((f) => ({ id: f.id, name: f.name, emoji: f.emoji, food: f.food, fun: f.fun || 0, health: f.health || 0, int: f.int })), shopToys: SHOP.toy.map((x) => ({ id: x.id, name: x.name, emoji: x.emoji, fun: x.fun, health: x.health || 0, int: x.int })),
-      kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, adopted: mine.has(k.id) })),
-      foods: FOODS, stages: STAGES, dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
+      inv: owned(uid), habitat: Object.fromEntries(Object.entries(habTiers(uid)).map(([t, n]) => { const it = SHOP[t].find((x) => x.tier === n); return [t, { tier: n, emoji: it?.emoji || null, name: it?.name || null, slow: Math.round((1 - HAB_MULT[n]) * 100) }]; })), shopFoods: SHOP.food.map((f) => ({ id: f.id, sp: f.sp, name: f.name, emoji: f.emoji, food: f.food, fun: f.fun || 0, health: f.health || 0, int: f.int })), shopToys: SHOP.toy.map((x) => ({ id: x.id, sp: x.sp, name: x.name, emoji: x.emoji, fun: x.fun, health: x.health || 0, int: x.int })),
+      kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, adopted: mine.has(k.id) })),
+      foodsBySp: FREE_FOODS, species: Object.entries(SPECIES).map(([id, v]) => ({ id, name: v.name })), stages: STAGES, dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
     };
   };
   api.get('/pets', wrap((req, res) => res.json(state(me(req)))));
@@ -300,17 +319,18 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
 
   // ---- cửa hàng -------------------------------------------------------------------------------------------------------
   const shopView = (uid) => {
-    const inv = owned(uid), hab = habTiers(uid);
-    const cats = [['food', 'Đồ ăn'], ['toy', 'Đồ chơi'], ['house', 'Nhà'], ['cage', 'Lồng'], ['tank', 'Bể']].map(([id, name]) => ({
-      id, name, durable: id !== 'food',
-      for: HAB_TYPES[id] ? KINDS.filter((k) => HOME_OF[k.id] === id).map((k) => k.name) : null,
-      items: SHOP[id].map((it) => {
-        const have = inv[`${id}:${it.id}`] || 0;
-        const trade = it.tier ? (SHOP[id].find((x) => x.tier === hab[id])?.price || 0) : 0;
-        return { ...it, qty: have, owned: have > 0, current: it.tier ? hab[id] === it.tier : false, worse: it.tier ? it.tier <= hab[id] : false, cost: it.tier ? Math.max(0, it.price - trade) : it.price };
-      }),
-    }));
-    return { balance: balanceOf(getUser(uid)), cats, habMult: HAB_MULT, sleepBonus: HAB_SLEEP, habitat: hab };
+    const inv = owned(uid), hab = habTiers(uid), mine = new Set(myPets(uid).map((p) => KIND[p.kind].sp));
+    const withState = (cat, it) => ({ ...it, qty: inv[`${cat}:${it.id}`] || 0, owned: (inv[`${cat}:${it.id}`] || 0) > 0 });
+    const species = Object.entries(SPECIES).map(([sp, v]) => {
+      const t = v.home, trade = SHOP[t].find((x) => x.tier === hab[t])?.price || 0;
+      return {
+        id: sp, name: v.name, mine: mine.has(sp), pets: KINDS.filter((k) => k.sp === sp).map((k) => k.name),
+        food: SHOP.food.filter((x) => x.sp === sp).map((x) => withState('food', x)),
+        toy: SHOP.toy.filter((x) => x.sp === sp).map((x) => withState('toy', x)),
+        home: { type: t, name: v.homeName, items: SHOP[t].map((it) => ({ ...it, current: hab[t] === it.tier, worse: it.tier <= hab[t], cost: Math.max(0, it.price - trade) })) },
+      };
+    });
+    return { balance: balanceOf(getUser(uid)), species, habMult: HAB_MULT, sleepBonus: HAB_SLEEP, habitat: hab };
   };
   api.get('/pets/shop', wrap((req, res) => res.json(shopView(me(req)))));
   api.post('/pets/shop/buy', wrap((req, res) => {
