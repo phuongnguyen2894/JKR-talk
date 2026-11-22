@@ -51,12 +51,14 @@ async function refresh(root) {
   draw(root);
 }
 
+// chỗ đứng trong nhà: hai hàng trên sàn, xếp đều để các bạn không chồng lên nhau
+const slotTop = (i) => (i % 2 ? 66 : 38);
+const slotLeft = (i, n) => { const cols = Math.max(1, Math.ceil(n / 2)), col = Math.floor(i / 2); return n === 1 ? 50 : cols === 1 ? 32 + (i % 2) * 36 : 14 + col * (62 / (cols - 1)) + (i % 2 ? 6 : 0); };
 function sceneHtml(pets, { sel, home, readonly = false, habs = null } = {}) {
-  return `<div class="pt-scene t${home.tier}" aria-label="Khu nhà ${esc(home.name)}">
-    <span class="pt-deco d1" aria-hidden="true">${home.tier >= 2 ? '🌳' : '🌿'}</span><span class="pt-deco d2" aria-hidden="true">${home.tier >= 3 ? '🏡' : '🏠'}</span>
-    ${habs ? Object.entries(habs).filter(([ty, h]) => h.tier > 0 && pets.some((p) => p.homeType === ty)).map(([, h], i) => `<span class="pt-hab h${i}" title="${esc(h.name)}" aria-hidden="true">${h.emoji}</span>`).join('') : ''}
-    ${home.tier >= 4 ? '<span class="pt-deco d3" aria-hidden="true">⛲</span>' : ''}${home.tier >= 5 ? '<span class="pt-deco d4" aria-hidden="true">🎠</span>' : ''}
-    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${8 + ((i * 29 + 11) % 62)}%;top:${34 + ((i * 17) % 38)}%;--s:${SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
+  return `<div class="pt-scene t${home.tier}" aria-label="Trong nhà: ${esc(home.name)}">
+    <span class="pt-deco d1" aria-hidden="true">🖼️</span><span class="pt-deco d2" aria-hidden="true">🪟</span>
+    ${home.tier >= 2 ? '<span class="pt-deco d3" aria-hidden="true">🕰️</span>' : ''}${home.tier >= 3 ? '<span class="pt-deco d5" aria-hidden="true">🪴</span>' : ''}${home.tier >= 4 ? '<span class="pt-deco d6" aria-hidden="true">📚</span>' : ''}${home.tier >= 5 ? '<span class="pt-deco d4" aria-hidden="true">🪔</span>' : ''}
+    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${slotLeft(i, pets.length)}%;top:${slotTop(i)}%;--s:${SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
         <span class="pt-mood" aria-hidden="true">${P.react && P.react.petId === p.id ? LV[P.react.level] : P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? P.ev.emoji : MOOD[p.mood.key] || '🙂'}</span>${face(p, 58)}${p.stage >= 3 ? '<span class="pt-crown" aria-hidden="true">👑</span>' : ''}<small>${esc(p.name)}</small></button>`).join('')
       : '<p class="pt-empty">Khu nhà đang trống. Hãy nhận nuôi một bạn nhé!</p>'}
   </div>`;

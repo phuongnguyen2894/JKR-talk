@@ -11,12 +11,13 @@ const LEVEL_NAMES = ['Chưa có cấp', 'Tím Mầm Non', 'Tím Sương Sương'
 
 // bậc khu nhà: sức chứa, cấp tối thiểu để mua, giá mặc định (Admin chỉnh được)
 export const TIERS = [
-  { tier: 1, name: 'Góc nhỏ', capacity: 1, area: 2, minLevel: 0, price: 0 },
-  { tier: 2, name: 'Sân vườn', capacity: 2, area: 4, minLevel: 2, price: 300 },
-  { tier: 3, name: 'Nhà có sân', capacity: 3, area: 6, minLevel: 3, price: 800 },
-  { tier: 4, name: 'Biệt thự nhỏ', capacity: 4, area: 8, minLevel: 4, price: 1800 },
-  { tier: 5, name: 'Công viên riêng', capacity: 6, area: 10, minLevel: 5, price: 3500 },
+  { tier: 1, name: 'Phòng nhỏ', capacity: 1, area: 2, minLevel: 0, price: 0 },
+  { tier: 2, name: 'Phòng khách', capacity: 2, area: 4, minLevel: 2, price: 300 },
+  { tier: 3, name: 'Căn hộ', capacity: 3, area: 6, minLevel: 3, price: 800 },
+  { tier: 4, name: 'Biệt thự', capacity: 4, area: 8, minLevel: 4, price: 1800 },
+  { tier: 5, name: 'Dinh thự', capacity: 6, area: 10, minLevel: 5, price: 3500 },
 ];
+// Mọi bạn thú đều sống TRONG nhà (không có ngoài vườn): cảnh là các căn phòng, bậc càng cao nhà càng rộng và sang.
 // Diện tích khu nhà (ô): nhà cho chó, lồng cho vẹt, bể cho rùa đều đặt TRONG khu nhà và chiếm chỗ theo bậc (bậc 1 = 1 ô, bậc 2 = 2 ô, bậc 3 = 3 ô).
 // Nâng cấp khu nhà thì có thêm diện tích để đặt được nhiều chỗ ở hơn, hoặc chỗ ở bậc cao hơn.
 // loài: mỗi loài có bộ vật phẩm riêng, số lượng và mức tăng chỉ số bằng nhau giữa các loài
@@ -90,7 +91,7 @@ export const SHOP = {
   outfit: WEAR_TPL.flatMap((t) => Object.keys(SPECIES).map((sp) => ({ id: `${sp}_o${t.k}`, sp, name: OUTFIT_NAMES[sp][t.k][0], emoji: OUTFIT_NAMES[sp][t.k][1], price: t.price }))),
   collar: WEAR_TPL.flatMap((t) => Object.keys(SPECIES).map((sp) => ({ id: `${sp}_c${t.k}`, sp, name: COLLAR_NAMES[sp][t.k][0], emoji: COLLAR_NAMES[sp][t.k][1], price: t.price }))),
   house: [
-    { id: 'house1', tier: 1, name: 'Nhà gỗ', emoji: '🛖', price: 150 }, { id: 'house2', tier: 2, name: 'Nhà mái đỏ', emoji: '🏠', price: 500 }, { id: 'house3', tier: 3, name: 'Nhà vườn', emoji: '🏡', price: 1200 },
+    { id: 'house1', tier: 1, name: 'Nhà gỗ', emoji: '🛖', price: 150 }, { id: 'house2', tier: 2, name: 'Nhà mái đỏ', emoji: '🏠', price: 500 }, { id: 'house3', tier: 3, name: 'Nhà lâu đài', emoji: '🏰', price: 1200 },
   ],
   cage: [
     { id: 'cage1', tier: 1, name: 'Lồng tre', emoji: '🎋', price: 150 }, { id: 'cage2', tier: 2, name: 'Lồng mạ vàng', emoji: '🪺', price: 500 }, { id: 'cage3', tier: 3, name: 'Lồng cung điện', emoji: '🏯', price: 1200 },
@@ -137,7 +138,7 @@ export const REACT_TEXT = {
   },
   uni: {
     feed: { love: '{n} xù bông cả người, vẫy cái đuôi xù tít mù!', like: '{n} ăn ngoan, đuôi xù khẽ vẫy.', neutral: '{n} ngửi ngửi rồi ăn từ tốn.', dislike: '{n} nghiêng đầu, hắt xì rồi lùi lại.' },
-    play: { love: '{n} nhảy tưng tưng như cục bông lăn khắp sân!', like: '{n} chạy quanh vài vòng, vui vẻ.', neutral: '{n} đẩy nhẹ món đồ chơi rồi thôi.', dislike: '{n} xù lông, núp sau lưng bạn.' },
+    play: { love: '{n} nhảy tưng tưng như cục bông lăn khắp nhà!', like: '{n} chạy quanh vài vòng, vui vẻ.', neutral: '{n} đẩy nhẹ món đồ chơi rồi thôi.', dislike: '{n} xù lông, núp sau lưng bạn.' },
   },
   charsiu: {
     feed: { love: '{n} nhảy cẫng, liếm mép lia lịa, lưỡi thè dài!', like: '{n} ăn ngấu nghiến, đuôi vẫy phành phạch.', neutral: '{n} ăn xong còn ngó bát tìm thêm.', dislike: '{n} ngửi rồi ngoảnh mặt đi, bụng vẫn kêu ọc ọc.' },
@@ -148,8 +149,8 @@ export const REACT_TEXT = {
     play: { love: '{n} tỉnh hẳn, lăn tròn rồi nằm ngửa vui vẻ!', like: '{n} chơi một lúc rồi ngáp ngủ.', neutral: '{n} liếc qua rồi nằm cuộn lại.', dislike: '{n} quay lưng ngủ tiếp.' },
   },
   udon: {
-    feed: { love: '{n} sủa vang, chạy vòng vòng rồi lao vào ăn!', like: '{n} ăn nhanh, đuôi cong vẫy liên hồi.', neutral: '{n} ăn vội rồi chạy đi.', dislike: '{n} hất bát, bới đất chôn món ăn đi.' },
-    play: { love: '{n} phóng vụt như tên bắn, thân dài uốn lượn khắp sân!', like: '{n} đuổi theo đồ chơi hăng hái.', neutral: '{n} cắn thử rồi bỏ đó.', dislike: '{n} chui tọt vào góc, không thèm ngó.' },
+    feed: { love: '{n} sủa vang, chạy vòng vòng rồi lao vào ăn!', like: '{n} ăn nhanh, đuôi cong vẫy liên hồi.', neutral: '{n} ăn vội rồi chạy đi.', dislike: '{n} hất bát, giấu món ăn xuống dưới thảm.' },
+    play: { love: '{n} phóng vụt như tên bắn, thân dài uốn lượn khắp nhà!', like: '{n} đuổi theo đồ chơi hăng hái.', neutral: '{n} cắn thử rồi bỏ đó.', dislike: '{n} chui tọt vào góc, không thèm ngó.' },
   },
 };
 const roomOf = (uid) => tiers().find((x) => x.tier === homeOf(uid).tier).area;
@@ -329,9 +330,9 @@ export const SOCIAL_TEXT = {
   juad: { play: '{a} chầm chậm bò theo {b}, hai bạn rượt nhau theo kiểu của rùa!', cuddle: '{a} rúc đầu vào bên {b}, ấm áp lắm.', nap: '{a} rụt vào mai ngủ cạnh {b}.', groom: '{a} nhẹ nhàng rửa mai cho {b}.', share: '{a} đẩy phần rau của mình sang cho {b}.', chat: '{a} lẩm bẩm kể chuyện xưa cho {b} nghe.', comfort: '{a} chậm rãi ở bên cạnh an ủi {b}.' },
   abu: { play: '{a} bay lượn quanh {b} hót líu lo!', cuddle: '{a} đậu lên lưng {b}, rúc cánh vào nhau.', nap: '{a} rúc đầu vào cánh, ngủ cạnh {b}.', groom: '{a} rỉa lông giúp {b} gọn gàng.', share: '{a} nhả hạt nhường {b} ăn cùng.', chat: '{a} bắt chước giọng {b} khiến cả khu nhà cười ầm.', comfort: '{a} hót một bài thật ngọt để dỗ {b}.' },
   uni: { play: '{a} lăn tròn như cục bông quanh {b}!', cuddle: '{a} xù bông, nép sát vào {b}.', nap: '{a} cuộn tròn ngủ cạnh {b}.', groom: '{a} liếm lông cho {b} thật cẩn thận.', share: '{a} đẩy bát về phía {b}.', chat: '{a} sủa nhỏ như đang tâm sự với {b}.', comfort: '{a} dụi vào {b} để an ủi.' },
-  charsiu: { play: '{a} đuổi theo {b} khắp sân, lưỡi thè dài!', cuddle: '{a} nằm đè lên {b} ôm ấp.', nap: '{a} ngáy khò khò cạnh {b}.', groom: '{a} liếm mặt {b} nhiệt tình.', share: '{a} nhường nửa phần ăn cho {b} (hiếm lắm đó!).', chat: '{a} khoe với {b} đủ thứ món ngon đã ăn.', comfort: '{a} dành cho {b} một cái ôm to bự.' },
+  charsiu: { play: '{a} đuổi theo {b} khắp nhà, lưỡi thè dài!', cuddle: '{a} nằm đè lên {b} ôm ấp.', nap: '{a} ngáy khò khò cạnh {b}.', groom: '{a} liếm mặt {b} nhiệt tình.', share: '{a} nhường nửa phần ăn cho {b} (hiếm lắm đó!).', chat: '{a} khoe với {b} đủ thứ món ngon đã ăn.', comfort: '{a} dành cho {b} một cái ôm to bự.' },
   tofu: { play: '{a} chơi với {b} được vài phút rồi ngáp dài.', cuddle: '{a} gối đầu lên {b} lim dim.', nap: '{a} và {b} cùng ngủ một giấc ngon lành.', groom: '{a} lim dim liếm nhẹ lông cho {b}.', share: '{a} đẩy bánh sang cho {b} rồi nằm xuống.', chat: '{a} thì thầm ngái ngủ kể chuyện cho {b}.', comfort: '{a} nằm im bên cạnh {b} cho ấm lòng.' },
-  udon: { play: '{a} phóng vụt đuổi {b}, thân dài uốn lượn khắp sân!', cuddle: '{a} cuộn thân dài quanh {b}.', nap: '{a} duỗi dài ngủ cạnh {b}.', groom: '{a} liếm tai cho {b}.', share: '{a} cắn đôi miếng ăn chia cho {b}.', chat: '{a} sủa vang kể chuyện rượt bóng cho {b}.', comfort: '{a} đưa đồ chơi cho {b} để dỗ.' },
+  udon: { play: '{a} phóng vụt đuổi {b}, thân dài uốn lượn khắp nhà!', cuddle: '{a} cuộn thân dài quanh {b}.', nap: '{a} duỗi dài ngủ cạnh {b}.', groom: '{a} liếm tai cho {b}.', share: '{a} cắn đôi miếng ăn chia cho {b}.', chat: '{a} sủa vang kể chuyện rượt bóng cho {b}.', comfort: '{a} đưa đồ chơi cho {b} để dỗ.' },
 };
 const sadOf = (s) => Math.min(s.food, s.fun, s.clean, s.health) < 25;
 // điều kiện và hiệu quả: a là bạn chủ động, b là bạn kia
