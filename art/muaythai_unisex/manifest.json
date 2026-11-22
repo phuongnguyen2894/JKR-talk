@@ -1,0 +1,25 @@
+{
+  "schema": "muaythai-avatar-fighter-prototype-v1",
+  "canvas": {
+    "width": 480,
+    "height": 528,
+    "ratio": "10:11",
+    "format": "PNG RGBA"
+  },
+  "style": "cute unisex chibi; short-sleeve jersey and matching Muay Thai shorts; circular avatar head is runtime overlay",
+  "teams": {
+    "red": {
+      "primary": "#DC2626",
+      "accent": "#F5B301"
+    },
+    "blue": {
+      "primary": "#2563EB",
+      "accent": "#F5B301"
+    }
+  },
+  "prototypePoses": [
+    "idle",
+    "punch"
+  ],
+  "note": "Prototype only. Full animation sequences and verified per-frame head-marker coordinates have not yet been artistically produced. Marker circle is a starter placeholder and must be recalibrated after sprite positioning."
+}

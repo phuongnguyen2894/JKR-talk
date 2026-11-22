@@ -9,13 +9,14 @@ export const CORNER = {
 };
 // tên tư thế trong game → hành động trong bộ sprite
 export const ACTION = { guard: 'idle', walk: 'walk', punch: 'punch', kick: 'kick', block: 'block', stagger: 'hit', ko: 'knockdown', win: 'victory', defeat: 'defeat' };
-const CELL_W = 80, CELL_H = 88;
+// kích thước khung hình gốc lấy từ sprites.json (w, h); tỉ lệ luôn 10:11
+let CELL_W = 480, CELL_H = 528;
 let META = null, loading = null;
 
 export function loadSprites() {
   if (loading) return loading;
   loading = fetch('/mt/sprites.json').then((r) => r.json()).then((m) => {
-    META = m;
+    META = m; CELL_W = m.w || 480; CELL_H = m.h || 528;
     const imgs = [];
     for (const t of Object.values(m.teams)) for (const a of Object.values(t)) for (const f of a.frames) imgs.push(new Promise((ok) => { const i = new Image(); i.onload = i.onerror = ok; i.src = `/mt/${f.src}`; }));
     return Promise.race([Promise.all(imgs), new Promise((ok) => setTimeout(ok, 4000))]); // không chờ quá 4 giây
@@ -25,7 +26,7 @@ export function loadSprites() {
 
 // HTML khung rỗng (đã có kích thước); gọi mountSprites(gốc) sau khi gán innerHTML để đổ ảnh và chạy hoạt hình
 export function fighterHtml(f, { pose = 'guard', w = 120, crown = false } = {}) {
-  const h = Math.round((w * CELL_H) / CELL_W);
+  const h = Math.round((w * 88) / 80); // tỉ lệ khung cố định 10:11
   return `<span class="sp-mount" role="img" aria-label="${esc(f.name)}, ${CORNER[f.corner].name}" data-corner="${f.corner}" data-pose="${pose}" data-w="${w}" data-crown="${crown ? 1 : 0}"
     data-color="${esc(f.color || '#6D28D9')}" data-initials="${esc(f.initials || '?')}" data-head="${esc(f.headUrl || '')}" style="width:${w}px;height:${h}px"></span>`;
 }
@@ -56,7 +57,7 @@ function mount(el) {
     const cx = blue ? CELL_W - hd.cx : hd.cx, d = 2 * hd.r * k;
     head.style.cssText += `;display:flex;width:${d}px;height:${d}px;left:${(cx - hd.r) * k}px;top:${(hd.cy - hd.r) * k}px`;
     head.style.fontSize = `${Math.max(9, d * 0.34)}px`;
-    if (crown) crown.style.cssText = `left:${(cx - 10) * k}px;top:${(hd.cy - hd.r - 11) * k}px;width:${20 * k}px`;
+    if (crown) { const u = CELL_W / 80; crown.style.cssText = `left:${(cx - 10 * u) * k}px;top:${(hd.cy - hd.r - 11 * u) * k}px;width:${20 * u * k}px`; } // vương miện: kích thước tính theo khung 80 đơn vị
   };
   const rm = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } })();
   let i = 0, timer = 0;
