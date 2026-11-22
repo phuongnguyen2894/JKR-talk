@@ -90,6 +90,51 @@ function habTiers(uid) {
   for (const t of Object.keys(out)) for (const it of SHOP[t]) if (inv[`${t}:${it.id}`] > 0) out[t] = Math.max(out[t], it.tier);
   return out;
 }
+// ---- khẩu vị: mỗi bạn thú phản ứng khác nhau với từng đồ ăn / đồ chơi của loài mình ---------------------------------------------------
+// 4 mức: love (rất thích), like (thích), neutral (bình thường), dislike (không thích). Mỗi bạn có đúng 2 món rất thích, 2 thích,
+// 2 bình thường, 1 không thích trong 7 món ăn của loài, và 1 đồ chơi ở mỗi mức trong 4 đồ chơi (công bằng giữa các bạn).
+export const LEVELS = {
+  love: { emoji: '😍', label: 'Rất thích', mult: 1.25, int: 2 },
+  like: { emoji: '😊', label: 'Thích', mult: 1, int: 0 },
+  neutral: { emoji: '😐', label: 'Bình thường', mult: 1, int: 0 },
+  dislike: { emoji: '🤢', label: 'Không thích', mult: 0.6, int: 0 },
+};
+const T = (love, like, neutral, dislike) => { const o = {}; for (const [lv, ids] of Object.entries({ love, like, neutral, dislike })) for (const id of ids) o[id] = lv; return o; };
+export const TASTE = {
+  uni: { food: T(['xuong', 'dog_kem'], ['banh', 'dog_tiec'], ['thit', 'dog_bo'], ['dog_vitamin']), toy: T(['dog_gam'], ['dog_bong'], ['dog_xich'], ['dog_truot']) },
+  charsiu: { food: T(['thit', 'dog_bo'], ['xuong', 'dog_tiec'], ['banh', 'dog_kem'], ['dog_vitamin']), toy: T(['dog_truot'], ['dog_gam'], ['dog_bong'], ['dog_xich']) },
+  tofu: { food: T(['banh', 'dog_kem'], ['thit', 'dog_tiec'], ['xuong', 'dog_vitamin'], ['dog_bo']), toy: T(['dog_bong'], ['dog_xich'], ['dog_truot'], ['dog_gam']) },
+  udon: { food: T(['thit', 'dog_tiec'], ['dog_bo', 'xuong'], ['banh', 'dog_vitamin'], ['dog_kem']), toy: T(['dog_xich'], ['dog_truot'], ['dog_gam'], ['dog_bong']) },
+  abu: { food: T(['hat', 'parrot_bo'], ['traicay', 'parrot_tiec'], ['ngo', 'parrot_kem'], ['parrot_vitamin']), toy: T(['parrot_gam'], ['parrot_bong'], ['parrot_xich'], ['parrot_truot']) },
+  juad: { food: T(['rau', 'turtle_kem'], ['tom', 'turtle_tiec'], ['rongbien', 'turtle_bo'], ['turtle_vitamin']), toy: T(['turtle_gam'], ['turtle_bong'], ['turtle_xich'], ['turtle_truot']) },
+};
+// lời mô tả hành động theo từng bạn; {n} là tên bạn thú. Tên hoạt hình cho thiết kế: feed_love, feed_like, play_dislike...
+export const REACT_TEXT = {
+  juad: {
+    feed: { love: '{n} thò cổ thật dài, mắt long lanh, nhai chầm chậm đầy mãn nguyện!', like: '{n} nhai nhẩn nha, gật gù hài lòng.', neutral: '{n} liếc qua rồi ăn cho có.', dislike: '{n} rụt cổ vào mai, quay đi không muốn ăn.' },
+    play: { love: '{n} bò vòng vòng, đầu thò ra lắc lư vui sướng!', like: '{n} chậm rãi tới đẩy chơi một lúc.', neutral: '{n} nhìn món đồ chơi rồi bò đi chỗ khác.', dislike: '{n} rụt cả đầu lẫn chân vào mai.' },
+  },
+  abu: {
+    feed: { love: '{n} xòe cánh, nhảy trên cần, kêu "ngon quá!"', like: '{n} mổ lách tách, nghiêng đầu hài lòng.', neutral: '{n} mổ thử một miếng rồi thôi.', dislike: '{n} xù lông, nhả ra và quay mỏ đi.' },
+    play: { love: '{n} vỗ cánh phành phạch, hót vang cả khu nhà!', like: '{n} nhảy nhót vài vòng, hót khe khẽ.', neutral: '{n} liếc nhìn rồi đậu yên.', dislike: '{n} kêu quang quác sợ hãi và bay đi chỗ khác.' },
+  },
+  uni: {
+    feed: { love: '{n} xù bông cả người, vẫy cái đuôi xù tít mù!', like: '{n} ăn ngoan, đuôi xù khẽ vẫy.', neutral: '{n} ngửi ngửi rồi ăn từ tốn.', dislike: '{n} nghiêng đầu, hắt xì rồi lùi lại.' },
+    play: { love: '{n} nhảy tưng tưng như cục bông lăn khắp sân!', like: '{n} chạy quanh vài vòng, vui vẻ.', neutral: '{n} đẩy nhẹ món đồ chơi rồi thôi.', dislike: '{n} xù lông, núp sau lưng bạn.' },
+  },
+  charsiu: {
+    feed: { love: '{n} nhảy cẫng, liếm mép lia lịa, lưỡi thè dài!', like: '{n} ăn ngấu nghiến, đuôi vẫy phành phạch.', neutral: '{n} ăn xong còn ngó bát tìm thêm.', dislike: '{n} ngửi rồi ngoảnh mặt đi, bụng vẫn kêu ọc ọc.' },
+    play: { love: '{n} ôm đồ chơi gặm say sưa, mắt híp lại sung sướng!', like: '{n} ngoạm đồ chơi chạy vòng vòng.', neutral: '{n} đánh hơi xem đồ chơi có ăn được không.', dislike: '{n} thở dốc, nằm vật ra không muốn chơi.' },
+  },
+  tofu: {
+    feed: { love: '{n} mở to đôi mắt lim dim, vẫy đuôi chậm rãi đầy mãn nguyện!', like: '{n} ăn từ tốn, gật gù.', neutral: '{n} ngáp một cái rồi ăn.', dislike: '{n} nhăn mũi, ngủ gật luôn không đụng tới.' },
+    play: { love: '{n} tỉnh hẳn, lăn tròn rồi nằm ngửa vui vẻ!', like: '{n} chơi một lúc rồi ngáp ngủ.', neutral: '{n} liếc qua rồi nằm cuộn lại.', dislike: '{n} quay lưng ngủ tiếp.' },
+  },
+  udon: {
+    feed: { love: '{n} sủa vang, chạy vòng vòng rồi lao vào ăn!', like: '{n} ăn nhanh, đuôi cong vẫy liên hồi.', neutral: '{n} ăn vội rồi chạy đi.', dislike: '{n} hất bát, bới đất chôn món ăn đi.' },
+    play: { love: '{n} phóng vụt như tên bắn, thân dài uốn lượn khắp sân!', like: '{n} đuổi theo đồ chơi hăng hái.', neutral: '{n} cắn thử rồi bỏ đó.', dislike: '{n} chui tọt vào góc, không thèm ngó.' },
+  },
+};
 const ACTIONS = { feed: { cd: 20_000 }, play: { cd: 20_000 }, wash: { cd: 60_000 }, sleep: { cd: 600_000 } };
 
 db.exec(`
@@ -163,7 +208,7 @@ export function petView(p, t, crowd, kinds = imgMap()) {
   const stage = stageOf(intimacy), next = STAGES.find((s) => s.from > intimacy);
   return {
     id: p.id, kind: p.kind, kindName: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, trait: k.trait,
-    favFood: k.fav, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
+    favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
     stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st),
     cooldowns: Object.fromEntries(Object.entries(ACTIONS).map(([a, c]) => [a, Math.max(0, (cd[a] || 0) + c.cd - t)])),
     gainLeft: Math.max(0, DAILY_GAIN_CAP - (p.day === dayKey(t) ? p.day_gain : 0)),
@@ -186,6 +231,7 @@ function gain(p, amount, t) {
 }
 
 // ---- thao tác chăm sóc ------------------------------------------------------------------------------------------------
+const bodyHasToy = (b) => !!b?.toy;
 function care(uid, petId, action, body) {
   return tx(() => {
     const p0 = db.prepare('SELECT * FROM pets WHERE id = ? AND user_id = ?').get(petId, uid);
@@ -195,20 +241,22 @@ function care(uid, petId, action, body) {
     const cd = (() => { try { return JSON.parse(p.cd || '{}'); } catch { return {}; } })();
     const wait = (cd[action] || 0) + ACTIONS[action].cd - t;
     if (wait > 0) throw bad(`Đợi ${Math.ceil(wait / 1000)} giây nữa nhé`);
-    let stat, delta = {}, base = 0, fav = false, bonusInt = 0, use = null;
+    let stat, delta = {}, base = 0, level = null, bonusInt = 0, use = null, act = null;
     if (action === 'feed') {
       const prem = ITEM[`food:${body?.food}`], f = prem || FREE_FOODS[k.sp].find((x) => x.id === body?.food); if (!f) throw bad('Món ăn không hợp lệ');
       if (prem && prem.sp !== k.sp) throw bad(`${prem.name} không dành cho ${SPECIES[k.sp].name.toLowerCase()}`);
       if (st.food >= 95) throw bad(`${p.name} no rồi`);
       if (prem && !(inv[`food:${prem.id}`] > 0)) throw bad(`Bạn chưa có ${prem.name}, hãy mua ở cửa hàng`);
       stat = 'food'; delta.food = f.food;
-      if (prem) { use = `food:${prem.id}`; if (prem.fun) delta.fun = prem.fun; if (prem.health) delta.health = prem.health; bonusInt = prem.int || 0; } else { fav = f.id === k.fav; if (fav) delta.fun = 10; }
+      act = 'feed'; level = TASTE[k.id].food[f.id] || 'neutral';
+      if (prem) { use = `food:${prem.id}`; if (prem.fun) delta.fun = prem.fun; if (prem.health) delta.health = prem.health; bonusInt = prem.int || 0; }
     } else if (action === 'play') {
       if (st.fun >= 95) throw bad(`${p.name} đang rất vui rồi`);
       const toy = body?.toy ? ITEM[`toy:${body.toy}`] : null;
       if (body?.toy && !(toy && inv[`toy:${toy.id}`] > 0)) throw bad('Bạn chưa có đồ chơi này, hãy mua ở cửa hàng');
       if (toy && toy.sp !== k.sp) throw bad(`${toy.name} không dành cho ${SPECIES[k.sp].name.toLowerCase()}`);
       stat = 'fun'; delta = { fun: Math.round(25 * (k.playBoost || 1)) + (toy?.fun || 0), food: -5, clean: -5 };
+      act = 'play'; level = toy ? TASTE[k.id].toy[toy.id] || 'neutral' : 'neutral'; // chơi tay không: phản ứng bình thường, không đổi hiệu quả
       if (toy) { if (toy.health) delta.health = toy.health; bonusInt = toy.int || 0; }
     } else if (action === 'wash') {
       if (st.clean >= 90) throw bad(`${p.name} đang sạch sẽ rồi`);
@@ -218,7 +266,15 @@ function care(uid, petId, action, body) {
       stat = 'health'; delta = { health: Math.round(30 * (k.sleepBoost || 1)) + HAB_SLEEP * (hab[HOME_OF[p.kind]] || 0) }; // chỗ ở tốt thì ngủ hồi nhiều hơn
     }
     // chỉ cộng Thân thiết khi chỉ số đó thật sự cần chăm; chăm lúc còn đầy thì cộng ít
-    base = st[stat] < 60 ? 3 : 1; if (fav) base += 2; if (k.playBoost && action === 'play') base += 1; base += bonusInt;
+    base = st[stat] < 60 ? 3 : 1; if (k.playBoost && action === 'play') base += 1; base += bonusInt;
+    // phản ứng theo khẩu vị: rất thích thì tăng nhiều hơn và thân thiết hơn; không thích thì tăng ít và bớt thân thiết (không bao giờ bị trừ)
+    let reaction = null;
+    if (level) {
+      const M = LEVELS[level], useItem = action === 'feed' || bodyHasToy(body);
+      if (useItem && M.mult !== 1) for (const s of Object.keys(delta)) if (delta[s] > 0) delta[s] = Math.round(delta[s] * M.mult);
+      if (useItem) { base += M.int; if (level === 'dislike') base = Math.max(0, base - 1); }
+      reaction = { level, action: `${act}_${level}`, emoji: M.emoji, label: M.label, text: REACT_TEXT[k.id][act][level].replaceAll('{n}', p.name) };
+    }
     if (use) db.prepare('UPDATE pet_inventory SET qty = qty - 1 WHERE user_id = ? AND item = ?').run(uid, use);
     const next = { ...st };
     for (const [s, d] of Object.entries(delta)) next[s] = clamp(next[s] + d);
@@ -226,7 +282,7 @@ function care(uid, petId, action, body) {
     db.prepare('UPDATE pets SET food = ?, fun = ?, clean = ?, health = ?, stat_at = ?, cd = ? WHERE id = ?').run(next.food, next.fun, next.clean, next.health, t, JSON.stringify(cd), p.id);
     const added = gain(db.prepare('SELECT * FROM pets WHERE id = ?').get(p.id), base, t);
     const fresh = db.prepare('SELECT * FROM pets WHERE id = ?').get(p.id);
-    return { pet: petView(fresh, t, crowd), inv: owned(uid), gained: added, lost, liked: fav, levelUp: stageOf(fresh.intimacy).n > stageOf(p.intimacy).n ? stageOf(fresh.intimacy).name : null };
+    return { pet: petView(fresh, t, crowd), inv: owned(uid), gained: added, lost, liked: reaction?.level === 'love', reaction, levelUp: stageOf(fresh.intimacy).n > stageOf(p.intimacy).n ? stageOf(fresh.intimacy).name : null };
   });
 }
 
@@ -266,7 +322,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
       pets: list.map((p) => petView(p, t, fx(p), kinds)),
       inv: owned(uid), habitat: Object.fromEntries(Object.entries(habTiers(uid)).map(([t, n]) => { const it = SHOP[t].find((x) => x.tier === n); return [t, { tier: n, emoji: it?.emoji || null, name: it?.name || null, slow: Math.round((1 - HAB_MULT[n]) * 100) }]; })), shopFoods: SHOP.food.map((f) => ({ id: f.id, sp: f.sp, name: f.name, emoji: f.emoji, food: f.food, fun: f.fun || 0, health: f.health || 0, int: f.int })), shopToys: SHOP.toy.map((x) => ({ id: x.id, sp: x.sp, name: x.name, emoji: x.emoji, fun: x.fun, health: x.health || 0, int: x.int })),
       kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, adopted: mine.has(k.id) })),
-      foodsBySp: FREE_FOODS, species: Object.entries(SPECIES).map(([id, v]) => ({ id, name: v.name })), stages: STAGES, dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
+      levels: LEVELS, foodsBySp: FREE_FOODS, species: Object.entries(SPECIES).map(([id, v]) => ({ id, name: v.name })), stages: STAGES, dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
     };
   };
   api.get('/pets', wrap((req, res) => res.json(state(me(req)))));
@@ -320,7 +376,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
   // ---- cửa hàng -------------------------------------------------------------------------------------------------------
   const shopView = (uid) => {
     const inv = owned(uid), hab = habTiers(uid), mine = new Set(myPets(uid).map((p) => KIND[p.kind].sp));
-    const withState = (cat, it) => ({ ...it, qty: inv[`${cat}:${it.id}`] || 0, owned: (inv[`${cat}:${it.id}`] || 0) > 0 });
+    const withState = (cat, it) => ({ ...it, qty: inv[`${cat}:${it.id}`] || 0, owned: (inv[`${cat}:${it.id}`] || 0) > 0, react: KINDS.filter((k) => k.sp === it.sp).map((k) => ({ name: k.name, level: TASTE[k.id][cat][it.id] })) });
     const species = Object.entries(SPECIES).map(([sp, v]) => {
       const t = v.home, trade = SHOP[t].find((x) => x.tier === hab[t])?.price || 0;
       return {
@@ -330,7 +386,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
         home: { type: t, name: v.homeName, items: SHOP[t].map((it) => ({ ...it, current: hab[t] === it.tier, worse: it.tier <= hab[t], cost: Math.max(0, it.price - trade) })) },
       };
     });
-    return { balance: balanceOf(getUser(uid)), species, habMult: HAB_MULT, sleepBonus: HAB_SLEEP, habitat: hab };
+    return { balance: balanceOf(getUser(uid)), levels: LEVELS, species, habMult: HAB_MULT, sleepBonus: HAB_SLEEP, habitat: hab };
   };
   api.get('/pets/shop', wrap((req, res) => res.json(shopView(me(req)))));
   api.post('/pets/shop/buy', wrap((req, res) => {

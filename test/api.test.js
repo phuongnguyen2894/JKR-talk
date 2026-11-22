@@ -1990,3 +1990,64 @@ test('Nuôi thú: cửa hàng đồ ăn, đồ chơi, nhà/lồng/bể; vật ph
   assert.equal((await call('GET', '/pets/shop', null, u.token)).status, 403);
 });
 const f0 = () => ''; // token rỗng: chưa đăng nhập
+
+test('Nuôi thú: mỗi bạn phản ứng khác nhau với từng đồ ăn, đồ chơi; khẩu vị công bằng giữa các bạn', async () => {
+  const { db, now } = await import('../server/db.js');
+  const { TASTE, KINDS, SHOP, FREE_FOODS, REACT_TEXT } = await import('../server/pets.js');
+  // công bằng: mỗi bạn có 7 món ăn của loài (2 rất thích, 2 thích, 2 bình thường, 1 không thích) và 4 đồ chơi mỗi mức một món
+  for (const k of KINDS) {
+    const foods = [...FREE_FOODS[k.sp].map((f) => f.id), ...SHOP.food.filter((f) => f.sp === k.sp).map((f) => f.id)];
+    const toys = SHOP.toy.filter((t) => t.sp === k.sp).map((t) => t.id);
+    assert.deepEqual(Object.keys(TASTE[k.id].food).sort(), foods.sort());
+    assert.deepEqual(Object.keys(TASTE[k.id].toy).sort(), toys.sort());
+    const count = (m) => Object.values(m).reduce((o, v) => ((o[v] = (o[v] || 0) + 1), o), {});
+    assert.deepEqual(count(TASTE[k.id].food), { love: 2, like: 2, neutral: 2, dislike: 1 });
+    assert.deepEqual(count(TASTE[k.id].toy), { love: 1, like: 1, neutral: 1, dislike: 1 });
+    assert.ok(Object.values(TASTE[k.id].food).includes('love') && TASTE[k.id].food[k.fav] === 'love'); // món yêu thích luôn ở mức rất thích
+    for (const act of ['feed', 'play']) for (const lv of ['love', 'like', 'neutral', 'dislike']) assert.ok(REACT_TEXT[k.id][act][lv].includes('{n}'));
+  }
+  // các bạn cùng loài không giống hệt nhau
+  assert.notDeepEqual(TASTE.uni.food, TASTE.charsiu.food); assert.notDeepEqual(TASTE.tofu.toy, TASTE.udon.toy);
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('petTaste', 1);
+  await call('PUT', '/admin/pets/settings', { mode: 'all' }, adm.token);
+  try {
+    db.prepare('UPDATE users SET coins = 3000, coins_spent = 0, lvl = 5 WHERE id = ?').run(u.id);
+    for (let i = 0; i < 2; i++) await call('POST', '/pets/home/expand', {}, u.token);
+    await call('POST', '/pets/adopt', { kind: 'charsiu', name: 'Heo Quay' }, u.token);
+    const s = (await call('POST', '/pets/adopt', { kind: 'tofu', name: 'Đậu Phụ' }, u.token)).data;
+    const char = s.pets.find((p) => p.kind === 'charsiu'), tofu = s.pets.find((p) => p.kind === 'tofu');
+    const reset = (id) => db.prepare('UPDATE pets SET food = 10, fun = 10, cd = NULL, stat_at = ? WHERE id = ?').run(now(), id);
+    // rất thích (thịt, x1.25) > thích (xương) cho cùng một bạn
+    reset(char.id);
+    const love = (await call('POST', `/pets/${char.id}/feed`, { food: 'thit' }, u.token)).data;
+    assert.equal(love.reaction.level, 'love'); assert.equal(love.reaction.action, 'feed_love'); assert.ok(love.reaction.text.includes('Heo Quay'));
+    assert.equal(love.pet.stats.food, 10 + Math.round(35 * 1.25)); assert.equal(love.liked, true);
+    reset(char.id);
+    const like = (await call('POST', `/pets/${char.id}/feed`, { food: 'xuong' }, u.token)).data;
+    assert.equal(like.reaction.level, 'like'); assert.equal(like.pet.stats.food, 10 + 25);
+    assert.ok(love.gained >= like.gained);
+    // cùng một món, hai bạn phản ứng khác nhau: bánh quy là "bình thường" với Charsiu, "rất thích" với Tofu
+    reset(char.id); reset(tofu.id);
+    assert.equal((await call('POST', `/pets/${char.id}/feed`, { food: 'banh' }, u.token)).data.reaction.level, 'neutral');
+    assert.equal((await call('POST', `/pets/${tofu.id}/feed`, { food: 'banh' }, u.token)).data.reaction.level, 'love');
+    // không thích (Tofu không thích thịt bò): tăng ít hơn (x0.6)
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'food:dog_bo' }, u.token)).status, 200);
+    reset(tofu.id);
+    const dis = (await call('POST', `/pets/${tofu.id}/feed`, { food: 'dog_bo' }, u.token)).data;
+    assert.equal(dis.reaction.level, 'dislike'); assert.equal(dis.pet.stats.food, 10 + Math.round(50 * 0.6)); assert.ok(dis.gained >= 0);
+    // đồ chơi: mỗi bạn một mức khác nhau; chơi tay không thì phản ứng bình thường
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'toy:dog_bong' }, u.token)).status, 200);
+    reset(tofu.id); reset(char.id);
+    assert.equal((await call('POST', `/pets/${tofu.id}/play`, { toy: 'dog_bong' }, u.token)).data.reaction.level, 'love');
+    assert.equal((await call('POST', `/pets/${char.id}/play`, { toy: 'dog_bong' }, u.token)).data.reaction.level, 'neutral');
+    db.prepare('UPDATE pets SET fun = 10, cd = NULL, stat_at = ? WHERE id = ?').run(now(), tofu.id);
+    assert.equal((await call('POST', `/pets/${tofu.id}/play`, {}, u.token)).data.reaction.action, 'play_neutral');
+    // cửa hàng cho biết phản ứng của từng bạn với từng món
+    const item = (await call('GET', '/pets/shop', null, u.token)).data.species.find((x) => x.id === 'dog').food.find((x) => x.id === 'dog_bo');
+    assert.deepEqual(item.react.map((r) => r.level), ['neutral', 'love', 'dislike', 'like']); // Uni, Charsiu, Tofu, Udon
+    // tắm và ngủ không có phản ứng khẩu vị
+    reset(char.id); db.prepare('UPDATE pets SET clean = 10, cd = NULL WHERE id = ?').run(char.id);
+    assert.equal((await call('POST', `/pets/${char.id}/wash`, {}, u.token)).data.reaction, null);
+  } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
+});

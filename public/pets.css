@@ -80,6 +80,11 @@
 .pt-tabs { display: flex; gap: 6px; overflow-x: auto; }
 .pt-tab { flex: none; padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-weight: 700; font-size: 13px; cursor: pointer; }
 .pt-tab[aria-selected="true"], .pt-tab.sub[aria-selected="true"] { background: #6D28D9; border-color: #6D28D9; color: #fff; }
+.pt-react { font-size: 12px; }
+.pt-pet.r-love { animation: pt-jump .5s ease-in-out 4; } .pt-pet.r-like { animation: pt-wig .6s ease-in-out 3; } .pt-pet.r-dislike { animation: pt-shake .35s linear 5; }
+@keyframes pt-jump { 50% { transform: translate(-50%, -16px) scale(var(--s, 1)); } }
+@keyframes pt-wig { 25% { transform: translate(-50%, 0) scale(var(--s, 1)) rotate(-6deg); } 75% { transform: translate(-50%, 0) scale(var(--s, 1)) rotate(6deg); } }
+@keyframes pt-shake { 25% { margin-left: -6px; } 75% { margin-left: 6px; } }
 .pt-tab.sub { background: var(--soft); }
 .pt-tab small { font-weight: 500; opacity: .7; }
 .pt-items { display: flex; flex-direction: column; gap: 8px; }
