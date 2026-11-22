@@ -1467,9 +1467,7 @@ test('Muay Thai 1v1: gửi lời thách giữ xu, chấp nhận chốt kết qu�
   db.prepare('UPDATE users SET coins = 1000 WHERE id IN (?, ?, ?)').run(A.id, B.id, C.id);
   const bal = async (u) => (await call('GET', '/mt/wallet', null, u.token)).data.balance;
   const [lo, hi] = A.id < B.id ? [A.id, B.id] : [B.id, A.id];
-  // không phải bạn bè: mặc định không nhận lời mời
-  let r = await call('POST', '/mt/pvp', { toId: B.id, stake: 50 }, A.token);
-  assert.equal(r.status, 403); assert.equal(r.data.code, 'NOT_ACCEPTING');
+  let r;
   db.prepare('INSERT INTO friends (a, b, created_at) VALUES (?,?,?)').run(lo, hi, now());
   // kiểm tra đầu vào
   assert.equal((await call('POST', '/mt/pvp', { toId: B.id, stake: 5 }, A.token)).data.code, 'INVALID_STAKE');
@@ -1532,12 +1530,9 @@ test('Muay Thai 1v1: gửi lời thách giữ xu, chấp nhận chốt kết qu�
   assert.equal((await call('POST', `/mt/pvp/${r2.data.id}/accept`, null, B.token)).status, 410);
   assert.equal((await call('GET', `/mt/pvp/${r2.data.id}`, null, A.token)).data.status, 'expired');
   assert.equal(await bal(A), a3 + 80);
-  // quyền riêng tư: "không ai" chặn lời mời, "mọi người" cho người lạ mời
-  assert.equal((await call('PUT', '/mt/pvp/settings', { invite: 'none' }, B.token)).data.invite, 'none');
-  assert.equal((await call('POST', '/mt/pvp', { toId: B.id, stake: 50 }, A.token)).data.code, 'NOT_ACCEPTING');
-  assert.equal((await call('PUT', '/mt/pvp/settings', { invite: 'everyone' }, B.token)).status, 200);
+  // ai cũng nhận được lời thách đấu (không còn tùy chọn từ chối), kể cả người lạ
   assert.equal((await call('POST', '/mt/pvp', { toId: B.id, stake: 50 }, C.token)).status, 201);
-  assert.equal((await call('PUT', '/mt/pvp/settings', { invite: 'xx' }, B.token)).status, 400);
+  assert.equal((await call('PUT', '/mt/pvp/settings', { invite: 'none' }, B.token)).status, 404);
   // sổ xu khép kín: mọi dòng đều đối chiếu được số dư
   const net = (u) => db.prepare('SELECT COALESCE(SUM(delta),0) s FROM mt_ledger WHERE user_id = ? AND match_id IS NOT NULL').get(u.id).s;
   for (const u of [A, B, C]) assert.equal(db.prepare('SELECT game_net FROM users WHERE id = ?').get(u.id).game_net, net(u));

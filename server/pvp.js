@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS mt_challenges (
 CREATE INDEX IF NOT EXISTS idx_mt_ch_to ON mt_challenges(to_id, status);
 CREATE INDEX IF NOT EXISTS idx_mt_ch_from ON mt_challenges(from_id, status);
 `);
-// quyền nhận lời mời: everyone | friends (mặc định) | none
 try { db.exec("ALTER TABLE users ADD COLUMN mt_invite TEXT NOT NULL DEFAULT 'friends'"); } catch { /* đã có cột */ }
 
 class PvpError extends HttpError {
@@ -112,14 +111,6 @@ export function mountPvp(api, wrap) {
     return c;
   };
 
-  api.get('/mt/pvp/settings', wrap((req, res) => res.json({ invite: getUser(me(req)).mt_invite || 'friends' })));
-  api.put('/mt/pvp/settings', wrap((req, res) => {
-    const v = req.body?.invite;
-    if (!['everyone', 'friends', 'none'].includes(v)) throw bad('Lựa chọn không hợp lệ');
-    db.prepare('UPDATE users SET mt_invite = ? WHERE id = ?').run(v, me(req));
-    res.json({ invite: v });
-  }));
-
   // gửi lời thách đấu
   api.post('/mt/pvp', wrap((req, res) => {
     expireDue();
@@ -131,8 +122,6 @@ export function mountPvp(api, wrap) {
     if (!to || to.status !== 'active' || to.is_super) throw err(404, 'OPPONENT_NOT_FOUND', 'Không tìm thấy người này');
     if (toId === uid) throw err(400, 'SELF', 'Bạn không thể tự thách đấu chính mình');
     if (isBlockedEither(uid, toId)) throw err(403, 'BLOCKED', 'Bạn không thể mời người này');
-    const pref = to.mt_invite || 'friends';
-    if (pref === 'none' || (pref === 'friends' && !areFriends(uid, toId))) throw err(403, 'NOT_ACCEPTING', `${to.display_name} không nhận lời mời đấu từ bạn`);
     const fromRed = req.body?.fromRed === false ? 0 : 1;
     const id = crypto.randomUUID();
     tx(() => {
@@ -163,7 +152,7 @@ export function mountPvp(api, wrap) {
       if (c.status === 'settled') { const won = (c.winner === 'from') === (uid === c.from_id); base.won = won; base.delta = won ? c.payout - c.stake : -c.stake; }
       return base;
     });
-    res.json({ items, stats: stats(uid), incoming: pendingIncoming(uid), invite: getUser(uid).mt_invite || 'friends', serverNow: now() });
+    res.json({ items, stats: stats(uid), incoming: pendingIncoming(uid), serverNow: now() });
   }));
 
   api.get('/mt/pvp/:id', wrap((req, res) => { const c = mineOrFail(req); res.json(dto(c, me(req))); }));

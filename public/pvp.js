@@ -9,7 +9,7 @@ const payoutOf = (stake) => Math.floor(stake * MULT);
 const initialsOf = (name) => { const w = String(name || '?').trim().split(/\s+/).filter(Boolean); return (w.length > 1 ? w[0][0] + w[w.length - 1][0] : (w[0] || '?').slice(0, 2)).toUpperCase(); };
 
 export function pvpInit(M) {
-  M.pv = { target: null, users: [], friends: null, q: '', loadingUsers: false, fromRed: true, stake: 50, box: 'in', items: [], stats: { wins: 0, losses: 0, net: 0 }, invite: 'friends', incoming: 0, ch: null, off: 0, timer: 0, busy: false };
+  M.pv = { target: null, users: [], friends: null, q: '', loadingUsers: false, fromRed: true, stake: 50, box: 'in', items: [], stats: { wins: 0, losses: 0, net: 0 }, incoming: 0, ch: null, off: 0, timer: 0, busy: false };
 }
 export function pvpStop(M) { if (M.pv?.timer) { clearInterval(M.pv.timer); M.pv.timer = 0; } }
 
@@ -92,7 +92,7 @@ function inHtml(M, H) {
       <span class="mt-vs" aria-hidden="true">VS</span><div class="mt-names"><div class="mt-fname A">${H.esc(a.name)}<small>Góc đỏ${c.mySide === 'A' ? ' · Bạn' : ''}</small></div><div class="mt-fname B">${H.esc(b.name)}<small>Góc xanh${c.mySide === 'B' ? ' · Bạn' : ''}</small></div></div>${H.crowdSvg()}</div>
     <div class="mt-rows"><div><span>Mỗi bên cược</span><b>${c.stake} xu</b></div><div><span>Thắng nhận</span><b class="gold">${c.payout} xu <small>(lãi ${c.payout - c.stake}, phí 5%)</small></b></div><div><span>Số dư của bạn</span><b>${H.fmt(M.balance)} → ${H.fmt(Math.max(0, M.balance - c.stake))}</b></div></div>
     <button type="button" class="mt-btn primary" data-mt="pv-accept" data-id="${c.id}" ${low ? 'disabled' : ''}>${low ? 'Không đủ xu tím' : 'Chấp nhận và đấu ngay'}</button>
-    <div class="mt-pair"><button type="button" class="mt-btn ghost" data-mt="pv-decline" data-id="${c.id}">Từ chối</button><button type="button" class="mt-btn ghost" data-mt="pv-optout" data-id="${c.id}">Không nhận lời mời nữa</button></div>
+    <div class="mt-pair"><button type="button" class="mt-btn ghost" data-mt="pv-decline" data-id="${c.id}">Từ chối</button></div>
     <p class="mt-hint" style="text-align:center">Bạn ở góc ${mineSide}.</p>`;
 }
 
@@ -121,8 +121,7 @@ function boxHtml(M, H) {
   return `${H.header('Thách đấu', `<button class="mt-back" data-mt="pv-back" aria-label="Quay lại">${H.icon('back', 22)}</button>`)}
     <div class="mt-stats"><div><b>${s.wins}</b><span>Thắng</span></div><i></i><div><b>${s.losses}</b><span>Thua</span></div><i></i><div><b class="gold">${s.net > 0 ? '+' : s.net < 0 ? '−' : ''}${Math.abs(s.net)}</b><span>Xu ròng</span></div></div>
     <div class="mt-tabs" role="tablist" aria-label="Hộp thư">${[['in', 'Nhận'], ['out', 'Đã gửi'], ['history', 'Lịch sử']].map(([k, n]) => `<button role="tab" aria-selected="${p.box === k}" data-mt="pv-box-tab" data-v="${k}">${n}${k === 'in' && p.incoming ? `<span class="mt-badge">${p.incoming}</span>` : ''}</button>`).join('')}</div>
-    <div class="mt-users">${p.items.map(row).join('') || `<p class="mt-hint">${empty}</p>`}</div>
-    <div class="mt-pref"><b>Ai được mời bạn đấu?</b><div>${[['everyone', 'Mọi người'], ['friends', 'Bạn bè'], ['none', 'Không ai']].map(([k, n]) => `<button data-mt="pv-pref" data-v="${k}" aria-pressed="${p.invite === k}">${n}</button>`).join('')}</div></div>`;
+    <div class="mt-users">${p.items.map(row).join('') || `<p class="mt-hint">${empty}</p>`}</div>`;
 }
 
 export function pvpScreenHtml(M, screen, H) {
@@ -145,7 +144,7 @@ export async function loadFriends(M) {
 }
 export async function loadBox(M) {
   const r = await api('GET', `/mt/pvp?box=${M.pv.box}`);
-  Object.assign(M.pv, { items: r.items, stats: r.stats, incoming: r.incoming, invite: r.invite, off: r.serverNow - Date.now() });
+  Object.assign(M.pv, { items: r.items, stats: r.stats, incoming: r.incoming, off: r.serverNow - Date.now() });
 }
 export async function openCreate(M, H) {
   M.tab = 'pvp'; M.mode = null;
@@ -231,15 +230,13 @@ export async function pvpAction(act, t, M, H) {
     try { const c = await api('POST', `/mt/pvp/${t.dataset.id}/accept`); await refreshBal(); p.ch = c; p.off = c.serverNow - Date.now(); return H.enterFight(c); } catch (e) { t.disabled = false; H.toast(e.message); if (M.screen === 'box') await refreshBox(M, H); else if (p.ch) pvpOpen(M, H, p.ch.id).catch(() => {}); }
     return;
   }
-  if (act === 'pv-decline' || act === 'pv-optout') {
-    if (act === 'pv-optout') { await api('PUT', '/mt/pvp/settings', { invite: 'none' }); p.invite = 'none'; }
+  if (act === 'pv-decline') {
     await api('POST', `/mt/pvp/${t.dataset.id}/decline`);
-    H.toast(act === 'pv-optout' ? 'Đã từ chối. Bạn sẽ không nhận lời mời đấu nữa' : 'Đã từ chối');
+    H.toast('Đã từ chối');
     return M.screen === 'box' ? refreshBox(M, H) : openBox(M, H);
   }
   if (act === 'pv-box') return openBox(M, H);
   if (act === 'pv-box-tab') { p.box = t.dataset.v; return refreshBox(M, H); }
-  if (act === 'pv-pref') { await api('PUT', '/mt/pvp/settings', { invite: t.dataset.v }); p.invite = t.dataset.v; return H.draw('box'); }
   if (act === 'pv-back') return openCreate(M, H);
   if (act === 'pv-open') return pvpOpen(M, H, t.dataset.id);
   if (act === 'pv-dm') { const { group } = await api('POST', `/dm/${t.dataset.id}`); location.hash = `#/chat/${group.id}`; return; }

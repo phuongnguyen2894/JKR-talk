@@ -263,7 +263,7 @@ export function mountMuayThai(api, wrap, adminOnly, checkUploadUrl, uploadDir) {
       id: String(u.id), name: u.display_name, initials: initialsOf(u.display_name), color: avatarHex(u.avatar_color), province: locationOf(u).province,
       headUrl: u.avatar_url || defaultHead(), isDefaultHead: !u.avatar_url,
       relation: friends.has(u.id) ? 'friend' : mates.has(u.id) ? 'group' : 'none', self: u.id === me(req),
-      canChallenge: u.id !== me(req) && (u.mt_invite || 'friends') !== 'none' && ((u.mt_invite || 'friends') === 'everyone' || friends.has(u.id)),
+      canChallenge: u.id !== me(req), // ai cũng nhận được lời thách đấu
     })).sort((x, y) => rank[x.relation] - rank[y.relation] || x.name.localeCompare(y.name, 'vi')).slice(0, 10);
     res.json({ users });
   }));
