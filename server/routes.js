@@ -15,7 +15,7 @@ import { firstUrl, buildPreview } from './preview.js';
 import { track, statsReport, linkVisitor, VID_RE } from './stats.js';
 import { mountMuayThai } from './muaythai.js';
 import { mountPvp } from './pvp.js';
-import { ensureCaptions, captionFor, recordUse, captionTopics, selectedTopicLabel, setSelectedTopicLabel, currentSig, refreshTopics } from './captions.js';
+import { ensureCaptions, moreCaptions, captionFor, recordUse, captionTopics, selectedTopicLabel, setSelectedTopicLabel, currentSig, refreshTopics } from './captions.js';
 import { emojiMeta, EMOJI_LIMIT, EMOJI_MAX_PER_MESSAGE, REACTION_MAX_PER_USER, checkReactionKey, checkEmojiFile, checkEmojiName, addEmoji, countCustomTokens, visibleEmoji, activeEmoji, usageOf } from './emoji.js';
 import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
@@ -312,6 +312,13 @@ api.get('/trend/captions', wrap(async (req, res) => {
     if (c) captions[id] = c; else { pending.push(id); ensureCaptions(id); }
   }
   res.json({ captions, pending });
+}));
+// người dùng sắp bấm hết vòng caption của một bài: tạo thêm caption mới (chạy nền)
+api.post('/trend/captions/more', wrap((req, res) => {
+  rateLimit(`tcapmore:${req.user.id}`, 10, 60_000);
+  const m = db.prepare('SELECT id, body FROM messages WHERE id = ? AND deleted = 0 AND group_id = ?').get(int(req.body.messageId), trendGroupId());
+  if (m && xStatusId(m.body)) moreCaptions(m.id);
+  res.json({ ok: true });
 }));
 // Admin chọn chủ đề caption (lấy từ công cụ caption) cho các link mới trong Đẩy trend
 api.get('/admin/trend/caption-topic', adminOnly, wrap(async (_req, res) => {

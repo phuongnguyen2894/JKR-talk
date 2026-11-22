@@ -6,6 +6,7 @@ import { db, now } from './db.js';
 const API = (process.env.CAPTION_API_URL || 'https://vbots-caption.vercel.app').replace(/\/+$/, '');
 const API_KEY = process.env.CAPTION_API_KEY || ''; // tùy chọn: gửi kèm nếu dịch vụ yêu cầu khóa
 export const CAPTIONS_PER_LINK = 6;
+export const CAPTIONS_MAX_PER_LINK = 24; // tạo thêm khi người dùng bấm hết vòng, tối đa chừng này mỗi link
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS trend_captions (id INTEGER PRIMARY KEY AUTOINCREMENT, message_id INTEGER NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL);
@@ -75,10 +76,32 @@ export function ensureCaptions(messageId) {
   })().catch(() => {}).finally(() => running.delete(messageId));
 }
 
-// mỗi người một caption khác nhau cho cùng một bài (tránh hàng loạt bình luận giống hệt nhau); cùng người, cùng bài thì luôn cùng caption
+// Trả cả bộ caption và vị trí bắt đầu riêng của từng người (tránh hàng loạt bình luận giống hệt nhau);
+// máy khách xoay vòng qua bộ này mỗi lần người dùng bấm, nên mỗi lần bấm ra một caption khác.
 export function captionFor(userId, messageId, sig) {
   const rows = db.prepare('SELECT text FROM trend_captions WHERE message_id = ? AND sig = ? ORDER BY id').all(messageId, sig);
-  return rows.length ? { text: rows[(userId + messageId) % rows.length].text, n: rows.length } : null;
+  return rows.length ? { texts: rows.map((r) => r.text), start: (userId + messageId) % rows.length, n: rows.length } : null;
+}
+// tạo thêm caption mới cho bài (người dùng sắp bấm hết vòng); bỏ caption trùng, tối đa CAPTIONS_MAX_PER_LINK
+const growing = new Set();
+export function moreCaptions(messageId) {
+  if (running.has(messageId) || growing.has(messageId)) return;
+  growing.add(messageId);
+  (async () => {
+    const t = await activeTopic();
+    if (!t) return;
+    const sig = sigOf(t);
+    const have = db.prepare('SELECT text FROM trend_captions WHERE message_id = ? AND sig = ?').all(messageId, sig).map((r) => r.text);
+    if (!have.length || have.length >= CAPTIONS_MAX_PER_LINK) return;
+    const batch = await Promise.allSettled(Array.from({ length: 3 }, () => oneCaption(t)));
+    const ins = db.prepare('INSERT INTO trend_captions (message_id, text, created_at, sig) VALUES (?,?,?,?)');
+    for (const b of batch) {
+      if (b.status !== 'fulfilled' || !b.value) continue;
+      const text = compose(b.value, t.tagsAndKeywords);
+      if (have.some((x) => norm(x) === norm(text)) || have.length >= CAPTIONS_MAX_PER_LINK) continue;
+      ins.run(messageId, text, now(), sig); have.push(text);
+    }
+  })().catch(() => {}).finally(() => growing.delete(messageId));
 }
 export function recordUse(userId, messageId) {
   db.prepare('INSERT OR IGNORE INTO trend_caption_use (user_id, message_id, at) VALUES (?,?,?)').run(userId, messageId, now());

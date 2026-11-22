@@ -793,6 +793,16 @@ export const syncReadMode = () => applyRead(readMode);
 
 // ---- caption cho link X ở Đẩy trend ------------------------------------------------------------------------------------------
 const X_STATUS = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/[^/?#]+\/status\/(\d+)/i;
+// số lần đã bấm mỗi bài trên máy này (để xoay caption, không lặp lại cho đến khi hết vòng)
+const capUses = (mid) => { try { return Number(JSON.parse(localStorage.getItem('jkr_capuse') || '{}')[mid]) || 0; } catch { return 0; } };
+function bumpUses(mid) {
+  try {
+    const m = JSON.parse(localStorage.getItem('jkr_capuse') || '{}');
+    m[mid] = (Number(m[mid]) || 0) + 1;
+    const keys = Object.keys(m); if (keys.length > 200) for (const k of keys.slice(0, keys.length - 200)) delete m[k]; // giữ gọn
+    localStorage.setItem('jkr_capuse', JSON.stringify(m));
+  } catch { /* bỏ qua */ }
+}
 function capOn() { try { return localStorage.getItem('jkr_cap') !== 'off'; } catch { return true; } }
 actions['cap-toggle'] = () => {
   try { localStorage.setItem('jkr_cap', capOn() ? 'off' : 'on'); } catch { /* bỏ qua */ }
@@ -836,8 +846,14 @@ document.addEventListener('click', (e) => {
   const cap = C.caps?.[mid], st = X_STATUS.exec(orig);
   const captioned = !!(cap && st && capOn() && !e.metaKey && !e.ctrlKey && !e.shiftKey);
   if (captioned) {
-    copyText(cap.text);
-    a.href = `https://x.com/intent/post?in_reply_to=${st[1]}&text=${encodeURIComponent(cap.text)}`;
+    const used = capUses(mid), text = cap.texts[(cap.start + used) % cap.texts.length]; // mỗi lần bấm một caption khác trong bộ
+    bumpUses(mid);
+    if (used + 3 >= cap.texts.length) { // sắp hết vòng: nhờ máy chủ tạo thêm, lần sau tải lại bộ mới
+      const keep = C;
+      api('POST', '/trend/captions/more', { messageId: mid }).then(() => setTimeout(() => { if (C === keep) { delete C.caps[mid]; loadCaps(); } }, 9000)).catch(() => {});
+    }
+    copyText(text);
+    a.href = `https://x.com/intent/post?in_reply_to=${st[1]}&text=${encodeURIComponent(text)}`;
     setTimeout(() => { a.href = orig; }, 1000);
   }
   if (captioned) toast('Đã copy caption (kèm keyword, hashtag). Đang mở ô trả lời…');

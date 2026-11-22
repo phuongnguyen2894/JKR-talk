@@ -1416,13 +1416,21 @@ test('Đẩy trend: tạo sẵn caption cho link X, mỗi người một caption
   assert.ok(!r.data.captions[plain.data.message.id] && !r.data.pending.includes(plain.data.message.id));
   const c = r.data.captions[mid];
   assert.ok(c.n >= 3 && c.n <= 6);
-  assert.match(c.text, /^Caption T1 số \d+\n\n#tag1 kw1$/); // caption + keyword + hashtag
-  assert.ok(c.text.length <= 280);
+  assert.equal(c.texts.length, c.n);
+  for (const t of c.texts) { assert.match(t, /^Caption T1 số \d+\n\n#tag1 kw1$/); assert.ok(t.length <= 280); } // caption + keyword + hashtag
+  assert.equal(new Set(c.texts).size, c.n); // không trùng nhau
   // cùng người xem lại thì cùng caption; nhiều người thì có caption khác nhau
-  assert.equal((await ask(users[0], [mid])).data.captions[mid].text, c.text);
+  assert.deepEqual((await ask(users[0], [mid])).data.captions[mid], c); // cùng người: cùng bộ, cùng vị trí bắt đầu
   const texts = new Set();
-  for (const u of users) texts.add((await ask(u, [mid])).data.captions[mid].text);
+  for (const u of users) { const x = (await ask(u, [mid])).data.captions[mid]; texts.add(x.texts[x.start]); }
   assert.ok(texts.size >= 2, 'mỗi người một caption khác nhau');
+  // sắp hết vòng: tạo thêm caption mới, không trùng, tối đa 24
+  assert.equal((await call('POST', '/trend/captions/more', { messageId: mid }, users[0].token)).status, 200);
+  let more;
+  for (let i = 0; i < 40; i++) { more = (await ask(users[0], [mid])).data.captions[mid]; if (more.n > c.n) break; await new Promise((x) => setTimeout(x, 100)); }
+  assert.ok(more.n > c.n && more.n <= 24);
+  assert.deepEqual(more.texts.slice(0, c.n), c.texts); // thứ tự cũ giữ nguyên, caption mới nối thêm
+  assert.equal(new Set(more.texts).size, more.n);
   // bấm link: ghi nhận đã dùng caption
   assert.equal((await call('POST', '/trend/click', { messageId: mid, url: 'https://x.com/someone/status/1234567890123', captioned: true }, users[0].token)).status, 200);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM trend_caption_use WHERE message_id = ?').get(mid).c, 1);
@@ -1435,12 +1443,12 @@ test('Đẩy trend: tạo sẵn caption cho link X, mỗi người một caption
   // đổi chủ đề: link cũ cũng chuyển sang caption của chủ đề mới (caption cũ bị bỏ)
   let r3;
   for (let i = 0; i < 40; i++) { r3 = await ask(users[0], [mid]); if (r3.data.captions[mid]) break; await new Promise((x) => setTimeout(x, 100)); }
-  assert.match(r3.data.captions[mid].text, /^Caption T2 số \d+\n\n#tag2$/);
+  assert.ok(r3.data.captions[mid].texts.every((t) => /^Caption T2 số \d+\n\n#tag2$/.test(t)));
   assert.equal(db.prepare("SELECT COUNT(*) c FROM trend_captions WHERE message_id = ? AND text LIKE '%#tag1%'").get(mid).c, 0);
   const post2 = await call('POST', `/groups/${tg.id}/messages`, { body: 'https://x.com/other/status/99887766' }, adm.token);
   let r2;
   for (let i = 0; i < 40; i++) { r2 = await ask(users[0], [post2.data.message.id]); if (r2.data.captions[post2.data.message.id]) break; await new Promise((x) => setTimeout(x, 100)); }
-  assert.match(r2.data.captions[post2.data.message.id].text, /^Caption T2 số \d+\n\n#tag2$/); // chủ đề mới áp dụng cho link mới
+  assert.ok(r2.data.captions[post2.data.message.id].texts.every((t) => /^Caption T2 số \d+\n\n#tag2$/.test(t))); // chủ đề mới áp dụng cho link mới
   // người ngoài nhóm Đẩy trend / tin đã xóa: không trả caption
   assert.equal(Object.keys((await ask(users[0], [999999])).data.captions).length, 0);
 });
