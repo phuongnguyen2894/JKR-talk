@@ -12,11 +12,23 @@ process.env.REGISTER_RATE_LIMIT = '1000';
 process.env.LOGIN_RATE_LIMIT = '1000';
 process.env.UPLOAD_DIR = path.join(os.tmpdir(), 'jkr-test-uploads');
 const BASE = 'http://localhost:3998/api';
+// công cụ caption giả lập (máy chủ thật không được gọi trong test)
+import http from 'node:http';
+process.env.CAPTION_API_URL = 'http://localhost:3997';
+let capN = 0;
+const capMock = http.createServer((req, res) => {
+  res.setHeader('content-type', 'application/json');
+  if (req.url === '/api/config') return res.end(JSON.stringify({ topics: [
+    { label: 'T1', enabled: true, topic: 've phim', tagsAndKeywords: '#tag1 kw1', charLimit: 120, language: 'vi', allowEmojis: false },
+    { label: 'T2', enabled: false, topic: 've concert', tagsAndKeywords: '#tag2', charLimit: 120, language: 'vi' }] }));
+  if (req.url === '/api/generate') { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => { const j = JSON.parse(b || '{}'); res.end(JSON.stringify({ caption: `Caption ${j.topicLabel} số ${++capN}` })); }); return; }
+  res.statusCode = 404; res.end('{}');
+}).listen(3997);
 
 before(async () => {
   await import('../server/index.js');
 });
-after(() => setTimeout(() => process.exit(0), 50));
+after(() => { capMock.close(); setTimeout(() => process.exit(0), 50); });
 
 async function call(method, url, body, token) {
   const r = await fetch(BASE + url, {
@@ -1383,6 +1395,49 @@ test('Muay Thai: Admin đặt ảnh đầu nhân vật và ảnh mặc định, 
   assert.equal((await call('PATCH', '/admin/mt/settings', { defaultUserHeadUrl: null }, adm.token)).status, 200);
   assert.equal((await call('GET', '/admin/mt/settings', null, adm.token)).data.defaultUserHeadUrl, null);
   assert.equal((await call('GET', '/mt/characters', null, u.token)).data.characters.find((c) => c.id === 'udon').headUrl, null);
+});
+
+test('Đẩy trend: tạo sẵn caption cho link X, mỗi người một caption, chủ đề do Admin chọn', async () => {
+  const { db } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const users = [];
+  for (const n of ['capU1', 'capU2', 'capU3', 'capU4', 'capU5', 'capU6']) users.push(await signup(n, 1));
+  const tg = (await call('GET', '/groups/mine', null, adm.token)).data.groups.find((g) => g.type === 'trend');
+  const post = await call('POST', `/groups/${tg.id}/messages`, { body: 'https://x.com/someone/status/1234567890123' }, adm.token);
+  assert.equal(post.status, 201, JSON.stringify(post.data));
+  const mid = post.data.message.id;
+  // tin không có link bài viết thì không có caption
+  const plain = await call('POST', `/groups/${tg.id}/messages`, { body: 'https://x.com/someone' }, adm.token);
+  assert.equal(plain.status, 201);
+  const ask = (u, ids) => call('GET', `/trend/captions?ids=${ids.join(',')}`, null, u.token);
+  let r;
+  for (let i = 0; i < 40; i++) { r = await ask(users[0], [mid, plain.data.message.id]); if (r.data.captions[mid]) break; await new Promise((x) => setTimeout(x, 100)); }
+  assert.ok(r.data.captions[mid], 'caption phải được tạo nền');
+  assert.ok(!r.data.captions[plain.data.message.id] && !r.data.pending.includes(plain.data.message.id));
+  const c = r.data.captions[mid];
+  assert.ok(c.n >= 3 && c.n <= 6);
+  assert.match(c.text, /^Caption T1 số \d+\n\n#tag1 kw1$/); // caption + keyword + hashtag
+  assert.ok(c.text.length <= 280);
+  // cùng người xem lại thì cùng caption; nhiều người thì có caption khác nhau
+  assert.equal((await ask(users[0], [mid])).data.captions[mid].text, c.text);
+  const texts = new Set();
+  for (const u of users) texts.add((await ask(u, [mid])).data.captions[mid].text);
+  assert.ok(texts.size >= 2, 'mỗi người một caption khác nhau');
+  // bấm link: ghi nhận đã dùng caption
+  assert.equal((await call('POST', '/trend/click', { messageId: mid, url: 'https://x.com/someone/status/1234567890123', captioned: true }, users[0].token)).status, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM trend_caption_use WHERE message_id = ?').get(mid).c, 1);
+  // Admin chọn chủ đề caption
+  assert.equal((await call('GET', '/admin/trend/caption-topic', null, users[0].token)).status, 403);
+  const topics = (await call('GET', '/admin/trend/caption-topic', null, adm.token)).data;
+  assert.deepEqual(topics.topics.map((t) => t.label), ['T1', 'T2']);
+  assert.equal((await call('PUT', '/admin/trend/caption-topic', { label: 'khong-co' }, adm.token)).status, 400);
+  assert.equal((await call('PUT', '/admin/trend/caption-topic', { label: 'T2' }, adm.token)).data.selected, 'T2');
+  const post2 = await call('POST', `/groups/${tg.id}/messages`, { body: 'https://x.com/other/status/99887766' }, adm.token);
+  let r2;
+  for (let i = 0; i < 40; i++) { r2 = await ask(users[0], [post2.data.message.id]); if (r2.data.captions[post2.data.message.id]) break; await new Promise((x) => setTimeout(x, 100)); }
+  assert.match(r2.data.captions[post2.data.message.id].text, /^Caption T2 số \d+\n\n#tag2$/); // chủ đề mới áp dụng cho link mới
+  // người ngoài nhóm Đẩy trend / tin đã xóa: không trả caption
+  assert.equal(Object.keys((await ask(users[0], [999999])).data.captions).length, 0);
 });
 
 test('Muay Thai 1v1: gửi lời thách giữ xu, chấp nhận chốt kết quả đúng sổ xu, từ chối/hủy/hết hạn hoàn xu', async () => {

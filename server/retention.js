@@ -1,6 +1,7 @@
 // Chỉ giữ tin nhắn trong RETENTION_DAYS ngày gần nhất (mặc định 38): xóa tin cũ hơn,
 // tim của các tin đó (ON DELETE CASCADE) và các tệp ảnh không còn được dùng ở đâu.
 import fs from 'node:fs';
+import { purgeOrphanCaptions } from './captions.js';
 import path from 'node:path';
 import { db, now, trendGroupId } from './db.js';
 import { hub, memberIds } from './lib.js';
@@ -111,6 +112,7 @@ export function startRetention(uploadDir) {
     try {
       const r = purgeTrendLinks(uploadDir);
       if (r.messages) console.log(`[trend] đã xóa ${r.messages} tin quá hạn trong Đẩy trend`);
+      purgeOrphanCaptions();
       const d = dedupeTrendLinks(uploadDir);
       if (d.messages) console.log(`[trend] đã xóa ${d.messages} tin có link trùng trong Đẩy trend`);
     } catch (e) { console.error('[trend] lỗi', e.message); }

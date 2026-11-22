@@ -95,6 +95,7 @@ function drawChat(view) {
   // tin liền nhau của cùng một người (cách nhau dưới 5 phút, không có dòng ngày xen giữa): ẩn avatar và tên ở các tin sau
   const box = $('#msgs');
   if (box) { new MutationObserver(() => groupMsgs(box)).observe(box, { childList: true }); groupMsgs(box); }
+  if (box && g.type === 'trend') { let t = 0; new MutationObserver(() => { clearTimeout(t); t = setTimeout(loadCaps, 700); }).observe(box, { childList: true }); }
 }
 const GROUP_MS = 5 * 60_000;
 function groupMsgs(box) {
@@ -112,22 +113,34 @@ const xTagUrl = (t) => `https://x.com/search?q=${encodeURIComponent('#' + t)}`;
 function tagBarHtml() {
   if (C?.group?.type !== 'trend') return '';
   const admin = S.me?.role === 'admin';
-  if (!C.tags?.length && !admin) return '';
-  return `<div class="tagbar"><span class="tiny muted grow">Click để xem post nổi bật</span>
+  const hasTags = !!C.tags?.length;
+  return `<div class="tagbar"><span class="tiny muted grow">${hasTags || admin ? 'Click để xem post nổi bật' : 'Bấm link X: tự copy caption và mở ô trả lời'}</span>
+    <button class="btn sm" data-act="cap-toggle" aria-pressed="${capOn()}" title="Bấm link X trong Đẩy trend: tự copy caption và mở ô trả lời">Caption tự động: ${capOn() ? 'Bật' : 'Tắt'}</button>
     ${admin ? `<button class="btn sm" data-act="tags-edit">Sửa</button>` : ''}
-    <div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Top">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div></div>`;
+    ${hasTags || admin ? `<div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Top">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div>` : ''}</div>`;
 }
 actions['tags-edit'] = () => {
   const m = openModal(`<form id="tagf" class="col"><h2>Hashtag hôm nay</h2>
     <div class="field"><label for="tagin">Mỗi dòng một hashtag (tối đa 5)</label>
     <textarea class="input" id="tagin" rows="5" placeholder="#usmilePajamaPartyWithOrm">${esc((C.tags || []).map((t) => '#' + t).join('\n'))}</textarea></div>
     <p class="tiny muted">Bấm vào hashtag sẽ mở tab Top trên X. App không tự lấy bài từ X.</p>
+    <div class="field"><label for="capsel">Chủ đề caption cho link mới</label><select class="input" id="capsel" disabled><option>Đang tải…</option></select>
+    <p class="tiny muted">Lấy từ công cụ tạo caption. Chỉ áp dụng cho link đăng từ lúc đổi; link cũ giữ caption đã tạo.</p></div>
     <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Lưu</button></div></form>`);
   $('[data-close]', m).onclick = closeModal;
+  let capSel = '';
+  api('GET', '/admin/trend/caption-topic').then((r) => {
+    capSel = r.selected;
+    const el = $('#capsel', m); if (!el) return;
+    el.innerHTML = `<option value="">Tự động (chủ đề đang bật đầu tiên)</option>${r.topics.map((t) => `<option value="${esc(t.label)}" ${t.label === r.selected ? 'selected' : ''}>${esc(t.label)}${t.enabled ? ' (đang bật)' : ''}</option>`).join('')}`;
+    el.disabled = false;
+  }).catch(() => { const el = $('#capsel', m); if (el) el.innerHTML = '<option>Không tải được danh sách chủ đề</option>'; });
   $('#tagf', m).onsubmit = async (e) => {
     e.preventDefault();
     const tags = $('#tagin', m).value.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
-    try { C.tags = (await api('PUT', '/admin/trend/tags', { tags })).tags; closeModal(); const el = $('#tagbar'); if (el) el.innerHTML = tagBarHtml(); toast('Đã lưu hashtag'); } catch (er) { fail(er); }
+    try {
+      const sel = $('#capsel', m); if (sel && !sel.disabled && sel.value !== capSel) await api('PUT', '/admin/trend/caption-topic', { label: sel.value });
+      C.tags = (await api('PUT', '/admin/trend/tags', { tags })).tags; closeModal(); const el = $('#tagbar'); if (el) el.innerHTML = tagBarHtml(); toast('Đã lưu hashtag'); } catch (er) { fail(er); }
   };
 };
 
@@ -778,6 +791,34 @@ actions['toggle-read'] = () => {
 };
 export const syncReadMode = () => applyRead(readMode);
 
+// ---- caption cho link X ở Đẩy trend ------------------------------------------------------------------------------------------
+const X_STATUS = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/[^/?#]+\/status\/(\d+)/i;
+function capOn() { try { return localStorage.getItem('jkr_cap') !== 'off'; } catch { return true; } }
+actions['cap-toggle'] = () => {
+  try { localStorage.setItem('jkr_cap', capOn() ? 'off' : 'on'); } catch { /* bỏ qua */ }
+  const el = $('#tagbar'); if (el) el.innerHTML = tagBarHtml();
+  toast(capOn() ? 'Đã bật: bấm link X sẽ copy caption và mở ô trả lời' : 'Đã tắt caption tự động');
+};
+// copy ngay trong lúc bấm (trình duyệt chỉ cho copy khi đang có thao tác của người dùng)
+function copyText(text) {
+  const legacy = () => { try { const t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0;left:-9999px'; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); } catch { /* bỏ qua */ } };
+  try { if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).catch(legacy); else legacy(); } catch { legacy(); }
+}
+// tải trước caption của các bài X đang hiện; bài chưa có thì hỏi lại sau vài giây (máy chủ đang tạo nền)
+async function loadCaps(tries = 0) {
+  const mine = C;
+  if (!mine || mine.group.type !== 'trend' || !capOn()) return;
+  mine.caps ||= {};
+  const ids = [...$$('#msgs .msg')].filter((el) => [...el.querySelectorAll('a[href]')].some((a) => X_STATUS.test(a.href))).map((el) => Number(el.dataset.mid)).filter((id) => id && !mine.caps[id]).slice(-40);
+  if (!ids.length) return;
+  try {
+    const r = await api('GET', `/trend/captions?ids=${ids.join(',')}`);
+    if (C !== mine) return;
+    Object.assign(mine.caps, r.captions);
+    if (r.pending.length && tries < 5) setTimeout(() => { if (C === mine) loadCaps(tries + 1); }, 4000);
+  } catch { /* bỏ qua: bấm link vẫn mở bình thường */ }
+}
+
 // Bấm vào link X trong Đẩy trend: server cộng 1 xu tím (mỗi link một lần), link vẫn mở bình thường
 document.addEventListener('click', (e) => {
   const a = e.target.closest?.('.msg a.ext-link, .msg a.lp');
@@ -787,5 +828,15 @@ document.addEventListener('click', (e) => {
   if (!/^(www\.|mobile\.)?(x|twitter)\.com$/.test(host)) return;
   const mid = Number(a.closest('.msg')?.dataset.mid);
   if (!mid) return;
-  api('POST', '/trend/click', { messageId: mid, url: a.href }).then((r) => { if (r.coins) toast(`+${r.coins} xu tím`); }).catch(() => {});
+  const orig = a.href;
+  // đã có caption cho bài này: copy caption + keyword + hashtag và mở thẳng ô trả lời của bài đó trên X (đổi địa chỉ ngay trước khi trình duyệt chuyển trang)
+  const cap = C.caps?.[mid], st = X_STATUS.exec(orig);
+  const captioned = !!(cap && st && capOn() && !e.metaKey && !e.ctrlKey && !e.shiftKey);
+  if (captioned) {
+    copyText(cap.text);
+    a.href = `https://x.com/intent/post?in_reply_to=${st[1]}&text=${encodeURIComponent(cap.text)}`;
+    setTimeout(() => { a.href = orig; }, 1000);
+  }
+  if (captioned) toast('Đã copy caption (kèm keyword, hashtag). Đang mở ô trả lời…');
+  api('POST', '/trend/click', { messageId: mid, url: orig, captioned }).then((r) => { if (r.coins) toast(`+${r.coins} xu tím`); }).catch(() => {});
 });

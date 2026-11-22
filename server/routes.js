@@ -15,6 +15,7 @@ import { firstUrl, buildPreview } from './preview.js';
 import { track, statsReport, linkVisitor, VID_RE } from './stats.js';
 import { mountMuayThai } from './muaythai.js';
 import { mountPvp } from './pvp.js';
+import { ensureCaptions, captionFor, recordUse, captionTopics, selectedTopicLabel, setSelectedTopicLabel } from './captions.js';
 import { emojiMeta, EMOJI_LIMIT, EMOJI_MAX_PER_MESSAGE, REACTION_MAX_PER_USER, checkReactionKey, checkEmojiFile, checkEmojiName, addEmoji, countCustomTokens, visibleEmoji, activeEmoji, usageOf } from './emoji.js';
 import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
@@ -296,6 +297,33 @@ api.post('/me/level-seen', wrap((req, res) => {
   db.prepare('UPDATE users SET lvl_seen = lvl WHERE id = ?').run(req.user.id);
   res.json({ ok: true });
 }));
+// id bài viết X đầu tiên trong nội dung (x.com/<tên>/status/<id>), null nếu không có
+const xStatusId = (body) => String(body || '').match(/https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/[^\s/]+\/status\/(\d+)/i)?.[1] || null;
+// Caption cho các bài X trong Đẩy trend: mỗi người một caption (tránh trùng nhau); bài chưa có thì tạo nền và báo "pending" để máy khách hỏi lại
+api.get('/trend/captions', wrap((req, res) => {
+  rateLimit(`tcap:${req.user.id}`, 60, 60_000);
+  const ids = [...new Set(String(req.query.ids || '').split(',').map((x) => Number(x)).filter((x) => Number.isInteger(x) && x > 0))].slice(0, 40);
+  const captions = {}, pending = [];
+  for (const id of ids) {
+    const m = db.prepare('SELECT id, body FROM messages WHERE id = ? AND deleted = 0 AND group_id = ?').get(id, trendGroupId());
+    if (!m || !xStatusId(m.body)) continue;
+    const c = captionFor(req.user.id, id);
+    if (c) captions[id] = c; else { pending.push(id); ensureCaptions(id); }
+  }
+  res.json({ captions, pending });
+}));
+// Admin chọn chủ đề caption (lấy từ công cụ caption) cho các link mới trong Đẩy trend
+api.get('/admin/trend/caption-topic', adminOnly, wrap(async (_req, res) => {
+  const topics = await captionTopics();
+  res.json({ topics: topics.map((t) => ({ label: t.label, enabled: !!t.enabled, tags: t.tagsAndKeywords || '' })), selected: selectedTopicLabel() });
+}));
+api.put('/admin/trend/caption-topic', adminOnly, wrap(async (req, res) => {
+  const label = String(req.body.label || '');
+  if (label && !(await captionTopics()).some((t) => t.label === label)) throw bad('Không có chủ đề caption này');
+  setSelectedTopicLabel(label);
+  log(req.user.id, 'set_caption_topic', { reason: label || 'tự động' });
+  res.json({ selected: label });
+}));
 // Bấm vào link X được gửi trong Đẩy trend: +1 xu tím, mỗi link tính một lần
 api.post('/trend/click', wrap((req, res) => {
   rateLimit(`xclick:${req.user.id}`, 60, 60_000);
@@ -303,6 +331,7 @@ api.post('/trend/click', wrap((req, res) => {
   if (!m || m.group_id !== trendGroupId()) throw notFound('Tin nhắn không tồn tại');
   const url = String(req.body.url || '');
   if (!normalizeXLink(url) || !m.body.includes(url.replace(/[#?].*$/, ''))) return res.json({ coins: 0 });
+  if (req.body.captioned) recordUse(req.user.id, m.id); // đã copy caption và mở ô trả lời (thống kê mức dùng)
   res.json({ coins: onTrendClick(req.user.id, url) });
 }));
 // Admin cấp / thu hồi danh hiệu (Bot trend...) cho người dùng
@@ -1022,6 +1051,7 @@ api.post(
       if (pm && !isMuted(pm)) pushOnly(peer, 'dm', { body: `${req.user.display_name} đã nhắn tin cho bạn`, url: `/#/chat/${gid}`, tag: `dm-${gid}` });
     }
     // xem trước liên kết: lấy nền, xong thì báo cho các thành viên
+    if (g.type === 'trend' && xStatusId(body)) ensureCaptions(dto.id); // tạo sẵn caption để người dùng bấm là copy ngay
     const link = firstUrl(body);
     if (link) {
       buildPreview(link, UPLOAD_DIR).then((p) => {
