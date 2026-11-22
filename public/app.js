@@ -231,9 +231,9 @@ S.hooks.logout = logout;
 actions.notifs = async () => {
   try {
     const { notifications } = await api('GET', '/notifications');
-    openModal(`<h2>Thông báo</h2><div class="list notif-list">${notifications.map((n) => `<div class="card col" ${n.url ? `role="link" tabindex="0" data-nurl="${esc(n.url)}" data-nmsg="${n.msgId || ''}"` : ''} style="gap:2px;${n.url ? 'cursor:pointer;' : ''}${n.read ? '' : 'border-color:var(--accent)'}"><div class="small">${esc(n.text)}</div><div class="tiny muted">${fmtDateTime(n.createdAt)}</div></div>`).join('') || '<p class="muted small">Chưa có thông báo nào.</p>'}</div>
+    openModal(`<div class="row" style="justify-content:space-between"><h2>Thông báo</h2><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('x', 20)}</button></div><div class="list notif-list">${notifications.map((n) => `<div class="card col" ${n.url ? `role="link" tabindex="0" data-nurl="${esc(n.url)}" data-nmsg="${n.msgId || ''}"` : ''} style="gap:2px;${n.url ? 'cursor:pointer;' : ''}${n.read ? '' : 'border-color:var(--accent)'}"><div class="small">${esc(n.text)}</div><div class="tiny muted">${fmtDateTime(n.createdAt)}</div></div>`).join('') || '<p class="muted small">Chưa có thông báo nào.</p>'}</div>
       <div class="btns"><button class="btn primary" data-close>Đóng</button></div>`);
-    $('#modal [data-close]').onclick = closeModal;
+    for (const b of document.querySelectorAll('#modal [data-close]')) b.onclick = closeModal;
     const openNotif = (e) => {
       if (e.type === 'keydown' && e.key !== 'Enter') return;
       const card = e.target.closest('[data-nurl]'); if (!card) return;
