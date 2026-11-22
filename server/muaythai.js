@@ -2,8 +2,10 @@
 // Máy khách chỉ hiển thị và phát lại kịch bản hoạt hình. Xu ảo, không nạp bằng tiền thật, không quy đổi ra tiền thật.
 // Số dư dùng chung với xu tím của app: số dư = coins - coins_spent + game_net. Lãi/lỗ của game chỉ vào game_net nên không ảnh hưởng cấp (cấp chỉ tính xu đã kiếm).
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { db, tx, now } from './db.js';
-import { HttpError, bad, notFound, getUser, rateLimit, isBlockedEither, locationOf } from './lib.js';
+import { HttpError, bad, notFound, getUser, rateLimit, isBlockedEither, locationOf, log } from './lib.js';
 import { balanceOf } from './levels.js';
 
 export const MT = {
@@ -207,7 +209,16 @@ function settledDto(m, uid) {
 }
 
 // ---- API ------------------------------------------------------------------------------
-export function mountMuayThai(api, wrap, adminOnly, checkUploadUrl) {
+export function mountMuayThai(api, wrap, adminOnly, checkUploadUrl, uploadDir) {
+  // ảnh đầu: phải là ảnh đã tải lên máy chủ (PNG/JPG/GIF/WebP), tối đa 512 KB
+  const headImage = (u) => {
+    const url = checkUploadUrl(u);
+    if (!/\.(png|jpe?g|gif|webp)$/i.test(url)) throw bad('Chỉ nhận ảnh PNG, JPG, GIF hoặc WebP');
+    let size;
+    try { size = fs.statSync(path.join(uploadDir, path.basename(url))).size; } catch { throw bad('Không tìm thấy ảnh đã tải lên'); }
+    if (size > 512 * 1024) throw bad(`Ảnh nặng ${Math.ceil(size / 1024)} KB, vượt mức 512 KB`);
+    return url;
+  };
   const me = (req) => req.user.id;
   const walletOf = (uid) => balanceOf(getUser(uid));
   api.get('/mt/wallet', wrap((req, res) => res.json({ balance: walletOf(me(req)), stake: { min: MT.MIN_STAKE, max: MT.MAX_STAKE }, payoutMultiplier: MT.PAYOUT_MULTIPLIER })));
@@ -247,12 +258,24 @@ export function mountMuayThai(api, wrap, adminOnly, checkUploadUrl) {
     })).sort((x, y) => rank[x.relation] - rank[y.relation] || x.name.localeCompare(y.name, 'vi')).slice(0, 10);
     res.json({ users });
   }));
+  api.get('/admin/mt/settings', adminOnly, wrap((_req, res) => res.json({
+    characters: db.prepare('SELECT * FROM mt_characters ORDER BY sort_order').all().map((c) => ({ id: c.id, name: c.name, initials: c.initials, color: c.color, headUrl: c.head_image_url || null, active: !!c.active })),
+    defaultUserHeadUrl: defaultHead(),
+  })));
+  api.patch('/admin/mt/settings', adminOnly, wrap((req, res) => {
+    const url = req.body.defaultUserHeadUrl ? headImage(req.body.defaultUserHeadUrl) : null;
+    if (url) db.prepare("INSERT OR REPLACE INTO mt_settings (key, value) VALUES ('default_user_head_url', ?)").run(url);
+    else db.prepare("DELETE FROM mt_settings WHERE key = 'default_user_head_url'").run();
+    log(req.user.id, 'mt_default_head', { reason: url || 'bỏ ảnh' });
+    res.json({ ok: true });
+  }));
   // Admin đặt ảnh đầu cho nhân vật (null = dùng chữ viết tắt)
   api.patch('/admin/mt/characters/:id', adminOnly, wrap((req, res) => {
     const c = charRow(String(req.params.id));
     if (!c) throw notFound('Không tìm thấy nhân vật');
-    const url = req.body.headImageUrl ? checkUploadUrl(req.body.headImageUrl) : null;
+    const url = req.body.headImageUrl ? headImage(req.body.headImageUrl) : null;
     db.prepare('UPDATE mt_characters SET head_image_url = ? WHERE id = ?').run(url, c.id);
+    log(req.user.id, 'mt_character_head', { reason: `${c.id}: ${url || 'bỏ ảnh'}` });
     res.json({ ok: true });
   }));
   // xóa các trận chưa cược đã hết hạn

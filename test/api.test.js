@@ -1363,6 +1363,25 @@ test('Muay Thai: tạo trận, cược thắng/thua đúng sổ xu, không cư�
   assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').get(u.id).coins, 1250);
 });
 
+test('Muay Thai: Admin đặt ảnh đầu nhân vật và ảnh mặc định, người thường không được', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('mtHeadUser', 1);
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const up = (await call('POST', '/upload', { dataUrl: png }, adm.token)).data.url;
+  assert.equal((await call('GET', '/admin/mt/settings', null, u.token)).status, 403);
+  assert.equal((await call('PATCH', '/admin/mt/characters/udon', { headImageUrl: up }, u.token)).status, 403);
+  assert.equal((await call('PATCH', '/admin/mt/characters/khong_co', { headImageUrl: up }, adm.token)).status, 404);
+  assert.equal((await call('PATCH', '/admin/mt/characters/udon', { headImageUrl: '/uploads/khong-co.png' }, adm.token)).status, 400);
+  assert.equal((await call('PATCH', '/admin/mt/characters/udon', { headImageUrl: up }, adm.token)).status, 200);
+  assert.equal((await call('GET', '/mt/characters', null, u.token)).data.characters.find((c) => c.id === 'udon').headUrl, up);
+  assert.equal((await call('PATCH', '/admin/mt/settings', { defaultUserHeadUrl: up }, adm.token)).status, 200);
+  assert.equal((await call('GET', '/admin/mt/settings', null, adm.token)).data.defaultUserHeadUrl, up);
+  assert.equal((await call('PATCH', '/admin/mt/characters/udon', { headImageUrl: null }, adm.token)).status, 200);
+  assert.equal((await call('PATCH', '/admin/mt/settings', { defaultUserHeadUrl: null }, adm.token)).status, 200);
+  assert.equal((await call('GET', '/admin/mt/settings', null, adm.token)).data.defaultUserHeadUrl, null);
+  assert.equal((await call('GET', '/mt/characters', null, u.token)).data.characters.find((c) => c.id === 'udon').headUrl, null);
+});
+
 test('Muay Thai: không đủ xu, cược song song không âm tiền, chỉ một request thắng', async () => {
   const { db } = await import('../server/db.js');
   const u = await signup('mtRace', 1);

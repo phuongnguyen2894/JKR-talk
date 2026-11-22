@@ -2108,7 +2108,7 @@ api.post('/admin/bugs/send', superOnly, wrap(async (req, res) => {
   res.json({ ok: true, sent: bugs.length, status, response: snippet });
 }));
 
-mountMuayThai(api, wrap, adminOnly, checkUploadUrl);
+mountMuayThai(api, wrap, adminOnly, checkUploadUrl, UPLOAD_DIR);
 
 // ---- lỗi ---------------------------------------------------------------------
 api.use((_req, _res, next) => next(new HttpError(404, 'Không tìm thấy')));

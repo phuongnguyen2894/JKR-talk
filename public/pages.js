@@ -1,5 +1,6 @@
 import { pushSectionHtml } from './push.js';
 import { adminEmoji } from './emoji.js';
+import { adminGame } from './mtadmin.js';
 import { renderStats } from './stats.js';
 import { commentBlock } from './comments.js';
 import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify, newsGallery, lightbox, lvBadge } from './core.js';
@@ -284,7 +285,7 @@ const LOG_LABEL = { delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng', ki
 export async function renderAdmin(view, tab = 'reports') {
   const admin = S.me.role === 'admin';
   if (!admin) tab = 'reports';
-  const tabs = admin ? [['reports', 'Báo cáo'], ['topics', 'Chủ đề chờ duyệt'], ['emoji', 'Emoji'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin'], ['stats', 'Thống kê']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
+  const tabs = admin ? [['reports', 'Báo cáo'], ['topics', 'Chủ đề chờ duyệt'], ['emoji', 'Emoji'], ['game', 'Game'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin'], ['stats', 'Thống kê']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
   view.innerHTML = `<div class="page"><div class="page-inner"><h1>${admin ? 'Quản trị' : 'Báo cáo trong nhóm của bạn'}</h1>
     <div class="pillnav">${tabs.map(([k, n]) => `<button data-tab="${k}" aria-pressed="${k === tab}">${n}<span class="tab-cnt" data-cnt="${k}"></span></button>`).join('')}</div><div id="tabbody"></div></div></div>`;
   $$('[data-tab]', view).forEach((b) => (b.onclick = () => renderAdmin(view, b.dataset.tab)));
@@ -297,6 +298,7 @@ export async function renderAdmin(view, tab = 'reports') {
     if (tab === 'reports') await adminReports(body);
     if (tab === 'topics') await adminTopics(body);
     if (tab === 'emoji') await adminEmoji(body);
+    if (tab === 'game') await adminGame(body);
     if (tab === 'users') await adminUsers(body);
     if (tab === 'mods') await adminMods(body);
     if (tab === 'admins' && S.me.isSuper) await adminAdmins(body);
