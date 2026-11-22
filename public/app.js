@@ -8,6 +8,7 @@ import { renderChat, onSocket } from './chat.js';
 import { renderFriends, renderJoin } from './social.js';
 import { renderHot } from './hot.js';
 import { renderMuayThai } from './muaythai.js';
+import { renderGames } from './games.js';
 import { routeGuest } from './guest.js';
 import { renderWelcome } from './welcome.js';
 import { renderTopics } from './topics.js';
@@ -67,7 +68,7 @@ function renderSide() {
     <a class="nav-item" href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${coinIcon(20)}<span class="name">Thăng cấp</span></a>
     <a class="nav-item" href="#/shop" ${r.name === 'shop' ? 'aria-current="page"' : ''}>${icon('star', 20)}<span class="name">Cửa hàng xu tím</span></a>
     <a class="nav-item" href="#/titles" ${r.name === 'titles' ? 'aria-current="page"' : ''}>${icon('trend', 20)}<span class="name">Danh hiệu</span></a>
-    ${nav('#/muaythai', 'muaythai', 'Muay Thai', 'glove')}
+    <a class="nav-item" href="#/games" ${['games', 'muaythai'].includes(r.name) ? 'aria-current="page"' : ''}>${icon('glove')}<span class="name">Game</span></a>
     ${nav('#/tools', 'tools', 'Công cụ', 'tool')}
     ${S.me.role === 'admin' ? '' : `<button class="nav-item" data-act="report-bug">${icon('bug')}<span class="name">Báo lỗi</span></button>`}
     ${S.me.role === 'admin' ? nav('#/bugs', 'bugs', 'Danh sách lỗi', 'bug') : ''}
@@ -127,6 +128,7 @@ async function route() {
       case 'tools': return renderTools(view);
       case 'discover': return await renderDiscover(view);
       case 'friends': return await renderFriends(view);
+      case 'games': return await renderGames(view);
       case 'muaythai': return await renderMuayThai(view, r.arg);
       case 'hot':
         if (S.unreadHot) { S.unreadHot = 0; renderSide(); }

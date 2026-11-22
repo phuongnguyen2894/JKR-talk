@@ -5,7 +5,7 @@ import { db } from './db.js';
 
 export const dayOf = (t = Date.now()) => new Date(t + 7 * 3600_000).toISOString().slice(0, 10); // ngày theo giờ Việt Nam
 const hourOf = (t = Date.now()) => new Date(t + 7 * 3600_000).getUTCHours(); // giờ theo giờ Việt Nam
-export const PAGES = ['chat', 'news', 'hot', 'level', 'shop', 'titles', 'settings', 'admin', 'topics', 'discover', 'friends', 'tools', 'bugs', 'welcome', 'join', 'explore', 'login', 'register', 'muaythai'];
+export const PAGES = ['chat', 'news', 'hot', 'level', 'shop', 'titles', 'settings', 'admin', 'topics', 'discover', 'friends', 'tools', 'bugs', 'welcome', 'join', 'explore', 'login', 'register', 'muaythai', 'games'];
 export const VID_RE = /^[A-Za-z0-9_-]{16,40}$/;
 const KEEP_DAYS = 400;
 

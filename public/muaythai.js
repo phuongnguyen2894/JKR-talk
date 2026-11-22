@@ -66,7 +66,7 @@ function crowdSvg() {
 }
 const arenaBack = () => '<div class="mt-glow"></div><i class="mt-rope r1"></i><i class="mt-rope r2"></i><i class="mt-rope r3"></i><i class="mt-post l"></i><i class="mt-post r"></i><div class="mt-floor"></div>';
 const coinPill = (n) => `<span class="mt-pill" id="mt-bal" aria-label="Số dư ${fmt(n)} xu tím">${coinIcon(18)}${fmt(n)}</span>`;
-const header = (title, back) => `<div class="mt-head">${back || '<a class="mt-back" href="#/chat" aria-label="Thoát game, về danh sách nhóm">' + icon('back', 22) + '</a>'}<h1>${title}</h1>${coinPill(M.balance)}</div>`;
+const header = (title, back) => `<div class="mt-head">${back || '<a class="mt-back" href="#/games" aria-label="Về danh sách game">' + icon('back', 22) + '</a>'}<h1>${title}</h1>${coinPill(M.balance)}</div>`;
 const setBalance = (n) => { M.balance = n; if (S.me) S.me = { ...S.me, balance: n }; const el = $('#mt-bal'); if (el) el.innerHTML = `${coinIcon(18)}${fmt(n)}`; };
 
 // ---- vào game ---------------------------------------------------------------------------------------------
@@ -294,7 +294,7 @@ function resultHtml() {
       <div class="c">${won ? `Cược ${fmt(r.stake)} xu · thưởng x${M.match.payoutMultiplier}` : `Mất ${fmt(r.stake)} xu cược`}</div></div>
     <div class="mt-bal"><span>Số dư mới</span><b>${coinIcon(18)}${fmt(M.res.balanceFinal)}</b></div>
     <button type="button" class="mt-btn primary" data-mt="again" id="mt-again">Chơi tiếp</button>
-    <a class="mt-btn ghost" href="#/chat">Thoát</a>`;
+    <a class="mt-btn ghost" href="#/games">Thoát</a>`;
 }
 
 // ---- sự kiện -------------------------------------------------------------------------------------------------------
