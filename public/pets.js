@@ -65,7 +65,8 @@ function petPanel(p) {
     <div class="pt-head">${face(p, 52)}<div class="grow"><div class="pt-name"><b>${esc(p.name)}</b><button type="button" class="pt-mini" data-pt="rename" data-id="${p.id}" aria-label="Đổi tên">✏️</button></div>
       <div class="pt-sub">${esc(p.species)} · ${esc(p.stageName)} · ${MOOD[p.mood.key]} ${esc(p.mood.label)}</div></div></div>
     <div class="pt-int"><div class="row between"><span class="pt-sub">Thân thiết: <b>${fmt(p.intimacy)}</b></span><span class="pt-sub">${nxt ? `Còn ${fmt(nxt - p.intimacy)} để lên ${esc(STAGE_NAME(p.stage + 1))}` : 'Đã trưởng thành'}</span></div>
-      ${bar(pct, '#7C3AED')}<span class="pt-sub">Hôm nay còn cộng được +${p.gainLeft}</span></div>
+      ${bar(pct, '#7C3AED')}<span class="pt-sub">Hôm nay còn cộng được +${p.gainLeft}</span>
+      ${p.losing ? `<span class="pt-warn" role="status">😢 ${esc(p.name)} đang buồn, Thân thiết đang giảm ${p.lossRate} mỗi giờ. Hãy chăm bạn ấy nhé!</span>` : ''}</div>
     <div class="pt-stats">${STAT.map(([k, n, c]) => `<div class="pt-stat"><span>${n}</span>${bar(p.stats[k], c)}<b>${p.stats[k]}</b></div>`).join('')}</div>
     <p class="pt-sub" style="margin:2px 0">${esc(p.trait)}</p>
     <div class="pt-acts">${ACT.map(([a, e, n]) => `<button type="button" class="pt-act" data-pt="${a}" data-id="${p.id}" data-cd="${cdAt(a)}" ${p.cooldowns[a] > 0 ? 'disabled' : ''}><span aria-hidden="true">${e}</span>${n}<em class="pt-cd">${p.cooldowns[a] > 0 ? `${Math.ceil(p.cooldowns[a] / 1000)}s` : ''}</em></button>`).join('')}</div>
@@ -96,7 +97,7 @@ function draw(root) {
     ${homeCard(s)}
     <section class="pt-card"><b>Thăm nhà bạn bè</b><div id="pt-friends" class="pt-sub">Đang tải…</div></section>
     ${S.me?.role === 'admin' ? adminHtml() : ''}
-    <p class="pt-foot">Chăm sóc miễn phí, không kiếm xu. Thân thiết tăng khi bạn chăm đúng lúc, mỗi bạn tối đa +${s.dailyCap} mỗi ngày. Thú sẽ buồn nếu bị bỏ mặc nhưng không bao giờ mất.</p>`;
+    <p class="pt-foot">Chăm sóc miễn phí, không kiếm xu. Thân thiết tăng khi bạn chăm đúng lúc, mỗi bạn tối đa +${s.dailyCap} mỗi ngày. Nếu để bạn ấy buồn (có chỉ số dưới 20) thì Thân thiết bị trừ theo giờ, nhưng không tụt khỏi giai đoạn đã đạt và thú không bao giờ mất.</p>`;
   loadFriends(root);
 }
 async function loadFriends(root) {
@@ -161,7 +162,7 @@ async function onClick(e) {
       P.food = false;
       const i = P.s.pets.findIndex((p) => p.id === id); if (i >= 0) P.s.pets[i] = r.pet;
       draw(root);
-      toast(r.levelUp ? `${r.pet.name} đã lớn thành ${r.levelUp}! 🎉` : r.gained ? `${r.liked ? 'Bạn ấy rất thích! ' : ''}+${r.gained} Thân thiết` : 'Hôm nay đã đủ điểm Thân thiết, bạn ấy vẫn rất vui', 2500);
+      toast(r.lost ? `${r.pet.name} đã bị trừ ${r.lost} Thân thiết vì bị bỏ mặc. ${r.gained ? `Chăm xong +${r.gained}` : ''}` : r.levelUp ? `${r.pet.name} đã lớn thành ${r.levelUp}! 🎉` : r.gained ? `${r.liked ? 'Bạn ấy rất thích! ' : ''}+${r.gained} Thân thiết` : 'Hôm nay đã đủ điểm Thân thiết, bạn ấy vẫn rất vui', 2500);
     });
   }
   if (a === 'rename') {

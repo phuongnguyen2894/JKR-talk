@@ -1887,3 +1887,29 @@ test('Nuôi thú: chỉ Admin thử khi chưa mở; chăm sóc, thân thiết, k
   }
   assert.equal((await call('GET', '/pets', null, u.token)).status, 403);
 });
+
+test('Nuôi thú: thú buồn bị trừ Thân thiết theo giờ, không tụt khỏi giai đoạn, chăm xong thì chốt điểm', async () => {
+  const { db, now } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('petSad', 1);
+  await call('PUT', '/admin/pets/settings', { mode: 'all' }, adm.token);
+  try {
+    const id = (await call('POST', '/pets/adopt', { kind: 'uni' }, u.token)).data.pets[0].id;
+    // đang buồn (mọi chỉ số 10) 5 giờ: mất 10 điểm (2 mỗi giờ)
+    db.prepare('UPDATE pets SET food = 10, fun = 10, clean = 10, health = 10, intimacy = 250, stat_at = ? WHERE id = ?').run(now() - 5 * 3600_000, id);
+    let p = (await call('GET', '/pets', null, u.token)).data.pets[0];
+    assert.equal(p.intimacy, 240); assert.equal(p.losing, true);
+    // thú khỏe: không bị trừ
+    db.prepare('UPDATE pets SET food = 90, fun = 90, clean = 90, health = 90, stat_at = ? WHERE id = ?').run(now() - 1 * 3600_000, id);
+    assert.equal((await call('GET', '/pets', null, u.token)).data.pets[0].intimacy, 250);
+    // bỏ mặc rất lâu: trừ tối đa tới mốc đầu giai đoạn (Con nhỏ từ 100), không rơi xuống Bé
+    db.prepare('UPDATE pets SET food = 10, fun = 10, clean = 10, health = 10, stat_at = ? WHERE id = ?').run(now() - 400 * 3600_000, id);
+    p = (await call('GET', '/pets', null, u.token)).data.pets[0];
+    assert.equal(p.intimacy, 100); assert.equal(p.stage, 1);
+    // chăm sóc: điểm mất được chốt, lần sau không trừ lại
+    const r = await call('POST', `/pets/${id}/feed`, { food: 'xuong' }, u.token);
+    assert.equal(r.status, 200); assert.equal(r.data.lost, 150);
+    assert.equal(db.prepare('SELECT intimacy FROM pets WHERE id = ?').get(id).intimacy, 100 + r.data.gained);
+    assert.equal((await call('GET', '/pets', null, u.token)).data.pets[0].intimacy, 100 + r.data.gained);
+  } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
+});

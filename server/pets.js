@@ -1,7 +1,7 @@
 // Game "Nuôi thú": mỗi người có một khu nhà chung cho các bạn thú (Juad, Abu, Uni, Charsiu, Tofu, Udon).
 // Chăm sóc miễn phí; phần thưởng duy nhất là điểm Thân thiết (không kiếm xu). Chỉ mở rộng khu nhà mới tốn xu tím.
 // Số thú nuôi được = sức chứa của khu nhà; cấp bậc quyết định bậc khu nhà tối đa được mua. Thú không bao giờ mất.
-// Chỉ số tính theo thời gian thật (tụt dần), máy chủ quyết định mọi thay đổi.
+// Chỉ số tính theo thời gian thật (tụt dần), máy chủ quyết định mọi thay đổi. Thú buồn (chỉ số dưới 20) bị trừ Thân thiết theo giờ.
 import { db, tx, now } from './db.js';
 import { bad, notFound, forbidden, getUser, rateLimit, areFriends, isBlockedEither, notify, pushOnly, isOnline, isSystemAdmin, log } from './lib.js';
 import { balanceOf } from './levels.js';
@@ -22,6 +22,8 @@ export const FOODS = [
   { id: 'xuong', name: 'Xương gặm', emoji: '🦴', food: 25 },
 ];
 export const STAGES = [{ n: 0, name: 'Bé', from: 0 }, { n: 1, name: 'Con nhỏ', from: 100 }, { n: 2, name: 'Thiếu niên', from: 400 }, { n: 3, name: 'Trưởng thành', from: 1000 }];
+export const LOSS_PER_HOUR = 2; // thú buồn (có chỉ số dưới 20): trừ Thân thiết mỗi giờ, không tụt xuống dưới mốc của giai đoạn hiện tại
+export const SAD_BELOW = 20;
 export const DAILY_GAIN_CAP = 80; // điểm Thân thiết tối đa mỗi thú mỗi ngày
 // tốc độ tụt mỗi giờ (cơ bản) rồi nhân hệ số của từng bạn
 const BASE_DECAY = { food: 4, fun: 3.5, clean: 2, health: 1.5 };
@@ -66,6 +68,20 @@ function current(p, t, crowd) {
   for (const s of ['food', 'fun', 'clean', 'health']) out[s] = clamp(p[s] - BASE_DECAY[s] * (k.mult[s] || 1) * crowd * hours);
   return out;
 }
+// điểm Thân thiết đã mất do bỏ mặc kể từ lần cập nhật cuối (tính theo thời gian thú buồn); không bao giờ tụt khỏi giai đoạn hiện tại
+function lossOf(p, t, crowd) {
+  const k = KIND[p.kind], hours = Math.max(0, t - p.stat_at) / 3600_000;
+  let sadFrom = Infinity;
+  for (const s of ['food', 'fun', 'clean', 'health']) sadFrom = Math.min(sadFrom, Math.max(0, (p[s] - SAD_BELOW) / (BASE_DECAY[s] * (k.mult[s] || 1) * crowd)));
+  const sad = Math.max(0, hours - sadFrom);
+  return Math.max(0, Math.min(Math.floor(sad * LOSS_PER_HOUR), p.intimacy - stageOf(p.intimacy).from));
+}
+// chốt chỉ số và điểm mất vào cơ sở dữ liệu tại thời điểm t, trả lại dòng mới
+function settle(p, t, crowd) {
+  const loss = lossOf(p, t, crowd), st = current(p, t, crowd);
+  db.prepare('UPDATE pets SET intimacy = intimacy - ?, food = ?, fun = ?, clean = ?, health = ?, stat_at = ? WHERE id = ?').run(loss, st.food, st.fun, st.clean, st.health, t, p.id);
+  return { row: db.prepare('SELECT * FROM pets WHERE id = ?').get(p.id), loss };
+}
 const stageOf = (i) => [...STAGES].reverse().find((s) => i >= s.from);
 function moodOf(st) {
   const low = Object.entries(st).sort((a, b) => a[1] - b[1])[0];
@@ -74,10 +90,11 @@ function moodOf(st) {
 }
 export function petView(p, t, crowd, kinds = imgMap()) {
   const k = KIND[p.kind], st = current(p, t, crowd), cd = (() => { try { return JSON.parse(p.cd || '{}'); } catch { return {}; } })();
-  const stage = stageOf(p.intimacy), next = STAGES.find((s) => s.from > p.intimacy);
+  const loss = lossOf(p, t, crowd), intimacy = p.intimacy - loss; // điểm hiển thị đã trừ phần mất do bỏ mặc
+  const stage = stageOf(intimacy), next = STAGES.find((s) => s.from > intimacy);
   return {
     id: p.id, kind: p.kind, kindName: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, trait: k.trait,
-    favFood: k.fav, intimacy: p.intimacy, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
+    favFood: k.fav, intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
     stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st),
     cooldowns: Object.fromEntries(Object.entries(ACTIONS).map(([a, c]) => [a, Math.max(0, (cd[a] || 0) + c.cd - t)])),
     gainLeft: Math.max(0, DAILY_GAIN_CAP - (p.day === dayKey(t) ? p.day_gain : 0)),
@@ -102,9 +119,10 @@ function gain(p, amount, t) {
 // ---- thao tác chăm sóc ------------------------------------------------------------------------------------------------
 function care(uid, petId, action, body) {
   return tx(() => {
-    const p = db.prepare('SELECT * FROM pets WHERE id = ? AND user_id = ?').get(petId, uid);
-    if (!p) throw notFound('Không tìm thấy bạn thú này');
-    const t = now(), all = myPets(uid), crowd = crowdOf(all.length), k = KIND[p.kind], st = current(p, t, crowd);
+    const p0 = db.prepare('SELECT * FROM pets WHERE id = ? AND user_id = ?').get(petId, uid);
+    if (!p0) throw notFound('Không tìm thấy bạn thú này');
+    const t = now(), all = myPets(uid), crowd = crowdOf(all.length), k = KIND[p0.kind];
+    const { row: p, loss: lost } = settle(p0, t, crowd), st = current(p, t, crowd);
     const cd = (() => { try { return JSON.parse(p.cd || '{}'); } catch { return {}; } })();
     const wait = (cd[action] || 0) + ACTIONS[action].cd - t;
     if (wait > 0) throw bad(`Đợi ${Math.ceil(wait / 1000)} giây nữa nhé`);
@@ -131,7 +149,7 @@ function care(uid, petId, action, body) {
     db.prepare('UPDATE pets SET food = ?, fun = ?, clean = ?, health = ?, stat_at = ?, cd = ? WHERE id = ?').run(next.food, next.fun, next.clean, next.health, t, JSON.stringify(cd), p.id);
     const added = gain(db.prepare('SELECT * FROM pets WHERE id = ?').get(p.id), base, t);
     const fresh = db.prepare('SELECT * FROM pets WHERE id = ?').get(p.id);
-    return { pet: petView(fresh, t, crowd), gained: added, liked: fav, levelUp: stageOf(fresh.intimacy).n > stageOf(p.intimacy).n ? stageOf(fresh.intimacy).name : null };
+    return { pet: petView(fresh, t, crowd), gained: added, lost, liked: fav, levelUp: stageOf(fresh.intimacy).n > stageOf(p.intimacy).n ? stageOf(fresh.intimacy).name : null };
   });
 }
 
@@ -246,7 +264,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     const done = tx(() => {
       if (db.prepare('SELECT 1 FROM pet_visits WHERE visitor_id = ? AND owner_id = ? AND day = ?').get(me(req), owner, dayKey())) return false;
       db.prepare('INSERT INTO pet_visits (visitor_id, owner_id, day) VALUES (?,?,?)').run(me(req), owner, dayKey());
-      gain(p, 3, now());
+      gain(settle(p, now(), crowdOf(myPets(owner).length)).row, 3, now());
       return true;
     });
     if (!done) throw bad('Hôm nay bạn đã vuốt ve thú ở nhà này rồi, mai quay lại nhé');
