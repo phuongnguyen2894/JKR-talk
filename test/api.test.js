@@ -302,7 +302,7 @@ test('Đẩy trend: ai cũng vào sẵn và đọc được, chỉ admin/mod đ�
   assert.equal(trend.type, 'trend');
   assert.equal(trend.name, 'Đẩy trend');
   assert.equal(trend.canPost, false);
-  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'spam' }, nguoi.token)).status, 403);
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'spam' }, nguoi.token)).status, 202); // chờ admin duyệt, chưa hiện trong nhóm
   assert.equal((await call('POST', `/groups/${trend.id}/leave`, {}, nguoi.token)).status, 400);
   const p = await call('POST', `/groups/${trend.id}/messages`, { body: 'Mọi người cùng đẩy trend nhé' }, admin.token);
   assert.equal(p.status, 201);
@@ -1041,7 +1041,7 @@ test('cấp bậc: người mới chưa có cấp, xong 3 việc khởi đầu n
   assert.equal((await call('GET', `/groups/${vn.id}/messages`, null, b.token)).data.messages.find((m) => m.user.id === a.id).user.level, 1);
   // đặc quyền theo cấp
   const trend = (await call('GET', '/groups/mine', null, a.token)).data.groups.find((g) => g.type === 'trend');
-  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/abc/status/1' }, a.token)).status, 403);
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/abc/status/1' }, a.token)).status, 202); // dưới cấp 3: chờ duyệt
   // lên cấp: đủ xu nhưng thiếu danh hiệu thì dừng ở cấp 2
   db.prepare('UPDATE users SET coins = 3500 WHERE id = ?').run(a.id);
   assert.equal((await call('GET', '/me/level', null, a.token)).data.level.level, 2);
@@ -1769,4 +1769,49 @@ test('thống kê: ghi lượt xem và thời gian của người dùng và khá
   assert.ok(all.series[6].newUsers >= 3);
   assert.equal(guests.series[6].newUsers, 0);
   assert.equal((await call('GET', '/admin/stats?days=9999', null, adm.token)).data.days, 365);
+});
+
+test('Đẩy trend: người dùng dưới cấp 3 gửi bài chờ admin duyệt; cấp 3 trở lên đăng thẳng', async () => {
+  const { db } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('tsubU', 1), top = await signup('tsubTop', 1), other = await signup('tsubO', 1);
+  const trend = (await call('GET', '/groups/mine', null, u.token)).data.groups.find((g) => g.type === 'trend');
+  assert.equal(trend.canPost, false); assert.equal(trend.canSubmit, true);
+  db.prepare('UPDATE users SET lvl = 3 WHERE id = ?').run(top.id);
+  const msgs = async (tok) => (await call('GET', `/groups/${trend.id}/messages`, null, tok)).data.messages;
+  // cấp 3: đăng thẳng
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/a/status/9001 top' }, top.token)).status, 201);
+  // dưới cấp 3: chờ duyệt, người khác chưa thấy
+  const link = 'https://x.com/a/status/9002 bài chờ';
+  const r = await call('POST', `/groups/${trend.id}/messages`, { body: link }, u.token);
+  assert.equal(r.status, 202); assert.equal(r.data.pending, true);
+  assert.ok(!(await msgs(other.token)).some((m) => m.body === link));
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: link }, u.token)).status, 409); // không gửi trùng khi đang chờ
+  assert.equal((await call('GET', '/trend/submissions', null, u.token)).data.mine.length, 1);
+  assert.equal((await call('GET', '/trend/submissions', null, u.token)).data.review.length, 0);
+  const q = (await call('GET', '/trend/submissions', null, adm.token)).data.review;
+  assert.ok(q.some((x) => x.id === r.data.submission.id));
+  // người thường không duyệt được
+  assert.equal((await call('POST', `/trend/submissions/${r.data.submission.id}/approve`, {}, other.token)).status, 403);
+  // admin duyệt: bài hiện cho mọi người, người gửi được báo
+  const ok = await call('POST', `/trend/submissions/${r.data.submission.id}/approve`, {}, adm.token);
+  assert.equal(ok.status, 200);
+  const shown = (await msgs(other.token)).find((m) => m.body === link);
+  assert.ok(shown && shown.user.id === u.id);
+  const ns = (await call('GET', '/notifications', null, u.token)).data.notifications;
+  assert.ok(ns.some((n) => n.text.includes('đã được duyệt') && n.msgId === shown.id));
+  assert.equal((await call('POST', `/trend/submissions/${r.data.submission.id}/approve`, {}, adm.token)).status, 404); // đã xử lý
+  // từ chối kèm lý do
+  const r2 = await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/a/status/9003' }, u.token);
+  assert.equal((await call('POST', `/trend/submissions/${r2.data.submission.id}/reject`, { reason: 'Không đúng chủ đề' }, adm.token)).status, 200);
+  assert.ok(!(await msgs(other.token)).some((m) => m.body.includes('9003')));
+  assert.ok((await call('GET', '/notifications', null, u.token)).data.notifications.some((n) => n.text.includes('Không đúng chủ đề')));
+  assert.equal((await call('GET', '/trend/submissions', null, u.token)).data.mine[0].status, 'rejected');
+  // rút lại bài đang chờ
+  const r3 = await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/a/status/9004' }, u.token);
+  assert.equal((await call('DELETE', `/trend/submissions/${r3.data.submission.id}`, null, other.token)).status, 404);
+  assert.equal((await call('DELETE', `/trend/submissions/${r3.data.submission.id}`, null, u.token)).status, 200);
+  // tối đa 5 bài chờ cùng lúc
+  for (let i = 0; i < 5; i++) assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: `https://x.com/a/status/91${i}` }, u.token)).status, 202);
+  assert.equal((await call('POST', `/groups/${trend.id}/messages`, { body: 'https://x.com/a/status/9199' }, u.token)).status, 400);
 });

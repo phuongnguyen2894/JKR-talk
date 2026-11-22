@@ -297,6 +297,93 @@ api.post('/me/level-seen', wrap((req, res) => {
   db.prepare('UPDATE users SET lvl_seen = lvl WHERE id = ?').run(req.user.id);
   res.json({ ok: true });
 }));
+// ---- Đẩy trend: bài của người dùng dưới cấp Tím Mộng Mơ cần admin duyệt -------------------------------------------------------
+db.exec(`CREATE TABLE IF NOT EXISTS trend_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, body TEXT NOT NULL, images TEXT, created_at INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', note TEXT, decided_by INTEGER, decided_at INTEGER, message_id INTEGER
+); CREATE INDEX IF NOT EXISTS idx_trend_sub_status ON trend_submissions(status, id);`);
+const TREND_PENDING_MAX = 5;
+const adminIds = () => db.prepare("SELECT id FROM users WHERE role = 'admin' AND status = 'active'").all().map((r) => r.id);
+const subDto = (s) => {
+  const u = publicUser(getUser(s.user_id));
+  let imageUrls = []; try { imageUrls = s.images ? JSON.parse(s.images) : []; } catch { /* bỏ qua */ }
+  return { id: s.id, body: s.body, imageUrls, status: s.status, note: s.note || '', createdAt: s.created_at, author: { id: u.id, displayName: u.displayName } };
+};
+function submitTrend(req, res, g, body, imageUrls) {
+  const uid = req.user.id;
+  rateLimit(`tsub:${uid}`, 10, 3600_000);
+  if (db.prepare("SELECT COUNT(*) c FROM trend_submissions WHERE user_id = ? AND status = 'pending'").get(uid).c >= TREND_PENDING_MAX) throw bad(`Bạn đang có ${TREND_PENDING_MAX} bài chờ duyệt, hãy đợi admin duyệt rồi gửi tiếp`);
+  if (db.prepare("SELECT 1 FROM trend_submissions WHERE status = 'pending' AND body = ?").get(body)) throw new HttpError(409, 'Bài này đã được gửi và đang chờ duyệt');
+  const r = db.prepare('INSERT INTO trend_submissions (user_id, body, images, created_at) VALUES (?,?,?,?)').run(uid, body, imageUrls.length ? JSON.stringify(imageUrls) : null, now());
+  const row = db.prepare('SELECT * FROM trend_submissions WHERE id = ?').get(r.lastInsertRowid);
+  for (const a of adminIds()) {
+    if (a === uid) continue;
+    notify(a, 'mod', `${req.user.display_name} gửi bài vào Đẩy trend, đang chờ duyệt`, { url: `/#/chat/${g.id}`, tag: 'trend-sub' });
+    hub.send(a, { type: 'trend_sub' });
+  }
+  res.status(202).json({ pending: true, submission: subDto(row) });
+}
+// đăng bài đã duyệt vào Đẩy trend, như người gửi tự đăng
+function publishTrend(author, g, body, imageUrls) {
+  const r = db.prepare('INSERT INTO messages (group_id, user_id, body, image_url, images, created_at) VALUES (?,?,?,?,?,?)')
+    .run(g.id, author.id, body, imageUrls[0] || null, imageUrls.length ? JSON.stringify(imageUrls) : null, now());
+  const dto = messageDto(db.prepare('SELECT * FROM messages WHERE id = ?').get(r.lastInsertRowid), author.id);
+  db.prepare('UPDATE members SET last_read_id = ? WHERE group_id = ? AND user_id = ?').run(dto.id, g.id, author.id);
+  hub.sendMany(memberIds(g.id), { type: 'message', message: dto });
+  onMessage(author, g, dto, null);
+  if (xStatusId(body)) ensureCaptions(dto.id);
+  const link = firstUrl(body);
+  if (link) buildPreview(link, UPLOAD_DIR).then((p) => {
+    if (!p) return;
+    db.prepare('UPDATE messages SET preview = ? WHERE id = ?').run(JSON.stringify(p), dto.id);
+    hub.sendMany(memberIds(g.id), { type: 'message_preview', groupId: g.id, messageId: dto.id, preview: p });
+  }).catch(() => {});
+  return dto;
+}
+// Admin: các bài chờ duyệt; mọi người: bài của mình đang chờ hoặc bị từ chối trong 24 giờ qua
+api.get('/trend/submissions', wrap((req, res) => {
+  const review = isSystemAdmin(req.user.id) ? db.prepare("SELECT * FROM trend_submissions WHERE status = 'pending' ORDER BY id LIMIT 50").all().map(subDto) : [];
+  const mine = db.prepare("SELECT * FROM trend_submissions WHERE user_id = ? AND (status = 'pending' OR (status = 'rejected' AND decided_at > ?)) ORDER BY id DESC LIMIT 10").all(req.user.id, now() - 86400_000).map(subDto);
+  res.json({ review, mine });
+}));
+function decideSub(req, res, approve) {
+  if (!isSystemAdmin(req.user.id)) throw forbidden('Chỉ admin được duyệt bài Đẩy trend');
+  const s = db.prepare("SELECT * FROM trend_submissions WHERE id = ? AND status = 'pending'").get(int(req.params.id));
+  if (!s) throw notFound('Bài này đã được xử lý hoặc không còn');
+  const author = getUser(s.user_id), g = db.prepare('SELECT * FROM groups WHERE id = ?').get(trendGroupId());
+  let imageUrls = []; try { imageUrls = s.images ? JSON.parse(s.images) : []; } catch { /* bỏ qua */ }
+  const finish = (status, note, messageId) => {
+    db.prepare('UPDATE trend_submissions SET status = ?, note = ?, decided_by = ?, decided_at = ?, message_id = ? WHERE id = ?').run(status, note || null, req.user.id, now(), messageId || null, s.id);
+    for (const a of adminIds()) hub.send(a, { type: 'trend_sub' });
+    hub.send(s.user_id, { type: 'trend_sub' });
+  };
+  if (!author || author.status !== 'active') { finish('rejected', 'Tài khoản không còn hoạt động'); return res.json({ ok: true }); }
+  if (approve) {
+    if (duplicateTrendLink(s.body)) {
+      finish('rejected', 'Link này đã có trong Đẩy trend');
+      notify(s.user_id, 'moderation', 'Bài bạn gửi vào Đẩy trend chưa được đăng vì link đã có trong Đẩy trend', { url: `/#/chat/${g.id}` });
+      return res.status(409).json({ error: 'Link này đã có trong Đẩy trend nên bài bị từ chối', code: 'DUPLICATE' });
+    }
+    const dto = publishTrend(author, g, s.body, imageUrls);
+    finish('approved', null, dto.id);
+    log(req.user.id, 'trend_approve', { target: s.user_id, message: dto.id });
+    notify(s.user_id, 'moderation', 'Bài của bạn đã được duyệt và hiện trong Đẩy trend', { url: `/#/chat/${g.id}`, msgId: dto.id });
+    return res.json({ ok: true, messageId: dto.id });
+  }
+  const reason = String(req.body?.reason || '').trim().slice(0, 200);
+  finish('rejected', reason);
+  log(req.user.id, 'trend_reject', { target: s.user_id, reason });
+  notify(s.user_id, 'moderation', `Bài bạn gửi vào Đẩy trend chưa được duyệt${reason ? `: ${reason}` : ''}`, { url: `/#/chat/${g.id}` });
+  res.json({ ok: true });
+}
+api.post('/trend/submissions/:id/approve', wrap((req, res) => decideSub(req, res, true)));
+api.post('/trend/submissions/:id/reject', wrap((req, res) => decideSub(req, res, false)));
+api.delete('/trend/submissions/:id', wrap((req, res) => {
+  const r = db.prepare("DELETE FROM trend_submissions WHERE id = ? AND user_id = ? AND status = 'pending'").run(int(req.params.id), req.user.id);
+  if (!r.changes) throw notFound('Không tìm thấy bài chờ duyệt');
+  for (const a of adminIds()) hub.send(a, { type: 'trend_sub' });
+  res.json({ ok: true });
+}));
 // id bài viết X đầu tiên trong nội dung (x.com/<tên>/status/<id>), null nếu không có
 const xStatusId = (body) => String(body || '').match(/https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/[^\s/]+\/status\/(\d+)/i)?.[1] || null;
 // Caption cho các bài X trong Đẩy trend: mỗi người một caption (tránh trùng nhau); bài chưa có thì tạo nền và báo "pending" để máy khách hỏi lại
@@ -505,7 +592,7 @@ function groupDto(g, uid, member) {
     dto.mutedUntil = member.notif_muted_until;
     dto.muted = isMuted(member);
     dto.rulesAck = !!member.rules_ack;
-    if (g.type === 'trend') dto.canPost = canPostTrend(uid);
+    if (g.type === 'trend') { dto.canPost = canPostTrend(uid); dto.canSubmit = !dto.canPost; } // canSubmit: gửi bài chờ admin duyệt
     dto.modMutedUntil = member.mod_muted_until && member.mod_muted_until > now() ? member.mod_muted_until : null;
     if (WELCOME_TYPES.includes(g.type)) dto.newcomers = newcomerCount(g.id, uid);
   }
@@ -1009,7 +1096,7 @@ api.post(
     const imageUrls = [...new Set(rawImgs.map(checkUploadUrl))];
     const imageUrl = imageUrls[0] || null;
     if (!body && !imageUrl) throw bad('Tin nhắn trống');
-    if (g.type === 'trend' && !canPostTrend(req.user.id)) throw forbidden('Chỉ admin, mod và người dùng từ cấp Tím Mộng Mơ mới được đăng trong Đẩy trend');
+    const needsApproval = g.type === 'trend' && !canPostTrend(req.user.id); // dưới cấp Tím Mộng Mơ: bài chờ admin duyệt
     if (g.type === 'trend' && duplicateTrendLink(body)) throw new HttpError(409, `Link này đã có trong Đẩy trend. Tin trong Đẩy trend chỉ tồn tại ${TREND_LINK_HOURS} giờ, hết hạn mới gửi lại được.`);
     if (PUBLIC_TYPES.includes(g.type) && !m.rules_ack) throw forbidden('Bạn cần xác nhận đã đọc quy tắc cộng đồng trước khi chat');
     if (m.mod_muted_until && m.mod_muted_until > now()) throw forbidden('Bạn đang bị tắt tiếng trong nhóm này');
@@ -1017,6 +1104,7 @@ api.post(
       const peer = memberIds(gid).find((x) => x !== req.user.id);
       if (!peer || !areFriends(req.user.id, peer) || isBlockedEither(req.user.id, peer)) throw forbidden('Không thể nhắn tin cho người này');
     }
+    if (needsApproval) return submitTrend(req, res, g, body, imageUrls);
     let replyTo = null;
     if (req.body.replyTo) {
       const r = db.prepare('SELECT id FROM messages WHERE id = ? AND group_id = ?').get(int(req.body.replyTo), gid);

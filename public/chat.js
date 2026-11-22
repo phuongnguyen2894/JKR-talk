@@ -60,7 +60,7 @@ export async function renderChat(view, gid) {
 }
 
 function subtitle(g) {
-  if (g.type === 'trend') return `Nơi đăng các bài cần tương tác · chỉ admin/mod được đăng · ${g.memberCount} thành viên`;
+  if (g.type === 'trend') return `Nơi đăng các bài cần tương tác · bài của bạn được admin duyệt trước khi hiện · ${g.memberCount} thành viên`;
   if (g.type === 'topic') return `${g.highlighted ? '<span class="hl-pill">★ Nổi bật</span> ' : ''}Chủ đề thảo luận${g.description ? ` · ${esc(g.description)}` : ''} · ${g.memberCount} thành viên`;
   if (isPublic(g)) return `Nhóm công khai · vào tự do, không cần duyệt · ${g.memberCount} thành viên`;
   if (g.type === 'private') return `Nhóm riêng · ${g.memberCount}/${g.memberLimit} thành viên`;
@@ -83,6 +83,7 @@ function drawChat(view) {
   </div>
   <div id="pinbar">${pinBarHtml()}</div>
   <div id="tagbar">${tagBarHtml()}</div>
+  <div id="subs"></div>
   <div class="chat-body">
     <div class="chat-col">
       <div class="msgs" id="msgs" aria-live="off"><div id="more" ${C.hasMore ? '' : 'hidden'} style="text-align:center"><button class="btn sm" data-act="load-more">Tải tin cũ hơn</button></div></div>
@@ -93,6 +94,7 @@ function drawChat(view) {
   </div>`;
   wireComposer();
   syncReadMode();
+  if (g.type === 'trend') loadSubs();
   // tin liền nhau của cùng một người (cách nhau dưới 5 phút, không có dòng ngày xen giữa): ẩn avatar và tên ở các tin sau
   const box = $('#msgs');
   if (box) { new MutationObserver(() => groupMsgs(box)).observe(box, { childList: true }); groupMsgs(box); }
@@ -182,14 +184,14 @@ function composerHtml() {
   const g = C.group;
   if (!canAct())
     return `<div class="notice row between wrap"><span>Bạn đang xem nhóm này ở chế độ chỉ đọc.</span><button class="btn primary sm" data-act="join" data-id="${g.id}">Tham gia nhóm</button></div>`;
-  if (g.type === 'trend' && !g.canPost)
+  if (g.type === 'trend' && !g.canPost && !g.canSubmit)
     return `<div class="notice">Chỉ admin và mod được đăng ở đây. Bạn hãy bấm vào bài, tương tác rồi thả tim cho bài đó nhé.</div>`;
   if (isPublic(g) && !C.open && !g.rulesAck)
     return `<div class="notice row between wrap"><span>Hãy xác nhận đã đọc quy tắc cộng đồng để bắt đầu chat.</span><button class="btn primary sm" data-act="rules">Xem quy tắc</button></div>`;
   if (g.modMutedUntil && g.modMutedUntil > Date.now())
     return `<div class="notice">Bạn đang bị tắt tiếng trong nhóm này đến ${fmtTime(g.modMutedUntil)} ${fmtDate(g.modMutedUntil)}.</div>`;
   return `
-    ${g.type === 'trend' ? '<div class="tiny muted" style="padding:4px 12px 0">Tin trong Đẩy trend tự xóa sau 38 giờ. Link đã có sẽ không được gửi lại.</div>' : ''}
+    ${g.type === 'trend' ? `<div class="tiny muted" style="padding:4px 12px 0">Tin trong Đẩy trend tự xóa sau 38 giờ. Link đã có sẽ không được gửi lại.${g.canSubmit ? ' <b>Bài của bạn sẽ hiện sau khi admin duyệt</b> (từ cấp Tím Mộng Mơ trở lên đăng thẳng, không cần chờ).' : ''}</div>` : ''}
     ${C.replyTo ? `<div class="replybar"><span class="grow small">Trả lời <b>${esc(C.replyTo.name)}</b>: ${esc(C.replyTo.text)}</span><button class="link-btn" data-act="cancel-reply" aria-label="Hủy trả lời">${icon('x', 14)}</button></div>` : ''}
     ${C.images.length ? `<div class="preview-row">${C.images.map((u, i) => `<div class="preview"><img src="${esc(u)}" alt="Ảnh sẽ gửi ${i + 1}"><button type="button" data-act="remove-image" data-i="${i}" aria-label="Bỏ ảnh ${i + 1}">${icon('x', 14)}</button></div>`).join('')}</div>` : ''}
     ${C.emoji ? composerPanelHtml() : ''}
@@ -223,10 +225,11 @@ function wireComposer() {
     try {
       const low = body.toLowerCase();
       const mentions = Object.entries(C.mentionMap || {}).filter(([n]) => low.includes('@' + n)).map(([, id]) => id);
-      const { message } = await api('POST', `/groups/${C.gid}/messages`, { body, imageUrls: C.images, replyTo: C.replyTo?.id, mentions });
+      const sent = await api('POST', `/groups/${C.gid}/messages`, { body, imageUrls: C.images, replyTo: C.replyTo?.id, mentions });
+      const message = sent.message;
       C.mentionMap = {};
       C.replyTo = null; C.images = []; C.emoji = false;
-      appendMsg(message);
+      if (sent.pending) { toast('Đã gửi, bài sẽ hiện sau khi admin duyệt', 5000); loadSubs(); } else appendMsg(message);
       becameMember();
       setTimeout(maybeAskPush, 1200);
       scrollBottom(true);
@@ -831,6 +834,35 @@ async function loadCaps(tries = 0) {
 }
 
 window.addEventListener('goto-msg', (e) => { if (C) actions['goto-msg']({ dataset: { id: e.detail } }); });
+
+// ---- bài chờ duyệt ở Đẩy trend ---------------------------------------------------------------------------------------------------
+async function loadSubs() {
+  const mine = C, el = $('#subs');
+  if (!el || mine?.group?.type !== 'trend') return;
+  try {
+    const r = await api('GET', '/trend/submissions');
+    if (C !== mine || !$('#subs')) return;
+    const item = (x, review) => `<div class="card col" style="gap:4px;padding:10px 12px" data-sid="${x.id}">
+      <div class="tiny muted">${review ? `<b>${esc(x.author.displayName)}</b> gửi · ` : ''}${x.status === 'rejected' ? `<span style="color:var(--danger,#B42318)">Chưa được duyệt${x.note ? `: ${esc(x.note)}` : ''}</span>` : 'Đang chờ admin duyệt'}</div>
+      <div class="small" style="white-space:pre-wrap;word-break:break-word">${esc(x.body.slice(0, 300))}</div>
+      ${x.imageUrls.length ? `<div class="tiny muted">Kèm ${x.imageUrls.length} ảnh</div>` : ''}
+      <div class="row" style="gap:8px;justify-content:flex-end">${review
+        ? `<button class="btn sm" data-act="sub-reject" data-id="${x.id}">Từ chối</button><button class="btn primary sm" data-act="sub-approve" data-id="${x.id}">Duyệt</button>`
+        : x.status === 'pending' ? `<button class="btn sm" data-act="sub-cancel" data-id="${x.id}">Rút lại</button>` : ''}</div></div>`;
+    const parts = [];
+    if (r.review.length) parts.push(`<details class="card col" style="padding:8px 12px" open><summary><b>Bài chờ duyệt (${r.review.length})</b></summary><div class="col" style="gap:8px;margin-top:8px;max-height:40vh;overflow-y:auto">${r.review.map((x) => item(x, true)).join('')}</div></details>`);
+    if (r.mine.length) parts.push(`<details class="card col" style="padding:8px 12px" open><summary><b>Bài của bạn đang chờ (${r.mine.length})</b></summary><div class="col" style="gap:8px;margin-top:8px">${r.mine.map((x) => item(x, false)).join('')}</div></details>`);
+    el.innerHTML = parts.length ? `<div class="col" style="gap:8px;padding:8px 12px">${parts.join('')}</div>` : '';
+  } catch { /* bỏ qua */ }
+}
+window.addEventListener('trend-sub', () => { if (C?.group?.type === 'trend') loadSubs(); });
+actions['sub-approve'] = async (el) => { el.disabled = true; try { await api('POST', `/trend/submissions/${el.dataset.id}/approve`); toast('Đã duyệt, bài đã hiện trong Đẩy trend'); } catch (e) { fail(e); } loadSubs(); };
+actions['sub-reject'] = async (el) => {
+  const reason = prompt('Lý do từ chối (không bắt buộc):');
+  if (reason === null) return;
+  el.disabled = true; try { await api('POST', `/trend/submissions/${el.dataset.id}/reject`, { reason }); toast('Đã từ chối'); } catch (e) { fail(e); } loadSubs();
+};
+actions['sub-cancel'] = async (el) => { try { await api('DELETE', `/trend/submissions/${el.dataset.id}`); toast('Đã rút lại bài'); } catch (e) { fail(e); } loadSubs(); };
 
 // Admin đổi chủ đề caption (hoặc công cụ caption đổi hashtag): bỏ caption đã tải, tải lại theo chủ đề mới
 window.addEventListener('trend-caps', () => { if (C?.group?.type === 'trend') { C.caps = {}; loadCaps(); } });
