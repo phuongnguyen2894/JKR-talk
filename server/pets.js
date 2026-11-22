@@ -11,12 +11,14 @@ const LEVEL_NAMES = ['Chưa có cấp', 'Tím Mầm Non', 'Tím Sương Sương'
 
 // bậc khu nhà: sức chứa, cấp tối thiểu để mua, giá mặc định (Admin chỉnh được)
 export const TIERS = [
-  { tier: 1, name: 'Góc nhỏ', capacity: 1, minLevel: 0, price: 0 },
-  { tier: 2, name: 'Sân vườn', capacity: 2, minLevel: 2, price: 300 },
-  { tier: 3, name: 'Nhà có sân', capacity: 3, minLevel: 3, price: 800 },
-  { tier: 4, name: 'Biệt thự nhỏ', capacity: 4, minLevel: 4, price: 1800 },
-  { tier: 5, name: 'Công viên riêng', capacity: 6, minLevel: 5, price: 3500 },
+  { tier: 1, name: 'Góc nhỏ', capacity: 1, area: 2, minLevel: 0, price: 0 },
+  { tier: 2, name: 'Sân vườn', capacity: 2, area: 4, minLevel: 2, price: 300 },
+  { tier: 3, name: 'Nhà có sân', capacity: 3, area: 6, minLevel: 3, price: 800 },
+  { tier: 4, name: 'Biệt thự nhỏ', capacity: 4, area: 8, minLevel: 4, price: 1800 },
+  { tier: 5, name: 'Công viên riêng', capacity: 6, area: 10, minLevel: 5, price: 3500 },
 ];
+// Diện tích khu nhà (ô): nhà cho chó, lồng cho vẹt, bể cho rùa đều đặt TRONG khu nhà và chiếm chỗ theo bậc (bậc 1 = 1 ô, bậc 2 = 2 ô, bậc 3 = 3 ô).
+// Nâng cấp khu nhà thì có thêm diện tích để đặt được nhiều chỗ ở hơn, hoặc chỗ ở bậc cao hơn.
 // loài: mỗi loài có bộ vật phẩm riêng, số lượng và mức tăng chỉ số bằng nhau giữa các loài
 export const SPECIES = {
   dog: { name: 'Chó', home: 'house', homeName: 'Nhà' },
@@ -150,6 +152,8 @@ export const REACT_TEXT = {
     play: { love: '{n} phóng vụt như tên bắn, thân dài uốn lượn khắp sân!', like: '{n} đuổi theo đồ chơi hăng hái.', neutral: '{n} cắn thử rồi bỏ đó.', dislike: '{n} chui tọt vào góc, không thèm ngó.' },
   },
 };
+const roomOf = (uid) => tiers().find((x) => x.tier === homeOf(uid).tier).area;
+const areaUsed = (uid) => { const h = habTiers(uid); return h.house + h.cage + h.tank; }; // mỗi chỗ ở chiếm số ô bằng bậc của nó
 const ACTIONS = { feed: { cd: 20_000 }, play: { cd: 20_000 }, wash: { cd: 60_000 }, sleep: { cd: 600_000 } };
 
 db.exec(`
@@ -411,8 +415,8 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     const mine = new Set(list.map((p) => p.kind));
     return {
       serverNow: t, balance: balanceOf(u), level: u.lvl || 0,
-      home: { tier: cur.tier, name: cur.name, capacity: cur.capacity, used: list.length, tiers: T,
-        next: nxt && { tier: nxt.tier, name: nxt.name, capacity: nxt.capacity, price: nxt.price, minLevel: nxt.minLevel, minLevelName: LEVEL_NAMES[nxt.minLevel], levelOk: (u.lvl || 0) >= nxt.minLevel } },
+      home: { tier: cur.tier, name: cur.name, capacity: cur.capacity, used: list.length, area: { total: cur.area, used: areaUsed(uid) }, tiers: T,
+        next: nxt && { tier: nxt.tier, name: nxt.name, capacity: nxt.capacity, area: nxt.area, price: nxt.price, minLevel: nxt.minLevel, minLevelName: LEVEL_NAMES[nxt.minLevel], levelOk: (u.lvl || 0) >= nxt.minLevel } },
       pets: list.map((p) => petView(p, t, fx(p), kinds)),
       events: db.prepare('SELECT * FROM pet_events WHERE user_id = ? ORDER BY id DESC LIMIT 15').all(uid).map((e) => ({ id: e.id, at: e.at, type: e.type, emoji: SOCIAL[e.type].emoji, label: SOCIAL[e.type].label, a: e.a_id, b: e.b_id, text: e.text })),
       socialEveryMin: SOCIAL_EVERY / 60_000, social: SOCIAL,
@@ -499,10 +503,10 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
         toy: SHOP.toy.filter((x) => x.sp === sp).map((x) => withState('toy', x)),
         outfit: SHOP.outfit.filter((x) => x.sp === sp).map((x) => withState('outfit', x)),
         collar: SHOP.collar.filter((x) => x.sp === sp).map((x) => withState('collar', x)),
-        home: { type: t, name: v.homeName, items: SHOP[t].map((it) => ({ ...it, current: hab[t] === it.tier, worse: it.tier <= hab[t], cost: Math.max(0, it.price - trade) })) },
+        home: { type: t, name: v.homeName, items: SHOP[t].map((it) => ({ ...it, size: it.tier, current: hab[t] === it.tier, worse: it.tier <= hab[t], cost: Math.max(0, it.price - trade), fits: areaUsed(uid) - hab[t] + it.tier <= roomOf(uid) })) },
       };
     });
-    return { balance: balanceOf(getUser(uid)), levels: LEVELS, species, habMult: HAB_MULT, sleepBonus: HAB_SLEEP, habitat: hab };
+    return { balance: balanceOf(getUser(uid)), levels: LEVELS, area: { total: roomOf(uid), used: areaUsed(uid) }, species, habMult: HAB_MULT, sleepBonus: HAB_SLEEP, habitat: hab };
   };
   api.get('/pets/shop', wrap((req, res) => res.json(shopView(me(req)))));
   api.post('/pets/shop/buy', wrap((req, res) => {
@@ -516,6 +520,8 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
       if (['toy', 'outfit', 'collar'].includes(it.cat) && inv[key] > 0) throw bad('Bạn đã có món này rồi');
       if (it.tier) {
         if (it.tier <= hab[it.cat]) throw bad('Bạn đã có chỗ ở bậc này hoặc cao hơn');
+        const room = tiers().find((x) => x.tier === homeOf(uid).tier).area;
+        if (areaUsed(uid) - hab[it.cat] + it.tier > room) throw bad(`Khu nhà chưa đủ diện tích để đặt ${it.name} (cần ${it.tier} ô, còn ${Math.max(0, room - (areaUsed(uid) - hab[it.cat]))} ô). Hãy nâng cấp khu nhà để có thêm diện tích`);
         cost = it.price - (SHOP[it.cat].find((x) => x.tier === hab[it.cat])?.price || 0); // đổi lên bậc cao: trừ giá món cũ
         // chốt chỉ số theo hệ số cũ trước khi chỗ ở mới có tác dụng
         const list = myPets(uid), fx = factorFn(uid, list.length), t = now();
@@ -524,6 +530,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
       if (balanceOf(u) < cost) throw bad('Bạn chưa đủ xu tím để mua vật phẩm này');
       db.prepare('UPDATE users SET coins_spent = coins_spent + ? WHERE id = ?').run(cost, uid);
       db.prepare('INSERT INTO pet_inventory (user_id, item, qty) VALUES (?,?,?) ON CONFLICT(user_id, item) DO UPDATE SET qty = qty + excluded.qty').run(uid, key, qty);
+      if (it.tier) for (const old of SHOP[it.cat]) if (old.tier < it.tier) db.prepare('DELETE FROM pet_inventory WHERE user_id = ? AND item = ?').run(uid, `${it.cat}:${old.id}`); // đổi lên bậc cao: món cũ được thu lại (đã trừ giá)
     });
     res.json(shopView(uid));
   }));

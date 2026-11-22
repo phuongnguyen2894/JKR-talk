@@ -110,8 +110,9 @@ function homeCard(s) {
   const full = h.used >= h.capacity;
   return `<section class="pt-card">
     <div class="row between"><div><b>${esc(h.name)}</b> <span class="pt-sub">· Bậc ${h.tier}/5</span></div><span class="pt-sub">Đang nuôi ${h.used}/${h.capacity}</span></div>
+    <div class="pt-int"><div class="row between"><span class="pt-sub">Diện tích: <b>${h.area.used}/${h.area.total} ô</b> (nhà, lồng, bể đặt trong khu nhà)</span><button type="button" class="pt-mini" data-pt="shop-open" data-cat="home">Chỗ ở</button></div>${bar(Math.min(100, Math.round((h.area.used / h.area.total) * 100)), h.area.used > h.area.total ? '#EF4444' : '#14B8A6')}</div>
     ${!full ? '<button type="button" class="pt-btn primary block" data-pt="adopt">+ Nhận nuôi thêm một bạn</button>' : ''}
-    ${nx ? `<div class="pt-next"><div><b>Mở rộng: ${esc(nx.name)}</b><div class="pt-sub">Nuôi được ${nx.capacity} bạn${nx.minLevel ? ` · cần cấp ${esc(nx.minLevelName)}` : ''}</div></div>
+    ${nx ? `<div class="pt-next"><div><b>Mở rộng: ${esc(nx.name)}</b><div class="pt-sub">Nuôi được ${nx.capacity} bạn · diện tích ${h.area.total} → ${nx.area} ô${nx.minLevel ? ` · cần cấp ${esc(nx.minLevelName)}` : ''}</div></div>
       <button type="button" class="pt-btn ${nx.levelOk ? '' : 'ghost'}" data-pt="expand" ${nx.levelOk ? '' : 'aria-disabled="true"'}>${nx.levelOk ? `${coinIcon(16)} ${fmt(nx.price)}` : 'Chưa đủ cấp'}</button></div>` : '<p class="pt-sub" style="margin:0">Khu nhà đã ở bậc cao nhất.</p>'}
   </section>`;
 }
@@ -167,18 +168,19 @@ function drawShop(root) {
   const hint = cat === 'food' ? `Đồ ăn dành cho ${sp.name.toLowerCase()}, dùng một lần. Tăng nhiều chỉ số hơn món miễn phí và cộng thêm Thân thiết.`
     : cat === 'outfit' || cat === 'collar' ? `${cat === 'outfit' ? 'Quần áo' : 'Vòng cổ'} dành cho ${sp.name.toLowerCase()}, mua một lần dùng mãi. Chỉ để làm đẹp: vào mục Trang phục của từng bạn để mặc.`
     : cat === 'toy' ? `Đồ chơi dành cho ${sp.name.toLowerCase()}, mua một lần dùng mãi. Chơi với đồ chơi thì Vui tăng nhiều hơn và thêm Thân thiết.`
-      : `${sp.home.name} dành cho ${sp.pets.join(', ')}. Bậc càng cao thì thú tụt chỉ số càng chậm và ngủ hồi nhiều hơn. Nâng bậc được trừ giá món cũ.`;
+      : `${sp.home.name} dành cho ${sp.pets.join(', ')}. Đặt trong khu nhà và chiếm số ô bằng bậc (bậc 1 = 1 ô, bậc 2 = 2 ô, bậc 3 = 3 ô). Bậc càng cao thì thú tụt chỉ số càng chậm và ngủ hồi nhiều hơn. Nâng bậc được trừ giá món cũ. Hết diện tích thì nâng cấp khu nhà.`;
   const items = cat === 'home' ? sp.home.items : sp[cat];
   root.innerHTML = `<header class="pt-top"><button type="button" class="pt-back" data-pt="shop-close" aria-label="Quay lại">‹</button><h1>Cửa hàng</h1><span class="pt-coin" aria-label="Số dư">${coinIcon(18)} ${fmt(d.balance)}</span></header>
     <div class="pt-tabs" role="tablist" aria-label="Loài thú">${d.species.map((x) => `<button type="button" role="tab" aria-selected="${x.id === sp.id}" class="pt-tab" data-pt="shop-sp" data-sp="${x.id}">${esc(x.name)}${x.mine ? '' : ' <small>(chưa nuôi)</small>'}</button>`).join('')}</div>
     <div class="pt-tabs" role="tablist" aria-label="Loại vật phẩm">${CATS.map(([id, name]) => `<button type="button" role="tab" aria-selected="${id === cat}" class="pt-tab sub" data-pt="shop-cat" data-cat="${id}">${id === 'home' ? esc(sp.home.name) : name}</button>`).join('')}</div>
     <p class="pt-sub">${esc(hint)}</p>
+    ${cat === 'home' ? `<div class="pt-int"><div class="row between"><span class="pt-sub">Diện tích khu nhà: <b>${d.area.used}/${d.area.total} ô</b></span></div>${bar(Math.min(100, Math.round((d.area.used / d.area.total) * 100)), '#14B8A6')}</div>` : ''}
     <div class="pt-items">${items.map((it) => {
       const eff = it.tier ? `Tụt chỉ số chậm hơn ${Math.round((1 - d.habMult[it.tier]) * 100)}% · ngủ hồi +${d.sleepBonus * it.tier} Khỏe` : (cat === 'outfit' || cat === 'collar') ? 'Chỉ để làm đẹp' : [effText(it), it.int ? `Thân thiết +${it.int}` : ''].filter(Boolean).join(' · ');
       const act = cat === 'food'
         ? `<div class="pt-fr"><button type="button" class="pt-btn" data-pt="buy" data-item="food:${it.id}" data-qty="1">${coinIcon(14)} ${fmt(it.price)}</button><button type="button" class="pt-btn" data-pt="buy" data-item="food:${it.id}" data-qty="5">x5 · ${fmt(it.price * 5)}</button></div>`
         : cat === 'outfit' || cat === 'collar' ? (it.owned ? '<span class="pt-own">Đã có</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="${cat}:${it.id}">${coinIcon(14)} ${fmt(it.price)}</button>`)
-        : cat === 'home' ? (it.current ? '<span class="pt-own">Đang dùng</span>' : it.worse ? '<span class="pt-own off">Đã có bậc cao hơn</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="${sp.home.type}:${it.id}">${coinIcon(14)} ${fmt(it.cost)}${it.cost !== it.price ? ` <small>(giá ${fmt(it.price)})</small>` : ''}</button>`)
+        : cat === 'home' ? (it.current ? '<span class="pt-own">Đang dùng</span>' :  it.worse ? '<span class="pt-own off">Đã có bậc cao hơn</span>' : !it.fits ? `<button type="button" class="pt-btn ghost" data-pt="no-room" data-need="${it.size}">Cần thêm diện tích</button>` : `<button type="button" class="pt-btn" data-pt="buy" data-item="${sp.home.type}:${it.id}">${coinIcon(14)} ${fmt(it.cost)}${it.cost !== it.price ? ` <small>(giá ${fmt(it.price)})</small>` : ''}</button>`)
         : it.owned ? '<span class="pt-own">Đã có</span>' : `<button type="button" class="pt-btn" data-pt="buy" data-item="toy:${it.id}">${coinIcon(14)} ${fmt(it.price)}</button>`;
       return `<div class="pt-item"><span class="pt-ie" aria-hidden="true">${it.emoji}</span><div class="grow"><b>${esc(it.name)}</b>${cat === 'food' && it.qty ? ` <span class="pt-own">Đang có ${it.qty}</span>` : ''}<div class="pt-sub">${esc(eff)}</div>${it.react ? `<div class="pt-sub pt-react">${it.react.map((x) => `${esc(x.name)} ${LV[x.level]}`).join(' · ')}</div>` : ''}</div>${act}</div>`;
     }).join('')}</div>`;
@@ -232,6 +234,7 @@ async function onClick(e) {
   if (P.busy) return;
   const run = async (fn) => { P.busy = true; try { await fn(); } catch (er) { fail(er); } finally { P.busy = false; } };
   if (a === 'shop-open') return run(async () => { await openShop(root, t.dataset.cat, t.dataset.sp || P.s.pets.find((q) => q.id === P.sel)?.sp); });
+  if (a === 'no-room') return toast(`Khu nhà chưa đủ diện tích (cần ${t.dataset.need} ô). Hãy nâng cấp khu nhà để có thêm diện tích.`, 4500);
   if (a === 'shop-sp') { P.sp = t.dataset.sp; return drawShop(root); }
   if (a === 'shop-close') { P.view = 'home'; return refresh(root); }
   if (a === 'shop-cat') { P.cat = t.dataset.cat; return drawShop(root); }

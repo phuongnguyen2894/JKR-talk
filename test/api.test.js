@@ -2133,3 +2133,45 @@ test('Nuôi thú: các bạn tự tương tác với nhau (cần từ 2 bạn), 
     assert.ok(types.includes('comfort') || types.length === 6); // có xác suất cao nhưng không bắt buộc; ít nhất sinh đủ 6
   } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
 });
+
+test('Nuôi thú: nhà, lồng, bể đặt trong khu nhà và chiếm diện tích; nâng cấp khu nhà để đặt được nhiều hơn', async () => {
+  const { db } = await import('../server/db.js');
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('petArea', 1);
+  await call('PUT', '/admin/pets/settings', { mode: 'all' }, adm.token);
+  try {
+    db.prepare('UPDATE users SET coins = 12000, coins_spent = 0, lvl = 5 WHERE id = ?').run(u.id);
+    const shop = async () => (await call('GET', '/pets/shop', null, u.token)).data;
+    const buy = async (item) => call('POST', '/pets/shop/buy', { item }, u.token);
+    let s = (await call('GET', '/pets', null, u.token)).data;
+    assert.deepEqual(s.home.area, { total: 2, used: 0 }); // góc nhỏ: 2 ô
+    assert.deepEqual(s.home.tiers.map((t) => t.area), [2, 4, 6, 8, 10]);
+    assert.equal(s.home.next.area, 4);
+    // nhà bậc 2 chiếm 2 ô: đầy diện tích, không đặt thêm lồng
+    assert.equal((await buy('house:house2')).status, 200);
+    assert.deepEqual((await shop()).area, { total: 2, used: 2 });
+    const cage = await buy('cage:cage1');
+    assert.equal(cage.status, 400); assert.match(cage.data.error, /diện tích/);
+    const it = (await shop()).species.find((x) => x.id === 'parrot').home.items[0];
+    assert.equal(it.fits, false); assert.equal(it.size, 1);
+    // nâng cấp khu nhà: thêm diện tích, đặt được lồng và bể
+    assert.equal((await call('POST', '/pets/home/expand', {}, u.token)).status, 200); // bậc 2: 4 ô
+    assert.deepEqual((await shop()).area, { total: 4, used: 2 });
+    assert.equal((await buy('cage:cage2')).status, 200); // 2 ô
+    assert.equal((await buy('tank:tank1')).status, 400); // hết chỗ: 4/4
+    // đổi lên bậc cao hơn cùng loại: chiếm thêm diện tích, món cũ được thu lại
+    assert.equal((await buy('house:house3')).status, 400); // cần 3 ô, thay 2 ô: 4 - 2 + 3 = 5 > 4
+    await call('POST', '/pets/home/expand', {}, u.token); // bậc 3: 6 ô
+    assert.equal((await buy('house:house3')).status, 200); // 3 + 2 = 5 ≤ 6
+    s = (await shop());
+    assert.deepEqual(s.area, { total: 6, used: 5 });
+    assert.equal(s.habitat.house, 3);
+    assert.equal(db.prepare("SELECT COUNT(*) c FROM pet_inventory WHERE user_id = ? AND item = 'house:house2'").get(u.id).c, 0); // bậc 2 đã thu lại
+    assert.equal((await buy('tank:tank1')).status, 200); // 6/6
+    assert.equal((await buy('tank:tank2')).status, 400); // hết diện tích
+    // bậc cao nhất: 10 ô chứa đủ cả ba chỗ ở bậc 3 (9 ô)
+    await call('POST', '/pets/home/expand', {}, u.token); await call('POST', '/pets/home/expand', {}, u.token);
+    assert.equal((await buy('tank:tank3')).status, 200); assert.equal((await buy('cage:cage3')).status, 200);
+    assert.deepEqual((await shop()).area, { total: 10, used: 9 });
+  } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
+});
