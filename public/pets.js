@@ -214,7 +214,7 @@ function animMode(id, scene) {
   const low = Object.values(p.stats).filter((v) => v < 25).length; // nhiều chỉ số thấp cùng lúc: buồn vì bị bỏ mặc
   if (low >= 2 && p.anim?.sad) return 'sad';
   if (['hungry', 'bored', 'dirty', 'sleepy'].includes(p.mood.key) && p.anim?.[p.mood.key]) return p.mood.key; // đói, chán, bẩn, buồn ngủ
-  if (p.mood.key === 'happy') return 'happy';
+  if ((P.burst?.[id] || 0) > Date.now()) return 'happy'; // vui thì chỉ thỉnh thoảng mới xòe cánh nhảy một lúc, không lặp liên tục
   return scene && P.walk[id] ? 'walk' : 'idle';
 }
 function mountAnims(root) {
@@ -240,6 +240,12 @@ function walkTick(root) {
   const t = Date.now();
   for (const p of P.s.pets) {
     if (!p.anim) continue;
+    // đang vui: thỉnh thoảng (cách nhau 20 đến 45 giây) xòe cánh nhảy khoảng 2,4 giây rồi lại đứng yên hoặc đi dạo
+    const nb = (P.nextBurst ||= {});
+    if (p.mood.key === 'happy' && !(P.burst?.[p.id] > t)) {
+      if (!nb[p.id]) nb[p.id] = t + 6000 + Math.random() * 10000;
+      else if (t >= nb[p.id]) { (P.burst ||= {})[p.id] = t + 2400; nb[p.id] = t + 2400 + 20000 + Math.random() * 25000; }
+    }
     const w = (P.walkAt ||= {})[p.id] || { on: false, until: t + 2000 + Math.random() * 4000 };
     if (t >= w.until) { w.on = !w.on; w.until = t + (w.on ? 3000 + Math.random() * 2500 : 4000 + Math.random() * 4000); }
     if (!['idle', 'walk'].includes(animMode(p.id, false)) && w.on) { w.on = false; w.until = t + 3000; } // đang đói, buồn, vui...: đứng tại chỗ, không đi dạo
