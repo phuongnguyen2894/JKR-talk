@@ -110,8 +110,19 @@ export function statsReport(days = 30) {
   };
   const trackedSince = db.prepare('SELECT MIN(day) d FROM stat_actors').get().d || null;
   const segments = { all: build(['u', 'g']), users: build(['u']), guests: build(['g']) };
+  // đăng ký mới: hôm nay / hôm qua, 7 ngày và 30 ngày gần nhất (so với kỳ liền trước); không phụ thuộc khoảng xem
+  const since = Date.now() - 60 * 86400_000;
+  const dayCount = {};
+  for (const u of db.prepare("SELECT created_at FROM users WHERE status != 'deleted' AND created_at >= ?").all(since)) { const d = dayOf(u.created_at); dayCount[d] = (dayCount[d] || 0) + 1; }
+  const sumDays = (from, n) => { let t = 0; for (let i = from; i < from + n; i++) t += dayCount[dayOf(Date.now() - i * 86400_000)] || 0; return t; };
+  const signupStats = {
+    today: sumDays(0, 1), yesterday: sumDays(1, 1),
+    week: sumDays(0, 7), prevWeek: sumDays(7, 7),
+    month: sumDays(0, 30), prevMonth: sumDays(30, 30),
+    total: db.prepare("SELECT COUNT(*) c FROM users WHERE status != 'deleted'").get().c,
+  };
   return {
-    days, from, today: list[list.length - 1], totalUsers, trackedSince, segments,
+    days, from, today: list[list.length - 1], totalUsers, trackedSince, segments, signups: signupStats,
     // giữ các trường cũ (số liệu tổng hợp) để bản giao diện cũ đang mở chưa tải lại vẫn hiển thị được
     ...segments.all, summary: { ...segments.all.summary, totalUsers, trackedSince },
   };

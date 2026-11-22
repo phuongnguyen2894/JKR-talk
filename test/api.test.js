@@ -1743,6 +1743,8 @@ test('thống kê: ghi lượt xem và thời gian của người dùng và khá
   // cả hai: 5 người khác nhau, không đếm C hai lần
   assert.equal(all.summary.dauToday, 5);
   assert.equal(all.summary.viewsToday, 8);
+  { const sg = (await call('GET', '/admin/stats?days=30', null, adm.token)).data.signups; // đăng ký mới: các kỳ lồng nhau
+    assert.ok(sg.today >= 1 && sg.week >= sg.today && sg.month >= sg.week && sg.total >= sg.month); }
   assert.equal(all.summary.totalSeconds, 105);
   assert.equal(all.summary.mau, 5);
   assert.equal(users.summary.mau, 3);

@@ -84,7 +84,17 @@ export async function renderStats(body, d = days) {
       <div class="h2" style="margin:8px 0 0">Người dùng hoạt động mỗi ngày: đăng ký và khách</div>${stacked(users.series, guests.series)}
       <div class="row" style="gap:12px;justify-content:center"><span class="small"><i class="hm-key" style="opacity:1"></i> Đăng ký</span><span class="small"><i class="hm-key" style="opacity:1;background:var(--guest)"></i> Khách</span></div>
       <p class="tiny muted">Khách đăng nhập hoặc đăng ký trong cùng ngày chỉ được tính một lần, ở nhóm đăng ký. Cột "Tất cả" là số người khác nhau, không cộng trùng.</p></section>`;
-  body.innerHTML = `${comparison}
+  const sg = raw.signups || { today: 0, yesterday: 0, week: 0, prevWeek: 0, month: 0, prevMonth: 0, total: 0 };
+  const vs = (a, b, label) => `${a === b ? 'bằng' : a > b ? `tăng ${a - b}` : `giảm ${b - a}`} so với ${label}`;
+  const signupBlock = `<section class="card col"><div class="h2" style="margin:0">Người dùng đăng ký mới</div>
+      <div class="stat-grid">
+        ${tile(fmt(sg.today), 'Hôm nay', vs(sg.today, sg.yesterday, 'hôm qua'))}
+        ${tile(fmt(sg.week), '7 ngày gần nhất', vs(sg.week, sg.prevWeek, '7 ngày trước đó'))}
+        ${tile(fmt(sg.month), '30 ngày gần nhất', vs(sg.month, sg.prevMonth, '30 ngày trước đó'))}
+        ${tile(fmt(sg.total), 'Tổng số tài khoản')}
+      </div>
+      <div class="h2" style="margin:8px 0 0">Đăng ký mới mỗi ngày</div>${bars(all.series, 'newUsers', { label: 'Đăng ký mới mỗi ngày' })}</section>`;
+  body.innerHTML = `${signupBlock}${comparison}
     <div class="pillnav" role="group" aria-label="Xem số liệu của">${Object.entries(SEG_NAMES).map(([k, n]) => `<button data-seg="${k}" aria-pressed="${seg === k}">${n}</button>`).join('')}</div>
     <div class="pillnav" role="group" aria-label="Khoảng thời gian">${[7, 30, 90].map((n) => `<button data-sd="${n}" aria-pressed="${days === n}">${n} ngày</button>`).join('')}</div>
     <div class="stat-grid">
