@@ -207,7 +207,7 @@ export function onTrendClick(uid, url) {
 }
 
 // ---- danh hiệu, cửa hàng, khung avatar và màu tên ----------------------------------
-export const balanceOf = (u) => Math.max(0, (u.coins || 0) - (u.coins_spent || 0));
+export const balanceOf = (u) => Math.max(0, (u.coins || 0) - (u.coins_spent || 0) + (u.game_net || 0));
 const ownedShop = (uid) => new Set(db.prepare('SELECT item FROM user_items WHERE user_id = ?').all(uid).map((r) => r.item));
 const titleN = (uid) => TITLE_DEFS.filter((d) => hasTitle(uid, d.key)).map((d) => d.n);
 

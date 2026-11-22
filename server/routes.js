@@ -13,6 +13,7 @@ import {
 
 import { firstUrl, buildPreview } from './preview.js';
 import { track, statsReport, linkVisitor, VID_RE } from './stats.js';
+import { mountMuayThai } from './muaythai.js';
 import { emojiMeta, EMOJI_LIMIT, EMOJI_MAX_PER_MESSAGE, REACTION_MAX_PER_USER, checkReactionKey, checkEmojiFile, checkEmojiName, addEmoji, countCustomTokens, visibleEmoji, activeEmoji, usageOf } from './emoji.js';
 import { statusOf, pendingLevelUp, recompute, touchDaily, onMessage, onHeart, onNewsPost, onTrendClick, award, duplicateTrendLink, TREND_LINK_HOURS, TITLES, normalizeXLink, userTitles, titlesStatus, shopStatus, buyItem, setAppearance, dropTitleRewards } from './levels.js';
 import { vapidPublicKey, getPrefs, setPrefs, hasSubscription, saveSubscription, removeSubscription } from './push.js';
@@ -2107,10 +2108,12 @@ api.post('/admin/bugs/send', superOnly, wrap(async (req, res) => {
   res.json({ ok: true, sent: bugs.length, status, response: snippet });
 }));
 
+mountMuayThai(api, wrap, adminOnly, checkUploadUrl);
+
 // ---- lỗi ---------------------------------------------------------------------
 api.use((_req, _res, next) => next(new HttpError(404, 'Không tìm thấy')));
 api.use((err, _req, res, _next) => {
-  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
   if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Dữ liệu quá lớn' });
   if (err instanceof SyntaxError) return res.status(400).json({ error: 'Dữ liệu không hợp lệ' });
   console.error(err);

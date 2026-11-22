@@ -219,6 +219,8 @@ try { db.exec('ALTER TABLE news ADD COLUMN images TEXT'); } catch { /* đã có 
 // is_super = 1: Admin hệ thống (duy nhất được phong Admin). role='admin' & is_super=0: Admin
 try { db.exec('ALTER TABLE users ADD COLUMN is_super INTEGER NOT NULL DEFAULT 0'); } catch { /* đã có cột */ }
 try { db.exec('ALTER TABLE users ADD COLUMN hot_seen INTEGER NOT NULL DEFAULT 0'); } catch { /* đã có cột */ }
+// game_net: lãi/lỗ cộng dồn từ mini game Muay Thai (có thể âm); số dư = coins - coins_spent + game_net, không ảnh hưởng cấp
+try { db.exec('ALTER TABLE users ADD COLUMN game_net INTEGER NOT NULL DEFAULT 0'); } catch { /* đã có cột */ }
 if (!db.prepare('SELECT 1 FROM users WHERE is_super = 1').get()) db.exec("UPDATE users SET is_super = 1 WHERE role = 'admin'");
 for (const u of db.prepare("SELECT id, display_name FROM users WHERE name_key IS NULL AND status != 'deleted'").all()) {
   try { db.prepare('UPDATE users SET name_key = ? WHERE id = ?').run(nameKey(u.display_name), u.id); } catch { /* trùng cũ: bỏ qua */ }

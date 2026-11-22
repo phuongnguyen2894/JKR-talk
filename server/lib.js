@@ -96,7 +96,7 @@ export function selfUser(u) {
     newsPush: !!u.news_push,
     hideSuggestions: !!u.hide_suggestions,
     coins: u.coins || 0,
-    balance: Math.max(0, (u.coins || 0) - (u.coins_spent || 0)),
+    balance: Math.max(0, (u.coins || 0) - (u.coins_spent || 0) + (u.game_net || 0)),
     homeChangedAt: u.home_changed_at,
   };
 }

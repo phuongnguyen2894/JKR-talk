@@ -1,0 +1,131 @@
+/* Mini game Muay Thai: giao diện tối riêng (nền tím đậm), bám theo thiết kế A1–C2 */
+.mt-wrap { flex: 1; min-height: 0; overflow-y: auto; background: #140F26; }
+.mt { width: 100%; --bg: #140F26; --surf: #221A3D; --ink: #F4F1FF; --sub: #B4ABD6; --gold: #FFC83D; --red: #D93A40; --blue: #3B6FE0;
+  max-width: 430px; margin: 0 auto; min-height: 100%; box-sizing: border-box; padding: 0 16px 24px; display: flex; flex-direction: column; gap: 12px;
+  background: radial-gradient(120% 55% at 50% 0%, #2E2260 0%, #140F26 62%); color: var(--ink); font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
+@media (min-width: 900px) { .mt { border-radius: 22px; margin-top: 16px; min-height: 0; } }
+.mt button, .mt input { font-family: inherit; }
+.mt :focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.mt-load { padding: 48px 0; text-align: center; color: var(--sub); display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.mt-head { height: 56px; display: flex; align-items: center; gap: 4px; flex: none; }
+.mt-head h1 { margin: 0; font-size: 20px; font-weight: 800; flex: 1; color: var(--ink); }
+.mt-back { width: 44px; height: 44px; margin-left: -10px; display: flex; align-items: center; justify-content: center; color: var(--ink); background: none; border: 0; cursor: pointer; text-decoration: none; }
+.mt-pill { display: flex; align-items: center; gap: 6px; background: var(--surf); border: 1px solid rgba(167,139,250,.5); border-radius: 20px; padding: 5px 12px 5px 8px; font-size: 14px; font-weight: 700; color: var(--ink); }
+.mt-tabs { display: flex; height: 48px; box-sizing: border-box; padding: 4px; background: var(--surf); border-radius: 14px; flex: none; }
+.mt-tabs button { flex: 1; height: 40px; border: 0; border-radius: 11px; font-size: 14px; font-weight: 700; background: none; color: #C9C0EA; cursor: pointer; }
+.mt-tabs button[aria-selected="true"] { background: #7C3AED; color: #fff; }
+.mt-tabs.pill { background: none; padding: 0; gap: 8px; height: 40px; }
+.mt-tabs.pill button { border-radius: 20px; border: 1.5px solid rgba(255,255,255,.18); }
+.mt-tabs.pill button[aria-selected="true"] { background: #2E2260; border-color: #8B5CF6; }
+
+/* võ đài */
+.mt-arena { position: relative; flex: none; border-radius: 22px; overflow: hidden; background: linear-gradient(180deg, #2D2350 0%, #1B1433 100%); border: 1px solid rgba(255,255,255,.1); }
+.mt-arena.pick { height: 332px; } .mt-arena.fight { height: 486px; } .mt-arena.result { height: 356px; }
+.mt-glow { position: absolute; left: -20%; right: -20%; top: -30%; height: 80%; background: radial-gradient(closest-side, rgba(255,255,255,.18), rgba(255,255,255,0)); }
+.mt-rope { position: absolute; left: 0; right: 0; height: 6px; border-radius: 3px; opacity: .8; }
+.mt-rope.r1 { top: 46px; background: #D93A40; } .mt-rope.r2 { top: 78px; background: #F4F1FF; } .mt-rope.r3 { top: 110px; background: #3B6FE0; }
+.mt-post { position: absolute; top: 30px; width: 10px; border-radius: 5px; background: #3B2F6E; }
+.mt-arena.pick .mt-post { height: 200px; } .mt-arena.fight .mt-post { height: 360px; } .mt-arena.result .mt-post { height: 230px; }
+.mt-post.l { left: 10px; } .mt-post.r { right: 10px; }
+.mt-floor { position: absolute; left: 0; right: 0; bottom: 46px; height: 62px; background: linear-gradient(180deg, #3B2A7A, #241A4B); border-top: 2px solid rgba(255,255,255,.12); }
+.mt-crowd { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 46px; background: linear-gradient(180deg, #1B1433, #120C25); border-top: 2px solid rgba(167,139,250,.35); box-sizing: border-box; }
+.mt-fighters { position: absolute; inset: 0; }
+.mt-fslot { position: absolute; bottom: 48px; background: none; border: 0; padding: 0; margin: 0; cursor: default; transition: transform .25s ease-out, opacity .3s; transform-origin: 50% 90%; color: inherit; }
+.mt-fslot.A { left: 34px; } .mt-fslot.B { right: 34px; }
+.mt-arena.fight .mt-fslot { bottom: 50px; } .mt-arena.fight .mt-fslot.A { left: 14px; } .mt-arena.fight .mt-fslot.B { right: 14px; }
+.mt-arena.pick .mt-fslot { cursor: pointer; bottom: 86px; } .mt-fslot.dim { opacity: .6; }
+.mt-fslot svg { animation: mtbob 1.7s ease-in-out infinite; }
+.mt-fslot .mt-shadow { position: absolute; left: -6px; bottom: 6px; width: 120px; height: 20px; border-radius: 50%; background: radial-gradient(closest-side, rgba(167,139,250,.9), rgba(167,139,250,0)); opacity: 0; transition: opacity .2s; }
+.mt-fslot.on .mt-shadow { opacity: 1; }
+.mt-you { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); background: #7C3AED; color: #fff; font-size: 12px; font-weight: 700; border-radius: 10px; padding: 2px 9px; white-space: nowrap; }
+.mt-fslot.A.lunge { transform: translateX(26px); } .mt-fslot.B.lunge { transform: translateX(-26px); }
+.mt-fslot.A.hurt { transform: translateX(-8px); } .mt-fslot.B.hurt { transform: translateX(8px); }
+.mt-fslot.A.down { transform: translateY(70px) rotate(-90deg); opacity: .7; } .mt-fslot.B.down { transform: translateY(70px) rotate(90deg); opacity: .7; }
+.mt-fslot.down svg, .mt-fslot.lunge svg { animation: none; }
+.mt-vs { position: absolute; left: 50%; top: 100px; transform: translateX(-50%); width: 44px; height: 44px; border-radius: 50%; background: var(--gold); color: #2A1B00; font-weight: 900; font-size: 16px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.mt-names { position: absolute; left: 0; right: 0; bottom: 50px; display: flex; justify-content: space-between; padding: 0 24px; pointer-events: none; }
+.mt-fname { width: 140px; text-align: center; font-size: 15px; font-weight: 800; display: flex; flex-direction: column; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+.mt-fname .x { color: var(--gold); font-weight: 700; font-size: 13px; } .mt-fname small { font-size: 11px; color: var(--sub); font-weight: 600; } .mt-fname.dim { opacity: .7; }
+.mt-names { bottom: 48px; }
+#mt-fight { display: flex; flex-direction: column; gap: 12px; }
+.mt-burst { position: absolute; left: 50%; top: 150px; width: 120px; height: 120px; margin-left: -60px; opacity: 0; pointer-events: none; }
+.mt-burst.show { animation: mtburst .5s ease-out; }
+.mt-arena.shake { animation: mtshake .28s linear; }
+
+/* HUD và nhật ký trận */
+.mt-hud { display: flex; align-items: flex-end; gap: 10px; flex: none; }
+.mt-hud .hp { flex: 1; min-width: 0; } .mt-hud .n { font-size: 14px; font-weight: 800; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .mt-hud .n.r { text-align: right; }
+.mt-hud .bar { height: 14px; border-radius: 8px; background: #2D2350; display: flex; overflow: hidden; } .mt-hud .bar.r { justify-content: flex-end; }
+.mt-hud .bar i { height: 100%; border-radius: 8px; transition: width .35s ease-out; }
+.mt-hud .bar i.red { background: linear-gradient(90deg, #D93A40, #F07178); } .mt-hud .bar i.blue { background: linear-gradient(270deg, #3B6FE0, #6B9BFF); }
+.mt-clock { flex: none; height: 34px; min-width: 58px; border-radius: 12px; background: var(--surf); border: 1.5px solid rgba(255,255,255,.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; }
+.mt-log { flex: none; border-radius: 14px; background: var(--surf); padding: 12px 14px; font-size: 15px; font-weight: 600; text-align: center; min-height: 22px; }
+.mt-bet { text-align: center; font-size: 14px; color: var(--sub); flex: none; } .mt-bet b { color: var(--ink); }
+
+/* nút, ô nhập */
+.mt-btn { min-height: 44px; flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; border-radius: 14px; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; padding: 0 16px; }
+.mt-btn.ghost { background: none; border: 1.5px solid rgba(255,255,255,.22); color: var(--ink); }
+.mt-btn.primary { min-height: 56px; border: 0; border-radius: 16px; font-size: 18px; font-weight: 800; color: #fff; background: linear-gradient(180deg, #7C3AED, #6D28D9); box-shadow: 0 8px 20px rgba(109,40,217,.45); }
+.mt-btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.mt-lbl { font-size: 13px; color: var(--sub); margin-bottom: -4px; }
+.mt-chips { display: flex; gap: 8px; flex: none; }
+.mt-chips button { flex: 1; height: 44px; border-radius: 12px; font-size: 15px; font-weight: 700; color: #D9D3F3; background: var(--surf); border: 2px solid transparent; cursor: pointer; }
+.mt-chips button.wide { flex: 1.4; } .mt-chips button[aria-pressed="true"] { color: #fff; background: #2E2260; border-color: #8B5CF6; }
+.mt-step { display: flex; gap: 10px; flex: none; }
+.mt-step button { width: 52px; height: 52px; border-radius: 14px; border: 0; background: var(--surf); color: #fff; font-size: 26px; font-weight: 700; cursor: pointer; }
+.mt-amt { flex: 1; height: 52px; border-radius: 14px; background: #1B1433; border: 1.5px solid rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; gap: 8px; }
+.mt-amt input { width: 90px; border: 0; background: none; color: var(--ink); font-size: 24px; font-weight: 800; text-align: center; -moz-appearance: textfield; }
+.mt-amt input::-webkit-outer-spin-button, .mt-amt input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.mt-sum { display: flex; height: 46px; border-radius: 14px; background: var(--surf); align-items: center; font-size: 14px; flex: none; }
+.mt-sum > div { flex: 1; text-align: center; color: var(--sub); } .mt-sum b { font-size: 16px; color: var(--ink); } .mt-sum b.gold { color: var(--gold); }
+.mt-sum i { width: 1px; height: 22px; background: rgba(255,255,255,.15); }
+.mt-note, .mt-hint { margin: 0; font-size: 12px; color: var(--sub); }
+.mt-note { font-size: 13px; background: rgba(255,200,61,.12); border-radius: 12px; padding: 10px 12px; color: #FFE08A; }
+
+/* tự chọn cặp */
+.mt-slots { display: flex; align-items: center; gap: 6px; flex: none; }
+.mt-slot { flex: 1; min-width: 0; height: 76px; box-sizing: border-box; border-radius: 16px; display: flex; align-items: center; gap: 10px; padding: 0 10px; color: var(--ink); cursor: pointer; text-align: left; border: 2px solid transparent; }
+.mt-slot.red { background: rgba(217,58,64,.16); } .mt-slot.blue { background: rgba(59,111,224,.18); }
+.mt-slot.red.active { border-color: var(--red); } .mt-slot.blue.active { border-color: var(--blue); }
+.mt-slot .t, .mt-urow .t { display: flex; flex-direction: column; min-width: 0; flex: 1; } .mt-slot .t b, .mt-urow .t b { font-size: 15px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-slot .t small, .mt-urow .t small { font-size: 12px; color: var(--sub); font-weight: 400; }
+.mt-vs2 { font-weight: 900; color: var(--gold); font-size: 14px; }
+.mt-head-c { position: relative; flex: none; border-radius: 50%; box-sizing: border-box; border: 2px solid rgba(255,255,255,.28); display: flex; align-items: center; justify-content: center; overflow: hidden; color: #fff; }
+.mt-head-c b { font-size: 15px; font-weight: 700; } .mt-head-c img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mt-head-c.empty { width: 48px; height: 48px; background: rgba(255,255,255,.08); border-style: dashed; }
+.mt-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; flex: none; }
+.mt-char { height: 104px; box-sizing: border-box; border-radius: 14px; background: var(--surf); border: 2px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--ink); cursor: pointer; padding: 0 2px; font-size: 13px; font-weight: 700; }
+.mt-char.on.red { border-color: var(--red); } .mt-char.on.blue { border-color: var(--blue); }
+.mt-char em, .mt-urow em { font-style: normal; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 6px; min-height: 14px; color: #fff; }
+.mt-char em:empty { background: none; } em.red { background: var(--red); } em.blue { background: var(--blue); } em.rel { background: rgba(167,139,250,.25); color: #D9CCFF; font-size: 11px; }
+.mt-search { display: flex; align-items: center; gap: 8px; height: 48px; border-radius: 14px; background: var(--surf); padding: 0 14px; color: var(--sub); flex: none; }
+.mt-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font-size: 15px; }
+.mt-users { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.mt-urow { display: flex; align-items: center; gap: 12px; min-height: 60px; box-sizing: border-box; padding: 8px 12px; border-radius: 14px; background: var(--surf); border: 2px solid transparent; color: var(--ink); cursor: pointer; text-align: left; }
+.mt-urow.on { border-color: #8B5CF6; }
+
+/* kết quả */
+.mt-banner { flex: none; text-align: center; font-size: 15px; font-weight: 900; border-radius: 14px; padding: 8px 18px; align-self: center; }
+.mt-banner.win { background: var(--gold); color: #2A1B00; } .mt-banner.lose { background: #3B4A7A; color: #E6ECFF; }
+.mt-winner { position: absolute; left: 50%; bottom: 50px; transform: translateX(-50%); } .mt-winner svg { animation: mtbob 1.2s ease-in-out infinite; }
+.mt-loser { position: absolute; opacity: .55; } .mt-loser.ko { right: 6px; bottom: 58px; width: 138px; height: 70px; }
+.mt-loser.ko > div { position: absolute; left: 34px; top: -34px; transform: rotate(90deg); } .mt-loser.sit { right: 18px; bottom: 50px; }
+.cf { position: absolute; width: 8px; height: 12px; border-radius: 2px; animation: mtfall 2.4s ease-in infinite; }
+.cf.c0 { background: #FFC83D; } .cf.c1 { background: #F07178; } .cf.c2 { background: #6B9BFF; } .cf.c3 { background: #A78BFA; } .cf.c4 { background: #F4F1FF; }
+.mt-card { flex: none; border-radius: 20px; padding: 16px; text-align: center; }
+.mt-card.win { background: linear-gradient(180deg, rgba(255,200,61,.22), rgba(255,200,61,.06)); border: 1.5px solid var(--gold); }
+.mt-card.lose { background: rgba(255,255,255,.06); border: 1.5px solid rgba(255,255,255,.22); }
+.mt-card .a { font-size: 16px; font-weight: 700; } .mt-card .b { font-size: 46px; font-weight: 900; line-height: 1.15; } .mt-card.win .b { color: var(--gold); }
+.mt-card .c { font-size: 13px; color: var(--sub); }
+.mt-bal { flex: none; display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: var(--sub); padding: 0 4px; }
+.mt-bal b { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 16px; font-weight: 800; }
+
+@keyframes mtbob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes mtburst { 0% { opacity: 0; transform: scale(.4) rotate(-12deg); } 25% { opacity: 1; transform: scale(1.15); } 100% { opacity: 0; transform: scale(1); } }
+@keyframes mtshake { 0%, 100% { transform: translate(0); } 25% { transform: translate(-4px, 2px); } 50% { transform: translate(4px, -2px); } 75% { transform: translate(-3px, 0); } }
+@keyframes mtfall { 0% { transform: translateY(-10px) rotate(0); opacity: 1; } 100% { transform: translateY(260px) rotate(200deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .mt *, .mt-arena { animation: none !important; transition: none !important; }
+  .mt-burst { display: none; }
+}
+@media (max-width: 360px) { .mt { padding: 0 10px 20px; } .mt-fslot.A { left: 10px; } .mt-fslot.B { right: 10px; } }

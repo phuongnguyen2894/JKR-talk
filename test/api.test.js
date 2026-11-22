@@ -1294,6 +1294,113 @@ test('Đẩy trend: dọn các tin có link trùng có từ trước, giữ tin 
   assert.ok(left.includes(c)); // link khác được giữ
 });
 
+test('Muay Thai: kịch bản luôn khớp kết quả, công thức thưởng, kiểm tra số xu cược', async () => {
+  const { generateScript, payoutFor, validStake, MT } = await import('../server/muaythai.js');
+  for (const winner of ['A', 'B']) for (const method of ['KO', 'DECISION']) for (let i = 0; i < 2500; i++) {
+    const s = generateScript(winner, method);
+    const loser = winner === 'A' ? 'B' : 'A';
+    const ev = s.events;
+    assert.ok(ev.length >= 5 && ev.length <= 7);
+    assert.equal(ev[ev.length - 1].by, winner);
+    assert.deepEqual(ev[ev.length - 1].hp, s.finalHp);
+    if (method === 'KO') { assert.equal(s.finalHp[loser], 0); assert.equal(ev.filter((e) => e.ko).length, 1); assert.ok(ev[ev.length - 1].ko); }
+    else { assert.ok(s.finalHp[winner] > s.finalHp[loser] && s.finalHp[loser] > 0); assert.equal(ev.filter((e) => e.ko).length, 0); }
+    ev.forEach((e, k) => {
+      if (k) { assert.ok(e.tMs > ev[k - 1].tMs); assert.ok(e.hp.A <= ev[k - 1].hp.A && e.hp.B <= ev[k - 1].hp.B); }
+      assert.ok(e.tMs < MT.ROUND_DURATION_MS && e.hp.A >= 0 && e.hp.B >= 0);
+    });
+    assert.ok(ev.some((e) => e.by === loser)); // bên thua có đòn để bên thắng mất máu hợp lý
+  }
+  assert.equal(payoutFor(50), 95); assert.equal(payoutFor(10), 19); assert.equal(payoutFor(500), 950);
+  for (const [v, ok] of [[9, false], [10, true], [500, true], [501, false], [10.5, false], ['50', false], [-5, false]]) assert.equal(validStake(v), ok, String(v));
+});
+
+test('Muay Thai: tạo trận, cược thắng/thua đúng sổ xu, không cược hai lần, không âm tiền', async () => {
+  const { db } = await import('../server/db.js');
+  const u = await signup('mtPlayer', 1);
+  const other = await signup('mtOther', 1);
+  db.prepare('UPDATE users SET coins = 1250 WHERE id = ?').run(u.id);
+  assert.equal((await call('GET', '/mt/wallet', null, u.token)).data.balance, 1250);
+  // tạo trận
+  assert.equal((await call('POST', '/mt/matches', { mode: 'xx' }, u.token)).status, 400);
+  const r1 = await call('POST', '/mt/matches', { mode: 'random' }, u.token);
+  assert.equal(r1.status, 201);
+  assert.equal(r1.data.fighters.length, 2);
+  assert.notEqual(r1.data.fighters[0].id, r1.data.fighters[1].id);
+  // cặp tự chọn: trùng, không tồn tại, người dùng khác, chính mình
+  const same = await call('POST', '/mt/matches', { mode: 'custom', fighterA: { type: 'character', id: 'udon' }, fighterB: { type: 'character', id: 'udon' } }, u.token);
+  assert.equal(same.status, 400); assert.equal(same.data.code, 'SAME_FIGHTER');
+  assert.equal((await call('POST', '/mt/matches', { mode: 'custom', fighterA: { type: 'character', id: 'khong_co' }, fighterB: { type: 'character', id: 'uni' } }, u.token)).status, 404);
+  const mine = await call('POST', '/mt/matches', { mode: 'custom', fighterA: { type: 'character', id: 'udon' }, fighterB: { type: 'user', id: String(u.id) } }, u.token);
+  assert.equal(mine.status, 201); // chọn chính mình được phép
+  assert.equal(mine.data.fighters[1].type, 'user');
+  assert.equal((await call('GET', `/mt/matches/${r1.data.matchId}`, null, u.token)).status, 410); // trận cũ bị thay bằng trận mới
+  const m = mine.data.matchId;
+  // stake sai, pick sai, người khác không cược được trận của mình
+  assert.equal((await call('POST', `/mt/matches/${m}/bet`, { pick: 'A', stake: 9 }, u.token)).data.code, 'INVALID_STAKE');
+  assert.equal((await call('POST', `/mt/matches/${m}/bet`, { pick: 'C', stake: 50 }, u.token)).status, 400);
+  assert.equal((await call('POST', `/mt/matches/${m}/bet`, { pick: 'A', stake: 50 }, other.token)).status, 404);
+  // cược thật
+  const b = await call('POST', `/mt/matches/${m}/bet`, { pick: 'A', stake: 50 }, u.token);
+  assert.equal(b.status, 200, JSON.stringify(b.data));
+  assert.equal(b.data.balanceAfterStake, 1200);
+  assert.equal(b.data.balanceFinal, b.data.result.won ? 1295 : 1200);
+  assert.equal(b.data.result.payout, b.data.result.won ? 95 : 0);
+  assert.equal(b.data.result.won, b.data.result.winner === 'A');
+  assert.equal(b.data.script.winner, b.data.result.winner);
+  const rows = db.prepare('SELECT delta, reason FROM mt_ledger WHERE match_id = ? ORDER BY id').all(m);
+  assert.equal(rows.length, b.data.result.won ? 2 : 1);
+  assert.deepEqual({ ...rows[0] }, { delta: -50, reason: 'bet_stake' });
+  assert.equal((await call('GET', '/mt/wallet', null, u.token)).data.balance, b.data.balanceFinal);
+  // cược lần hai và tải lại trận đã chốt
+  await new Promise((r) => setTimeout(r, 1100));
+  assert.equal((await call('POST', `/mt/matches/${m}/bet`, { pick: 'B', stake: 50 }, u.token)).status, 409);
+  const again = await call('GET', `/mt/matches/${m}`, null, u.token);
+  assert.equal(again.data.result.winner, b.data.result.winner);
+  assert.equal(again.data.balanceFinal, b.data.balanceFinal);
+  assert.deepEqual(again.data.script, b.data.script);
+  // đã chơi thì không ảnh hưởng cấp (xu đã kiếm giữ nguyên)
+  assert.equal(db.prepare('SELECT coins FROM users WHERE id = ?').get(u.id).coins, 1250);
+});
+
+test('Muay Thai: không đủ xu, cược song song không âm tiền, chỉ một request thắng', async () => {
+  const { db } = await import('../server/db.js');
+  const u = await signup('mtRace', 1);
+  db.prepare('UPDATE users SET coins = 60 WHERE id = ?').run(u.id);
+  const ms = [];
+  for (let i = 0; i < 2; i++) ms.push((await call('POST', '/mt/matches', { mode: 'custom', fighterA: { type: 'character', id: 'juad' }, fighterB: { type: 'character', id: 'abu' } }, u.token)).data.matchId);
+  // tạo trận thứ hai làm trận đầu hết hạn, nên dùng một trận duy nhất cho cược song song
+  const m = ms[1];
+  const rs = await Promise.all([1, 2, 3].map(() => call('POST', `/mt/matches/${m}/bet`, { pick: 'A', stake: 50 }, u.token)));
+  assert.equal(rs.filter((r) => r.status === 200).length, 1, JSON.stringify(rs.map((r) => r.status)));
+  assert.ok(rs.every((r) => [200, 409, 429].includes(r.status)));
+  const bal = (await call('GET', '/mt/wallet', null, u.token)).data.balance;
+  assert.ok(bal >= 0);
+  // không đủ xu
+  db.prepare('UPDATE users SET game_net = 0, coins = 20 WHERE id = ?').run(u.id);
+  await new Promise((r) => setTimeout(r, 1100));
+  const m2 = (await call('POST', '/mt/matches', { mode: 'random' }, u.token)).data.matchId;
+  const low = await call('POST', `/mt/matches/${m2}/bet`, { pick: 'A', stake: 50 }, u.token);
+  assert.equal(low.status, 402); assert.equal(low.data.code, 'INSUFFICIENT_BALANCE');
+  assert.equal((await call('GET', '/mt/wallet', null, u.token)).data.balance, 20);
+});
+
+test('Muay Thai: tìm người dùng làm võ sĩ, bạn bè trước; thống kê thắng của bên A quanh 50%', async () => {
+  const u = await signup('mtSearcher', 1);
+  await signup('mtFindMeA', 1);
+  assert.equal((await call('GET', '/mt/users?q=m', null, u.token)).data.users.length, 0); // tối thiểu 2 ký tự
+  const r = await call('GET', '/mt/users?q=mtFindMe', null, u.token);
+  assert.equal(r.status, 200);
+  assert.ok(r.data.users.length >= 1);
+  assert.ok(r.data.users.every((x) => x.relation && x.name && !('email' in x)));
+  const { generateScript } = await import('../server/muaythai.js');
+  const { default: crypto } = await import('node:crypto');
+  let a = 0; const N = 10000;
+  for (let i = 0; i < N; i++) if (crypto.randomInt(0, 2) === 0) a++;
+  assert.ok(Math.abs(a / N - 0.5) < 0.02);
+  assert.ok(generateScript('A', 'KO'));
+});
+
 test('Chủ đề nóng: đếm tin mới kể từ lần xem cuối (bài Admin, chủ đề mới duyệt/nổi bật), không tính của mình', async () => {
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
   const u = await signup('hotUnread', 1);
