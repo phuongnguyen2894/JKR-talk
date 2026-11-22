@@ -1,0 +1,73 @@
+{
+  "asset": "Abu",
+  "version": "2.0",
+  "art_style": "pixel-art",
+  "character_type": "parrot",
+  "base_character_rules": {
+    "clothing": false,
+    "accessories": false,
+    "held_items": false,
+    "baked_shadow": false,
+    "transparent_background": true
+  },
+  "stages": [
+    {
+      "id": 0,
+      "name": "stage_0_baby",
+      "file": "sprites/base/stage_0_baby_384.png",
+      "canvas": [
+        384,
+        384
+      ],
+      "sprite_height_px": 220,
+      "baseline_y": 361,
+      "facing": "right",
+      "status": "static concept sprite"
+    },
+    {
+      "id": 1,
+      "name": "stage_1_juvenile",
+      "file": "sprites/base/stage_1_juvenile_384.png",
+      "canvas": [
+        384,
+        384
+      ],
+      "sprite_height_px": 275,
+      "baseline_y": 361,
+      "facing": "right",
+      "status": "static concept sprite"
+    },
+    {
+      "id": 2,
+      "name": "stage_2_adolescent",
+      "file": "sprites/base/stage_2_adolescent_384.png",
+      "canvas": [
+        384,
+        384
+      ],
+      "sprite_height_px": 322,
+      "baseline_y": 361,
+      "facing": "right",
+      "status": "static concept sprite"
+    },
+    {
+      "id": 3,
+      "name": "stage_3_adult",
+      "file": "sprites/base/stage_3_adult_384.png",
+      "canvas": [
+        384,
+        384
+      ],
+      "sprite_height_px": 350,
+      "baseline_y": 361,
+      "facing": "right",
+      "status": "static concept sprite"
+    }
+  ],
+  "render_notes": {
+    "filter": "nearest-neighbor",
+    "alpha": "RGBA transparency",
+    "alignment": "center horizontally, baseline aligned"
+  },
+  "qa_status": "4 static stage sprites included; animations and production polish are not included in this package."
+}

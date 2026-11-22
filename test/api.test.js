@@ -1937,6 +1937,11 @@ test('Nuôi thú: cửa hàng đồ ăn, đồ chơi, nhà/lồng/bể; vật ph
     const b0 = await bal();
     // đồ ăn: chưa mua thì không dùng được; mua rồi dùng một lần
     const uni = s0.pets.find((p) => p.kind === 'uni');
+    // hình pixel art: chỉ Abu có sprite theo giai đoạn (tệp có thật); các bạn khác dùng hình tạm
+    const abuPet = s0.pets.find((p) => p.kind === 'abu');
+    assert.equal(abuPet.sprite, '/pets/abu/stage_0.webp'); assert.equal(uni.sprite, null);
+    assert.equal(s0.kinds.find((k) => k.id === 'abu').sprite, '/pets/abu/stage_0.webp');
+    for (let n = 0; n < 4; n++) assert.ok((await import('node:fs')).existsSync(`public/pets/abu/stage_${n}.webp`));
     db.prepare('UPDATE pets SET food = 20, stat_at = ? WHERE id = ?').run(now(), uni.id);
     assert.equal((await call('POST', `/pets/${uni.id}/feed`, { food: 'dog_tiec' }, u.token)).status, 400);
     assert.equal((await call('POST', '/pets/shop/buy', { item: 'food:dog_tiec', qty: 2 }, u.token)).status, 200);

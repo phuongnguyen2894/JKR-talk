@@ -16,7 +16,12 @@ const SCALE = [0.8, 0.92, 1.04, 1.18];
 const LV = { love: '😍', like: '😊', neutral: '😐', dislike: '🤢' };
 
 // hình tạm: ảnh nếu Admin đã tải, không thì chữ viết tắt trên nền màu kèm biểu tượng loài
-function face(p, size = 64) {
+function face(p, size = 64, { scene = false } = {}) {
+  if (p.sprite) { // hình pixel art đầy đủ cơ thể (đã vẽ sẵn kích thước theo giai đoạn): hiển thị bằng nét sắc, không cắt tròn
+    const s = Math.round(size * (scene ? 1.6 : 1.15));
+    const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
+    return `<span class="pt-spr" style="width:${s}px;height:${s}px"><img src="${esc(p.sprite)}" alt="" draggable="false" width="${s}" height="${s}">${acc}</span>`;
+  }
   const inner = p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="" draggable="false">` : `<b>${esc(p.initials)}</b>`;
   const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
   return `<span class="pt-face" style="width:${size}px;height:${size}px;background:${esc(p.color)};font-size:${Math.round(size * 0.34)}px">${inner}<i class="pt-sp" aria-hidden="true">${p.emoji}</i>${acc}</span>`;
@@ -58,8 +63,8 @@ function sceneHtml(pets, { sel, home, readonly = false, habs = null } = {}) {
   return `<div class="pt-scene t${home.tier}" aria-label="Trong nhà: ${esc(home.name)}">
     <span class="pt-deco d1" aria-hidden="true">🖼️</span><span class="pt-deco d2" aria-hidden="true">🪟</span>
     ${home.tier >= 2 ? '<span class="pt-deco d3" aria-hidden="true">🕰️</span>' : ''}${home.tier >= 3 ? '<span class="pt-deco d5" aria-hidden="true">🪴</span>' : ''}${home.tier >= 4 ? '<span class="pt-deco d6" aria-hidden="true">📚</span>' : ''}${home.tier >= 5 ? '<span class="pt-deco d4" aria-hidden="true">🪔</span>' : ''}
-    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${slotLeft(i, pets.length)}%;top:${slotTop(i)}%;--s:${SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
-        <span class="pt-mood" aria-hidden="true">${P.react && P.react.petId === p.id ? LV[P.react.level] : P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? P.ev.emoji : MOOD[p.mood.key] || '🙂'}</span>${face(p, 58)}${p.stage >= 3 ? '<span class="pt-crown" aria-hidden="true">👑</span>' : ''}<small>${esc(p.name)}</small></button>`).join('')
+    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${p.sprite ? ' has-spr' : ''}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${slotLeft(i, pets.length)}%;top:${slotTop(i) - (p.sprite ? 12 : 0)}%;--s:${p.sprite ? 1 : SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
+        <span class="pt-mood" aria-hidden="true">${P.react && P.react.petId === p.id ? LV[P.react.level] : P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? P.ev.emoji : MOOD[p.mood.key] || '🙂'}</span>${face(p, 58, { scene: true })}${p.stage >= 3 ? '<span class="pt-crown" aria-hidden="true">👑</span>' : ''}<small>${esc(p.name)}</small></button>`).join('')
       : '<p class="pt-empty">Khu nhà đang trống. Hãy nhận nuôi một bạn nhé!</p>'}
   </div>`;
 }

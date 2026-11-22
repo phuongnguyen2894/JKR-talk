@@ -225,6 +225,9 @@ function moodOf(st) {
   if (low[1] < 25) return { key: { food: 'hungry', fun: 'bored', clean: 'dirty', health: 'sleepy' }[low[0]], label: { food: 'Đang đói bụng', fun: 'Đang buồn chán', clean: 'Cần được tắm', health: 'Đang buồn ngủ' }[low[0]] };
   return (st.food + st.fun + st.clean + st.health) / 4 >= 70 ? { key: 'happy', label: 'Đang rất vui' } : { key: 'ok', label: 'Ổn' };
 }
+// Hình pixel art đầy đủ 4 giai đoạn (đã vẽ sẵn kích thước lớn dần): bạn nào có trong ART thì game hiển thị sprite này thay cho hình tạm
+const ART = { abu: true };
+const spriteUrl = (kind, stage) => (ART[kind] ? `/pets/${kind}/stage_${stage}.webp` : null);
 const wearInfo = (slot, id) => { const it = id && ITEM[`${slot}:${id}`]; return it ? { id: it.id, name: it.name, emoji: it.emoji } : null; };
 export function petView(p, t, crowd, kinds = imgMap()) {
   const k = KIND[p.kind], st = current(p, t, crowd), cd = (() => { try { return JSON.parse(p.cd || '{}'); } catch { return {}; } })();
@@ -232,7 +235,7 @@ export function petView(p, t, crowd, kinds = imgMap()) {
   const stage = stageOf(intimacy), next = STAGES.find((s) => s.from > intimacy);
   return {
     id: p.id, kind: p.kind, kindName: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, trait: k.trait,
-    outfit: wearInfo('outfit', p.outfit), collar: wearInfo('collar', p.collar), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
+    sprite: spriteUrl(p.kind, stage.n), outfit: wearInfo('outfit', p.outfit), collar: wearInfo('collar', p.collar), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
     stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st),
     cooldowns: Object.fromEntries(Object.entries(ACTIONS).map(([a, c]) => [a, Math.max(0, (cd[a] || 0) + c.cd - t)])),
     gainLeft: Math.max(0, DAILY_GAIN_CAP - (p.day === dayKey(t) ? p.day_gain : 0)),
@@ -423,7 +426,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
       socialEveryMin: SOCIAL_EVERY / 60_000, social: SOCIAL,
       closet: Object.entries(owned(uid)).filter(([k, q]) => q > 0 && /^(outfit|collar):/.test(k) && ITEM[k]).map(([k]) => ({ slot: ITEM[k].cat, id: ITEM[k].id, sp: ITEM[k].sp, name: ITEM[k].name, emoji: ITEM[k].emoji })),
       inv: owned(uid), habitat: Object.fromEntries(Object.entries(habTiers(uid)).map(([t, n]) => { const it = SHOP[t].find((x) => x.tier === n); return [t, { tier: n, emoji: it?.emoji || null, name: it?.name || null, slow: Math.round((1 - HAB_MULT[n]) * 100) }]; })), shopFoods: SHOP.food.map((f) => ({ id: f.id, sp: f.sp, name: f.name, emoji: f.emoji, food: f.food, fun: f.fun || 0, health: f.health || 0, int: f.int })), shopToys: SHOP.toy.map((x) => ({ id: x.id, sp: x.sp, name: x.name, emoji: x.emoji, fun: x.fun, health: x.health || 0, int: x.int })),
-      kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, adopted: mine.has(k.id) })),
+      kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, sprite: spriteUrl(k.id, 0), adopted: mine.has(k.id) })),
       levels: LEVELS, foodsBySp: FREE_FOODS, species: Object.entries(SPECIES).map(([id, v]) => ({ id, name: v.name })), stages: STAGES, dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
     };
   };
@@ -550,7 +553,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     if (ownerId !== viewer && (!areFriends(viewer, ownerId) || isBlockedEither(viewer, ownerId))) throw forbidden('Chỉ thăm được nhà của bạn bè');
     const h = homeOf(ownerId), list = myPets(ownerId), t = now(), fx = factorFn(ownerId, list.length), cur = tiers().find((x) => x.tier === h.tier);
     return { owner: { id: o.id, displayName: o.display_name }, home: { tier: cur.tier, name: cur.name, capacity: cur.capacity },
-      pets: list.map((p) => { const v = petView(p, t, fx(p)); return { id: v.id, outfit: v.outfit, collar: v.collar, kind: v.kind, emoji: v.emoji, initials: v.initials, color: v.color, imageUrl: v.imageUrl, name: v.name, stageName: v.stageName, stage: v.stage, mood: v.mood }; }),
+      pets: list.map((p) => { const v = petView(p, t, fx(p)); return { id: v.id, sprite: v.sprite, outfit: v.outfit, collar: v.collar, kind: v.kind, emoji: v.emoji, initials: v.initials, color: v.color, imageUrl: v.imageUrl, name: v.name, stageName: v.stageName, stage: v.stage, mood: v.mood }; }),
       patted: !!db.prepare('SELECT 1 FROM pet_visits WHERE visitor_id = ? AND owner_id = ? AND day = ?').get(viewer, ownerId, dayKey()) };
   };
   api.get('/pets/visit/:userId', wrap((req, res) => res.json(visitView(me(req), Number(req.params.userId)))));
