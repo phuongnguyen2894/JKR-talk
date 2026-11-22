@@ -193,7 +193,7 @@ function fightHtml() {
   const pf = M.match.fighters.find((f) => f.side === M.pick);
   return `${header('Trận đấu')}<div id="mt-fight">
     <div class="mt-hud"><div class="hp"><div class="n">${esc(a.name)}</div><div class="bar l"><i id="hp-A" class="red" style="width:100%"></i></div></div>
-      <span class="mt-clock" id="mt-clock" role="timer" aria-label="Thời gian còn lại">0:09</span>
+      <span class="mt-clock" id="mt-clock" role="timer" aria-label="Thời gian đã đấu">0:00</span>
       <div class="hp"><div class="n r">${esc(b.name)}</div><div class="bar r"><i id="hp-B" class="blue" style="width:100%"></i></div></div></div>
     <div class="mt-arena fight" id="mt-ring">${arenaBack()}
       <div class="mt-fighters"><div class="mt-fslot A" id="f-A" role="presentation">${fighterHtml(a, { pose: 'walk', w: 200 })}</div><div class="mt-fslot B" id="f-B" role="presentation">${fighterHtml(b, { pose: 'walk', w: 200 })}</div></div>
@@ -217,8 +217,8 @@ function startFight() {
   M.skip = finish;
   const t0 = performance.now();
   clock = setInterval(() => {
-    const left = Math.max(0, Math.ceil(data.script.durationMs - (performance.now() - t0) / sp) / 1000);
-    const el = $('#mt-clock'); if (el) el.textContent = `0:${String(Math.ceil(left)).padStart(2, '0')}`;
+    const sec = Math.floor((performance.now() - t0) / sp / 1000); // đồng hồ đếm lên: trận kết thúc khi một bên hết máu
+    const el = $('#mt-clock'); if (el) el.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   }, 200);
   at(450, () => { setPose('A', 'guard'); setPose('B', 'guard'); });
   const ev = data.script.events;
@@ -236,14 +236,9 @@ function startFight() {
     if (!(e.ko && i === ev.length - 1)) at(e.tMs + 420, () => { for (const s of ['A', 'B']) { setPose(s, 'guard'); $(`#f-${s}`)?.classList.remove('lunge', 'hurt'); } });
   });
   const last = ev[ev.length - 1];
-  if (last.ko) {
-    const loser = data.script.winner === 'A' ? 'B' : 'A';
-    at(last.tMs + 420, () => { setPose(data.script.winner, 'guard'); $(`#f-${data.script.winner}`)?.classList.remove('lunge'); setPose(loser, 'ko'); const log = $('#mt-log'); if (log) log.textContent = `${F[loser].name} nằm sàn, trọng tài đếm…`; });
-    at(last.tMs + 1700, finish);
-  } else {
-    at(data.script.durationMs, () => { const log = $('#mt-log'); if (log) log.textContent = 'Hết giờ! Trọng tài chấm điểm…'; });
-    at(data.script.durationMs + 1200, finish);
-  }
+  const loser = data.script.winner === 'A' ? 'B' : 'A';
+  at(last.tMs + 420, () => { setPose(data.script.winner, 'guard'); $(`#f-${data.script.winner}`)?.classList.remove('lunge'); setPose(loser, 'ko'); const log = $('#mt-log'); if (log) log.textContent = `${F[loser].name} hết máu và nằm sàn, trọng tài đếm…`; });
+  at(last.tMs + 1900, finish);
 }
 
 // ---- RESULT --------------------------------------------------------------------------------------------------------

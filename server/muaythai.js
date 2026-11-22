@@ -9,8 +9,8 @@ import { HttpError, bad, notFound, getUser, rateLimit, isBlockedEither, location
 import { balanceOf } from './levels.js';
 
 export const MT = {
-  MIN_STAKE: 10, MAX_STAKE: 500, PAYOUT_MULTIPLIER: 1.9, KO_PROBABILITY: 40, WINNER_ATTACK_RATE: 65,
-  ROUND_DURATION_MS: 9000, MATCH_TTL_MIN: 30, BET_RATE_LIMIT_MS: 1000, EVENT_MIN: 5, EVENT_MAX: 7,
+  MIN_STAKE: 10, MAX_STAKE: 500, PAYOUT_MULTIPLIER: 1.9, WINNER_ATTACK_RATE: 65,
+  MATCH_TTL_MIN: 30, BET_RATE_LIMIT_MS: 1000, EVENT_MIN: 10, EVENT_MAX: 14, HIT_GAP_MS: 1100,
 };
 
 db.exec(`
@@ -64,33 +64,34 @@ function split(total, parts, rng) {
   return out;
 }
 
-// Kịch bản hoạt hình, sinh SAU khi đã biết người thắng nên luôn khớp kết quả.
-// Bất biến: đòn cuối do bên thắng tung; KO ⇒ finalHp[thua] = 0 và đúng 1 đòn ko; điểm ⇒ finalHp[thắng] > finalHp[thua] > 0;
-// HP không bao giờ tăng; tMs tăng dần và < durationMs; 5–7 đòn.
-export function generateScript(winner, method, rng = crypto.randomInt) {
+// Kịch bản hoạt hình, sinh SAU khi đã biết người thắng nên luôn khớp kết quả. Trận kéo dài cho đến khi một bên hết máu (luôn kết thúc bằng KO).
+// Bất biến: đòn cuối do bên thắng tung và làm bên thua hết máu (đúng 1 đòn ko, finalHp[thua] = 0); bên thắng còn máu (> 0);
+// HP không bao giờ tăng; tMs tăng dần và < durationMs; 10–14 đòn, mỗi đòn cách nhau khoảng 1,1 giây.
+export function generateScript(winner, rng = crypto.randomInt) {
   const loser = winner === 'A' ? 'B' : 'A';
   const n = rng(MT.EVENT_MIN, MT.EVENT_MAX + 1);
-  const loserFinal = method === 'KO' ? 0 : rng(10, 46);
-  const winnerFinal = method === 'KO' ? rng(35, 91) : rng(Math.max(loserFinal + 10, 40), 91);
+  const winnerFinal = rng(15, 81);
   const by = Array.from({ length: n }, (_, i) => (i === n - 1 ? winner : rng(0, 100) < MT.WINNER_ATTACK_RATE ? winner : loser));
   if (!by.slice(0, n - 1).includes(loser)) by[rng(0, n - 1)] = loser; // bên thua phải có ít nhất một đòn để bên thắng mất máu
   const winIdx = by.map((b, i) => (b === winner ? i : -1)).filter((i) => i >= 0);
   const loseIdx = by.map((b, i) => (b === loser ? i : -1)).filter((i) => i >= 0);
-  const dmgW = split(100 - loserFinal, winIdx.length, rng); // sát thương bên thắng gây ra
+  const dmgW = split(100, winIdx.length, rng); // tổng sát thương bên thắng gây ra = toàn bộ máu bên thua
   const dmgL = split(100 - winnerFinal, loseIdx.length, rng);
   const dmg = Array(n).fill(0);
   winIdx.forEach((i, k) => { dmg[i] = dmgW[k]; });
   loseIdx.forEach((i, k) => { dmg[i] = dmgL[k]; });
   const moves = ['punch', 'kick', 'knee', 'elbow'];
   const hp = { A: 100, B: 100 };
+  let t = 700;
   const events = by.map((b, i) => {
     const target = b === 'A' ? 'B' : 'A';
     hp[target] = Math.max(0, hp[target] - dmg[i]);
-    const ev = { tMs: Math.round(600 + (i * (MT.ROUND_DURATION_MS - 1800)) / (n - 1)), by: b, move: moves[rng(0, moves.length)], damage: dmg[i], hp: { ...hp } };
-    if (method === 'KO' && i === n - 1) ev.ko = true;
+    if (i) t += MT.HIT_GAP_MS + rng(-250, 251);
+    const ev = { tMs: t, by: b, move: moves[rng(0, moves.length)], damage: dmg[i], hp: { ...hp } };
+    if (i === n - 1) ev.ko = true;
     return ev;
   });
-  return { durationMs: MT.ROUND_DURATION_MS, events, winner, method, finalHp: { ...hp } };
+  return { durationMs: t + 1500, events, winner, method: 'KO', finalHp: { ...hp } };
 }
 
 // ---- võ sĩ -------------------------------------------------------------------------
@@ -180,8 +181,8 @@ export function placeBet(uid, matchId, pick, stake, rng = crypto.randomInt) {
     const u = getUser(uid);
     if (balanceOf(u) < stake) throw err(402, 'INSUFFICIENT_BALANCE', 'Không đủ xu tím');
     const winner = rng(0, 2) === 0 ? 'A' : 'B'; // 50/50
-    const method = rng(0, 100) < MT.KO_PROBABILITY ? 'KO' : 'DECISION';
-    const script = generateScript(winner, method, rng);
+    const method = 'KO';
+    const script = generateScript(winner, rng);
     const won = pick === winner;
     const payout = won ? payoutFor(stake) : 0;
     const afterStake = balanceOf(u) - stake;

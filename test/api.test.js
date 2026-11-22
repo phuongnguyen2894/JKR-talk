@@ -1294,22 +1294,25 @@ test('Đẩy trend: dọn các tin có link trùng có từ trước, giữ tin 
   assert.ok(left.includes(c)); // link khác được giữ
 });
 
-test('Muay Thai: kịch bản luôn khớp kết quả, công thức thưởng, kiểm tra số xu cược', async () => {
-  const { generateScript, payoutFor, validStake, MT } = await import('../server/muaythai.js');
-  for (const winner of ['A', 'B']) for (const method of ['KO', 'DECISION']) for (let i = 0; i < 2500; i++) {
-    const s = generateScript(winner, method);
+test('Muay Thai: trận kéo dài đến khi một bên hết máu, kịch bản luôn khớp kết quả, công thức thưởng, kiểm tra số xu cược', async () => {
+  const { generateScript, payoutFor, validStake } = await import('../server/muaythai.js');
+  for (const winner of ['A', 'B']) for (let i = 0; i < 5000; i++) {
+    const s = generateScript(winner);
     const loser = winner === 'A' ? 'B' : 'A';
     const ev = s.events;
-    assert.ok(ev.length >= 5 && ev.length <= 7);
+    assert.ok(ev.length >= 10 && ev.length <= 14);
     assert.equal(ev[ev.length - 1].by, winner);
     assert.deepEqual(ev[ev.length - 1].hp, s.finalHp);
-    if (method === 'KO') { assert.equal(s.finalHp[loser], 0); assert.equal(ev.filter((e) => e.ko).length, 1); assert.ok(ev[ev.length - 1].ko); }
-    else { assert.ok(s.finalHp[winner] > s.finalHp[loser] && s.finalHp[loser] > 0); assert.equal(ev.filter((e) => e.ko).length, 0); }
+    assert.equal(s.finalHp[loser], 0); // một bên hết máu
+    assert.ok(s.finalHp[winner] > 0); // bên kia còn máu
+    assert.equal(ev.filter((e) => e.ko).length, 1); assert.ok(ev[ev.length - 1].ko);
+    assert.ok(ev.slice(0, -1).every((e) => e.hp[loser] > 0 && e.hp[winner] > 0)); // chưa ai hết máu trước đòn cuối
     ev.forEach((e, k) => {
       if (k) { assert.ok(e.tMs > ev[k - 1].tMs); assert.ok(e.hp.A <= ev[k - 1].hp.A && e.hp.B <= ev[k - 1].hp.B); }
-      assert.ok(e.tMs < MT.ROUND_DURATION_MS && e.hp.A >= 0 && e.hp.B >= 0);
+      assert.ok(e.tMs < s.durationMs && e.hp.A >= 0 && e.hp.B >= 0);
     });
-    assert.ok(ev.some((e) => e.by === loser)); // bên thua có đòn để bên thắng mất máu hợp lý
+    assert.ok(s.durationMs >= 8000 && s.durationMs <= 25000);
+    assert.ok(ev.some((e) => e.by === loser));
   }
   assert.equal(payoutFor(50), 95); assert.equal(payoutFor(10), 19); assert.equal(payoutFor(500), 950);
   for (const [v, ok] of [[9, false], [10, true], [500, true], [501, false], [10.5, false], ['50', false], [-5, false]]) assert.equal(validStake(v), ok, String(v));
@@ -1417,7 +1420,7 @@ test('Muay Thai: tìm người dùng làm võ sĩ, bạn bè trước; thống k
   let a = 0; const N = 10000;
   for (let i = 0; i < N; i++) if (crypto.randomInt(0, 2) === 0) a++;
   assert.ok(Math.abs(a / N - 0.5) < 0.02);
-  assert.ok(generateScript('A', 'KO'));
+  assert.ok(generateScript('A'));
 });
 
 test('Chủ đề nóng: đếm tin mới kể từ lần xem cuối (bài Admin, chủ đề mới duyệt/nổi bật), không tính của mình', async () => {
