@@ -32,8 +32,8 @@ export const KINDS = [
   { id: 'abu', name: 'Abu', species: 'Vẹt', emoji: '🦜', initials: 'AB', color: '#B91C1C', mult: { fun: 1.3 }, fav: 'hat', trait: 'Nói nhiều: hay buồn chán nếu không được chơi' },
   { id: 'uni', name: 'Uni', species: 'Chó', emoji: '🐶', initials: 'UN', color: '#0E7490', mult: { clean: 0.8 }, fav: 'xuong', trait: 'Dịu dàng: thích được tắm và vuốt ve' },
   { id: 'charsiu', name: 'Charsiu', species: 'Chó', emoji: '🐕', initials: 'CH', color: '#B91C5C', mult: { food: 1.5 }, fav: 'thit', trait: 'Tham ăn: đói nhanh, thích món thịt' },
-  { id: 'tofu', name: 'Tofu', species: 'Chó', emoji: '🐩', initials: 'TO', color: '#4D7C0F', mult: { health: 1.3 }, fav: 'banh', trait: 'Hay ngủ: ngủ hồi sức nhiều hơn', sleepBoost: 1.5 },
-  { id: 'udon', name: 'Udon', species: 'Chó', emoji: '🦮', initials: 'UD', color: '#6D28D9', mult: { fun: 1.5 }, fav: 'thit', trait: 'Nghịch ngợm: cần chơi nhiều, chơi đúng thì thân thiết nhanh', playBoost: 1.3 },
+  { id: 'tofu', name: 'Tofu', species: 'Chó', emoji: '🦮', initials: 'TO', color: '#4D7C0F', mult: { health: 1.3 }, fav: 'banh', trait: 'Hay ngủ: ngủ hồi sức nhiều hơn', sleepBoost: 1.5 },
+  { id: 'udon', name: 'Udon', species: 'Chó', emoji: '🐩', initials: 'UD', color: '#6D28D9', mult: { fun: 1.5 }, fav: 'thit', trait: 'Nghịch ngợm: cần chơi nhiều, chơi đúng thì thân thiết nhanh', playBoost: 1.3 },
 ];
 const KIND = Object.fromEntries(KINDS.map((k) => [k.id, k]));
 // ---- cửa hàng: đồ ăn (dùng một lần), đồ chơi (dùng mãi), nhà / lồng / bể (giúp thú tụt chỉ số chậm hơn) -------------------------------
@@ -88,6 +88,18 @@ CREATE TABLE IF NOT EXISTS pet_inventory (user_id INTEGER NOT NULL, item TEXT NO
 CREATE TABLE IF NOT EXISTS pet_visits (visitor_id INTEGER NOT NULL, owner_id INTEGER NOT NULL, day TEXT NOT NULL, PRIMARY KEY (visitor_id, owner_id, day));
 `);
 for (const k of KINDS) db.prepare('INSERT OR IGNORE INTO pet_kinds (id) VALUES (?)').run(k.id);
+
+// ---- tên thú: phải riêng biệt (không trùng tên thú của ai khác) và không được trùng tên mặc định của các bạn ----------------------
+const nameKey = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
+export function checkPetName(raw, exceptPetId = 0) {
+  const name = String(raw ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
+  if (name.length < 2 || name.length > 20) throw bad('Tên thú từ 2 đến 20 ký tự');
+  if (!/^[\p{L}\p{N} _.'-]+$/u.test(name)) throw bad("Tên chỉ gồm chữ, số, dấu cách và các dấu - _ . '");
+  const key = nameKey(name);
+  if (KINDS.some((k) => nameKey(k.name) === key)) throw bad('Không được đặt trùng tên mặc định (Juad, Abu, Uni, Charsiu, Tofu, Udon)');
+  if (db.prepare('SELECT id, name FROM pets WHERE id != ?').all(exceptPetId).some((r) => nameKey(r.name) === key)) throw bad('Tên này đã có bạn thú khác dùng, hãy chọn tên khác');
+  return name;
+}
 
 // ---- cài đặt ------------------------------------------------------------------------------------------------------
 const kv = (k) => db.prepare('SELECT value FROM app_kv WHERE key = ?').get(k)?.value;
@@ -245,10 +257,11 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     const uid = me(req), k = KIND[String(req.body?.kind || '')];
     if (!k) throw bad('Bạn thú không hợp lệ');
     tx(() => {
+      const name = checkPetName(req.body?.name);
       const h = homeOf(uid);
       if (myPets(uid).length >= capacityOf(h)) throw bad('Khu nhà đã đầy, hãy mở rộng để nuôi thêm');
       if (db.prepare('SELECT 1 FROM pets WHERE user_id = ? AND kind = ?').get(uid, k.id)) throw bad(`Bạn đã nuôi ${k.name} rồi`);
-      db.prepare('INSERT INTO pets (user_id, kind, name, food, fun, clean, health, stat_at, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(uid, k.id, k.name, 70, 70, 70, 70, now(), now());
+      db.prepare('INSERT INTO pets (user_id, kind, name, food, fun, clean, health, stat_at, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(uid, k.id, name, 70, 70, 70, 70, now(), now());
     });
     res.status(201).json(state(uid));
   }));
@@ -261,8 +274,9 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     }));
   }
   api.patch('/pets/:id', wrap((req, res) => {
-    const name = String(req.body?.name || '').trim().replace(/\s+/g, ' ');
-    if (!name || name.length > 20) throw bad('Tên từ 1 đến 20 ký tự');
+    const cur = db.prepare('SELECT name FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), me(req));
+    if (!cur) throw notFound('Không tìm thấy bạn thú này');
+    const name = cur.name === String(req.body?.name ?? '').trim() ? cur.name : checkPetName(req.body?.name, Number(req.params.id));
     const r = db.prepare('UPDATE pets SET name = ? WHERE id = ? AND user_id = ?').run(name, Number(req.params.id), me(req));
     if (!r.changes) throw notFound('Không tìm thấy bạn thú này');
     res.json({ ok: true, name });

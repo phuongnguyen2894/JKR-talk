@@ -1,5 +1,5 @@
 // Game "Nuôi thú": khu nhà chung cho các bạn thú. Máy chủ quyết định mọi thay đổi; máy khách chỉ hiển thị và gửi thao tác.
-import { $, $$, esc, S, api, toast, fail, go, coinIcon, openModal, closeModal, confirmBox } from './core.js';
+import { $, $$, esc, S, api, toast, fail, go, coinIcon, openModal, closeModal, confirmBox, ask } from './core.js';
 
 let P = null;
 const HAB_NAME = { house: 'Nhà', cage: 'Lồng', tank: 'Bể' };
@@ -213,12 +213,26 @@ async function onClick(e) {
     });
   }
   if (a === 'rename') {
-    const p = P.s.pets.find((x) => x.id === id), name = prompt('Đặt tên mới (tối đa 20 ký tự):', p?.name || '');
-    if (name === null) return;
-    return run(async () => { await api('PATCH', `/pets/${id}`, { name }); await refresh(root); });
+    const p = P.s.pets.find((x) => x.id === id);
+    let name = p?.name || '', err = '';
+    for (;;) {
+      const r = await ask({ title: 'Đổi tên', text: err || 'Tên phải riêng biệt và không trùng tên mặc định.', ok: 'Lưu', fields: [{ name: 'name', label: 'Tên mới', value: name, required: true }] });
+      if (!r) return;
+      name = r.name.trim();
+      try { await api('PATCH', `/pets/${id}`, { name }); await refresh(root); return toast('Đã đổi tên'); } catch (er) { err = er.message; }
+    }
   }
   if (a === 'adopt') return openAdopt(root);
-  if (a === 'adopt-do') return run(async () => { closeModal(); P.s = await api('POST', '/pets/adopt', { kind: t.dataset.kind }); P.sel = P.s.pets[P.s.pets.length - 1]?.id; toast('Đã nhận nuôi!'); draw(root); });
+  if (a === 'adopt-do') {
+    const kind = P.s.kinds.find((k) => k.id === t.dataset.kind); closeModal();
+    let name = '', err = '';
+    for (;;) { // hỏi tên cho tới khi hợp lệ hoặc người dùng hủy
+      const r = await ask({ title: `Đặt tên cho bạn ${kind.species.toLowerCase()} này`, text: err || `Bạn nhận nuôi ${kind.name}. Tên phải riêng biệt, không trùng tên bạn thú khác và không dùng tên mặc định (${P.s.kinds.map((k) => k.name).join(', ')}).`, ok: 'Nhận nuôi', fields: [{ name: 'name', label: 'Tên của bạn ấy', value: name, placeholder: 'Ví dụ: Bông, Xíu Mại', required: true }] });
+      if (!r) return;
+      name = r.name.trim();
+      try { P.s = await api('POST', '/pets/adopt', { kind: kind.id, name }); P.sel = P.s.pets[P.s.pets.length - 1]?.id; toast(`Đã nhận nuôi ${name}!`); return draw(root); } catch (er) { err = er.message; }
+    }
+  }
   if (a === 'expand') {
     const nx = P.s.home.next;
     if (!nx.levelOk) return toast(`Cần đạt cấp ${nx.minLevelName} để mở rộng lên ${nx.name}`);
