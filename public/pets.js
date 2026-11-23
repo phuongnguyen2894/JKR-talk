@@ -227,7 +227,12 @@ function mountAnims(root) {
     const step = () => {
       if (!el.isConnected || !P) return;
       const mode = animMode(id, el.dataset.scene === '1'), a = p.anim[mode] || p.anim.idle;
-      if (mode !== last) { last = mode; i = 0; }
+      if (mode !== last) { last = mode; i = 0; el._shut = false; }
+      if (a.blink) { // idle chỉ nháy mắt: mở mắt lâu (2,5 đến 6 giây), nhắm rất nhanh (~0,15 giây), thân không đổi
+        const shut = !!el._shut; img.src = a.urls[shut ? 1 : 0]; el._shut = !shut;
+        el._t = setTimeout(step, shut ? 150 : 2500 + Math.random() * 3500);
+        return;
+      }
       img.src = a.urls[i % a.urls.length]; i++;
       el._t = setTimeout(step, 1000 / a.fps);
     };

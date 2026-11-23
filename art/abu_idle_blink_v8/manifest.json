@@ -1,0 +1,29 @@
+{
+  "pet": "Abu",
+  "stage": 0,
+  "animation": "idle",
+  "description": "Blink-only idle: body remains static. Closed frame assembled from head 04 + body 02 composition as previously previewed.",
+  "canvas": [
+    384,
+    384
+  ],
+  "format": "PNG RGBA",
+  "frames": 6,
+  "sequence": [
+    "open",
+    "open",
+    "open",
+    "closed",
+    "open",
+    "open"
+  ],
+  "source_open": "Abu Stage0 idle source frame 02",
+  "source_closed": "Head frame 04 + body frame 02 composite preview",
+  "loop": "seamless",
+  "fps_reference": 6,
+  "notes": [
+    "Repeated open frames intentionally provide hold timing.",
+    "Transparent pixels normalized to transparent black to remove hidden RGB artifacts.",
+    "Draft package; visual QA needed before production approval."
+  ]
+}
