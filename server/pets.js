@@ -229,7 +229,7 @@ function moodOf(st) {
 const ART = { abu: true };
 const spriteUrl = (kind, stage) => (ART[kind] ? `/pets/${kind}/stage_${stage}.webp` : null);
 // Hoạt hình đã có (theo bạn và giai đoạn): idle, walk, happy. Giai đoạn nào chưa có thì hiển thị hình tĩnh.
-const ANIM = { abu: { 0: { idle: { fps: 6, n: 2, blink: true }, walk: { fps: 8, n: 6 }, happy: { fps: 8, n: 4 }, hungry: { fps: 6, n: 4 }, bored: { fps: 6, n: 4 }, dirty: { fps: 6, n: 4 }, sleepy: { fps: 6, n: 4 }, sad: { fps: 6, n: 4 }, eat: { fps: 6, n: 4 }, play: { fps: 8, n: 4 }, wash: { fps: 6, n: 4 }, sleep: { fps: 6, n: 4 } } } };
+const ANIM = { abu: { 0: { idle: { fps: 6, n: 2, blink: true }, walk: { fps: 8, n: 6 }, happy: { fps: 8, n: 4 }, hungry: { fps: 6, n: 4 }, bored: { fps: 6, n: 4 }, dirty: { fps: 6, n: 4 }, sleepy: { fps: 6, n: 4 }, sad: { fps: 6, n: 4 }, eat: { fps: 6, n: 4 }, play: { fps: 8, n: 4 }, wash: { fps: 6, n: 4 }, sleep: { fps: 6, n: 4 } }, 1: { idle: { fps: 6, n: 2, blink: true } } } };
 const animFor = (kind, stage) => {
   const a = ANIM[kind]?.[stage];
   return a ? Object.fromEntries(Object.entries(a).map(([name, v]) => [name, { fps: v.fps, ...(v.blink ? { blink: true } : {}), urls: Array.from({ length: v.n }, (_, i) => `/pets/${kind}/s${stage}/${name}/${String(i + 1).padStart(2, '0')}.webp`) }])) : null;

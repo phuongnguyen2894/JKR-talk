@@ -1946,6 +1946,8 @@ test('Nuôi thú: cửa hàng đồ ăn, đồ chơi, nhà/lồng/bể; vật ph
     assert.deepEqual(Object.fromEntries(Object.entries(abuPet.anim).map(([k, v]) => [k, v.urls.length])), { idle: 2, walk: 6, happy: 4, hungry: 4, bored: 4, dirty: 4, sleepy: 4, sad: 4, eat: 4, play: 4, wash: 4, sleep: 4 });
     assert.equal(abuPet.anim.walk.fps, 8); assert.equal(abuPet.anim.idle.blink, true); assert.equal(uni.anim, null);
     for (const a of Object.values(abuPet.anim)) for (const u of a.urls) assert.ok((await import('node:fs')).existsSync(`public${u}`), u);
+    // Giai đoạn Con nhỏ: mới có idle nháy mắt (2 khung), tệp có thật
+    for (const n of ['01', '02']) assert.ok((await import('node:fs')).existsSync(`public/pets/abu/s1/idle/${n}.webp`));
     db.prepare('UPDATE pets SET food = 20, stat_at = ? WHERE id = ?').run(now(), uni.id);
     assert.equal((await call('POST', `/pets/${uni.id}/feed`, { food: 'dog_tiec' }, u.token)).status, 400);
     assert.equal((await call('POST', '/pets/shop/buy', { item: 'food:dog_tiec', qty: 2 }, u.token)).status, 200);
