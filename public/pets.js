@@ -227,10 +227,13 @@ function mountAnims(root) {
     const step = () => {
       if (!el.isConnected || !P) return;
       const mode = animMode(id, el.dataset.scene === '1'), a = p.anim[mode] || p.anim.idle;
-      if (mode !== last) { last = mode; i = 0; el._shut = false; }
+      if (mode !== last) { last = mode; i = 0; el._shut = false; el._until = 0; }
       if (a.blink) { // idle chỉ nháy mắt: mở mắt lâu (2,5 đến 6 giây), nhắm rất nhanh (~0,15 giây), thân không đổi
-        const shut = !!el._shut; img.src = a.urls[shut ? 1 : 0]; el._shut = !shut;
-        el._t = setTimeout(step, shut ? 150 : 2500 + Math.random() * 3500);
+        // kiểm tra mỗi 60 ms (không hẹn giờ dài) để đổi sang walk/happy... ngay khi trạng thái đổi, không bị trễ vài giây
+        const t = Date.now();
+        if (!el._until) { el._shut = false; img.src = a.urls[0]; el._until = t + 2500 + Math.random() * 3500; }
+        else if (t >= el._until) { el._shut = !el._shut; img.src = a.urls[el._shut ? 1 : 0]; el._until = t + (el._shut ? 150 : 2500 + Math.random() * 3500); }
+        el._t = setTimeout(step, 60);
         return;
       }
       img.src = a.urls[i % a.urls.length]; i++;
