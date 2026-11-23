@@ -1,0 +1,59 @@
+[
+  {
+    "frame": "hungry_03",
+    "size": [
+      384,
+      384
+    ],
+    "alpha_values": [
+      0,
+      255
+    ],
+    "opaque_rgb_colors": 4661,
+    "bbox": [
+      88,
+      154,
+      305,
+      361
+    ],
+    "bottom_y": 360
+  },
+  {
+    "frame": "hungry_04",
+    "size": [
+      384,
+      384
+    ],
+    "alpha_values": [
+      0,
+      255
+    ],
+    "opaque_rgb_colors": 4650,
+    "bbox": [
+      95,
+      137,
+      299,
+      361
+    ],
+    "bottom_y": 360
+  },
+  {
+    "frame": "sleepy_04",
+    "size": [
+      384,
+      384
+    ],
+    "alpha_values": [
+      0,
+      255
+    ],
+    "opaque_rgb_colors": 5281,
+    "bbox": [
+      77,
+      120,
+      307,
+      361
+    ],
+    "bottom_y": 360
+  }
+]
