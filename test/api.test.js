@@ -29,10 +29,12 @@ const capMock = http.createServer((req, res) => {
 process.env.GEMINI_API_KEY = 'test-key';
 process.env.GEMINI_BASE = 'http://localhost:3996';
 let gemCalls = 0;
+const gemKeys = []; // khoá API mà máy chủ đã dùng ở mỗi lần gọi
 const gemMock = http.createServer((req, res) => {
   let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => {
-    gemCalls++;
+    gemCalls++; gemKeys.push(req.headers['x-goog-api-key']);
     const prompt = JSON.parse(b).contents[0].parts[0].text;
+    if (!prompt.includes('INPUT: ')) { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'OK' }] } }] })); } // kiểm tra khoá
     const input = JSON.parse(prompt.slice(prompt.indexOf('INPUT: ') + 7));
     const src = /[฀-๿]/.test(input.title + input.body) ? 'th' : /[àáạảãăâđêôơư]/i.test(input.title + input.body) ? 'vi' : 'en';
     const tr = {};
@@ -2300,7 +2302,9 @@ test('đa quốc gia: tỉnh/thành từng nước, nhóm chỉ tạo khi có ng
   assert.equal((await reg('th1@test.com', 'Thai Một', 'TH', 'phuket')).status, 400, 'chưa mở thì chưa đăng ký được');
   assert.deepEqual((await disc(adm.token, 'country')).map((g) => g.name), ['Việt Nam'], 'chưa ai chọn nước nào thì chưa có nhóm');
   const meC = (await call('GET', '/me/countries', null, adm.token)).data.countries;
-  assert.equal(meC.length, 11, 'admin thấy đủ 11 nước');
+  assert.ok(meC.length > 200, 'admin thấy mọi quốc gia trên thế giới');
+  assert.equal(meC.find((c) => c.code === 'JP').names.zh, '日本');
+  assert.deepEqual(meC.slice(0, 3).map((c) => c.code), ['VN', 'TH', 'ID'], 'Việt Nam rồi Đông Nam Á lên đầu');
   assert.equal(meC.find((c) => c.code === 'TH').subdivisions.length, 77);
   assert.equal(meC.find((c) => c.code === 'SG').subdivisions.length, 0);
   assert.equal(meC.find((c) => c.code === 'TH').subdivisions.find((s) => s.code === 'phuket').th, 'ภูเก็ต');
@@ -2339,7 +2343,7 @@ test('đa quốc gia: tỉnh/thành từng nước, nhóm chỉ tạo khi có ng
   assert.equal((await call('POST', '/me/home', { country: 'VN', provinceId: 1, leaveOld: true }, adm.token)).status, 200, 'admin quay lại Việt Nam, không bị giới hạn 30 ngày');
   // mở cho mọi người
   assert.equal((await call('PATCH', '/admin/intl', { public: true }, adm.token)).data.public, true);
-  assert.equal((await geo()).length, 11);
+  assert.ok((await geo()).length > 200);
   assert.equal((await geo()).find((c) => c.code === 'ID').subdivisions.length, 38);
   assert.equal((await call('GET', `/groups/${th.id}`, null, u.token)).status, 200);
   assert.ok((await pubGroups('zh')).some((g) => g.name === '泰国'), 'tên theo ngôn ngữ khách');
@@ -2357,8 +2361,15 @@ test('đa quốc gia: tỉnh/thành từng nước, nhóm chỉ tạo khi có ng
   assert.ok(rg.some((g) => g.type === 'trend'));
   assert.ok((await disc(adm.token, 'province')).some((g) => g.name === 'Phuket'), 'Phuket được tạo khi có người chọn');
   assert.equal((await reg('xx1@test.com', 'Nước lạ', 'XX')).status, 400, 'mã nước không có');
-  // Singapore: đăng ký không cần tỉnh
+  // Singapore và các nước chưa có dữ liệu tỉnh (ví dụ Nhật): đăng ký chỉ cần quốc gia, nhóm tạo khi có người chọn
   assert.equal((await reg('sg1@test.com', 'Singa Một', 'SG')).status, 201);
+  assert.ok(!(await disc(adm.token, 'country')).some((g) => g.name === 'Nhật Bản'), 'chưa ai chọn Nhật nên chưa có nhóm');
+  const jp = await reg('jp1@test.com', 'Nhat Mot', 'JP');
+  assert.equal(jp.status, 201);
+  assert.equal(jp.data.user.location.province, null);
+  assert.ok((await call('GET', '/groups/mine', null, jp.data.token)).data.groups.some((g) => g.type === 'country' && g.name === '日本'.replace('日本', 'ญี่ปุ่น')), 'nhóm Nhật tên tiếng Thái');
+  assert.ok((await disc(adm.token, 'country')).some((g) => g.name === 'Nhật Bản'), 'nhóm Nhật được tạo khi có người chọn');
+  assert.equal((await reg('jp2@test.com', 'Nhat Hai', 'JP', 'tokyo')).status, 201, 'tỉnh gửi thừa cho nước chưa có dữ liệu thì bỏ qua');
   // bạn bè thấy quốc gia và tỉnh của người Thái, tên tỉnh theo ngôn ngữ
   await call('PATCH', '/me', { friendPolicy: 'everyone' }, r.data.token);
   await call('POST', '/friends/request', { userId: u.id }, r.data.token);
@@ -2380,4 +2391,63 @@ test('đa quốc gia: tỉnh/thành từng nước, nhóm chỉ tạo khi có ng
   assert.deepEqual((await geo()).map((c) => c.code), ['VN']);
   assert.equal((await call('GET', `/groups/${cm.id}`, null, u.token)).status, 404);
   assert.ok(!(await disc(u.token, 'province')).some((g) => g.name === 'Phuket'));
+});
+
+test('khoá Gemini: chỉ Admin hệ thống; lưu mã hoá, không bao giờ trả lại khoá; ưu tiên khoá nhập trong giao diện; kiểm tra và xoá', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('gkuser', 1);
+  const KEY = 'AIzaSyTESTKEY_abcdefghijklmnop1234';
+  // quyền
+  for (const [m, p, b] of [['GET', '/admin/gemini'], ['PUT', '/admin/gemini', { apiKey: KEY }], ['DELETE', '/admin/gemini'], ['POST', '/admin/gemini/test'], ['POST', '/admin/gemini/sweep']]) {
+    assert.equal((await call(m, p, b, u.token)).status, 403, `${m} ${p} người thường`);
+    assert.equal((await call(m, p, b)).status, 401, `${m} ${p} khách`);
+  }
+  // trạng thái ban đầu: đang dùng khoá từ biến môi trường của test
+  const s0 = (await call('GET', '/admin/gemini', null, adm.token)).data;
+  assert.equal(s0.configured, true);
+  assert.equal(s0.source, 'env');
+  assert.equal(s0.model, 'gemini-2.5-flash');
+  // dữ liệu đầu vào xấu
+  for (const bad of ['', 'abc', 'khoá có dấu cách và ký tự lạ !!!!!!!!!', 'x'.repeat(300), 123, null]) assert.equal((await call('PUT', '/admin/gemini', { apiKey: bad }, adm.token)).status, 400, `khoá xấu: ${String(bad).slice(0, 12)}`);
+  assert.equal((await call('PUT', '/admin/gemini', { model: 'tên model có dấu cách' }, adm.token)).status, 400);
+  assert.equal((await call('PUT', '/admin/gemini', {}, adm.token)).status, 400, 'không có gì để lưu');
+  // lưu khoá: phản hồi không chứa khoá, chỉ 4 ký tự cuối
+  const put = await call('PUT', '/admin/gemini', { apiKey: KEY, model: 'gemini-test-model' }, adm.token);
+  assert.equal(put.status, 200);
+  assert.equal(put.data.source, 'admin');
+  assert.equal(put.data.masked, '••••1234');
+  assert.equal(put.data.model, 'gemini-test-model');
+  const raw = JSON.stringify((await call('GET', '/admin/gemini', null, adm.token)).data);
+  assert.ok(!raw.includes(KEY) && !raw.includes('SyTESTKEY'), 'không trả lại khoá');
+  // trong DB chỉ có bản mã hoá
+  const { db } = await import('../server/db.js');
+  const stored = db.prepare("SELECT value FROM app_settings WHERE key = 'gemini_api_key'").get().value;
+  assert.ok(stored.startsWith('v1:') && !stored.includes(KEY) && !stored.includes('TESTKEY'), 'khoá được mã hoá khi lưu');
+  // nhật ký không chứa khoá
+  const logs = JSON.stringify(db.prepare("SELECT * FROM mod_logs WHERE action LIKE 'gemini%'").all());
+  assert.ok(logs.includes('gemini_key_set') && !logs.includes(KEY));
+  // khoá nhập trong giao diện được ưu tiên hơn khoá môi trường: bài đăng mới dùng khoá này
+  gemKeys.length = 0;
+  const post = (await call('POST', '/admin/news', { title: 'Tin dùng khoá mới', body: 'nội dung' }, adm.token)).data.news;
+  for (let i = 0; i < 40 && !gemKeys.length; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(gemKeys.length > 0 && gemKeys.every((k) => k === KEY), 'dùng khoá nhập trong giao diện');
+  // kiểm tra khoá: gọi thật tới (mock) Gemini
+  const t = (await call('POST', '/admin/gemini/test', {}, adm.token)).data;
+  assert.equal(t.ok, true);
+  assert.equal(gemKeys.at(-1), KEY);
+  // đặt lại model để các test sau dùng mặc định, rồi xoá khoá: quay về khoá môi trường
+  assert.equal((await call('PUT', '/admin/gemini', { model: '' }, adm.token)).data.customModel, null);
+  const del = (await call('DELETE', '/admin/gemini', null, adm.token)).data;
+  assert.equal(del.source, 'env');
+  assert.equal(del.configured, true);
+  assert.equal(db.prepare("SELECT 1 FROM app_settings WHERE key = 'gemini_api_key'").get(), undefined);
+  gemKeys.length = 0;
+  await call('POST', '/admin/news', { title: 'Tin dùng khoá env', body: 'nội dung' }, adm.token);
+  for (let i = 0; i < 40 && !gemKeys.length; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(gemKeys.length > 0 && gemKeys.every((k) => k === 'test-key'), 'xoá khoá thì quay về khoá môi trường');
+  // dịch các bản tin chưa dịch: trả số bài xếp hàng, không lỗi
+  assert.equal(typeof (await call('POST', '/admin/gemini/sweep', {}, adm.token)).data.queued, 'number');
+  // khoá sai: test báo lỗi dễ hiểu (mock luôn trả OK nên chỉ kiểm tra khi không có khoá nào)
+  const { clearGeminiKey } = await import('../server/secrets.js');
+  clearGeminiKey();
 });

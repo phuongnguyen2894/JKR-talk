@@ -1,7 +1,8 @@
 // Bình luận cho bản tin (kind 'news') và tin nhắn ở Chủ đề nóng (kind 'msg')
 import { $, esc, api, avatar, fmtDateTime, linkify, actions, toast, fail, confirmBox, avatarR, roleOf, roleClass, roleSr } from './core.js';
+import { t } from './i18n.js';
 
-const label = (n) => (n ? `${n} bình luận` : 'Bình luận');
+const label = (n) => (n ? t('cmt.count', { n }) : t('cmt.label'));
 
 // Nút mở khung bình luận + khung (ẩn) đặt ngay dưới
 export function commentBlock(kind, id, count = 0) {
@@ -16,18 +17,18 @@ const itemHtml = (c) => {
   const r = roleOf(c.user);
   return `<div class="cmt-item" data-cid="${c.id}">${avatarR(c.user, r, 'sm')}
     <div class="cmt-body"><div class="cmt-meta"><b class="${roleClass(r).trim()}">${esc(c.user.displayName)}${roleSr(r)}</b> <span class="tiny muted">${fmtDateTime(c.createdAt)}</span>
-      ${c.canDelete ? `<button type="button" class="link-btn cmt-del" data-act="cmt-del" data-cid="${c.id}">Xóa</button>` : ''}</div>
+      ${c.canDelete ? `<button type="button" class="link-btn cmt-del" data-act="cmt-del" data-cid="${c.id}">${t('news.delete')}</button>` : ''}</div>
       <div class="cmt-text">${linkify(c.body)}</div></div></div>`;
 };
 
 async function load(wrap) {
   const box = $('.cmt-box', wrap);
-  box.innerHTML = '<p class="small muted">Đang tải…</p>';
+  box.innerHTML = `<p class="small muted">${t('cmt.loading')}</p>`;
   const { comments } = await api('GET', `/comments/${wrap.dataset.kind}/${wrap.dataset.id}`);
-  box.innerHTML = `<div class="cmt-list">${comments.map(itemHtml).join('') || '<p class="small muted cmt-empty">Chưa có bình luận nào. Hãy là người đầu tiên!</p>'}</div>
-    <form class="cmt-form"><label class="sr-only" for="cmt-${wrap.dataset.kind}-${wrap.dataset.id}">Viết bình luận</label>
-      <input class="input" id="cmt-${wrap.dataset.kind}-${wrap.dataset.id}" maxlength="1000" placeholder="Viết bình luận…" autocomplete="off">
-      <button class="btn primary sm">Gửi</button></form>`;
+  box.innerHTML = `<div class="cmt-list">${comments.map(itemHtml).join('') || `<p class="small muted cmt-empty">${t('cmt.empty')}</p>`}</div>
+    <form class="cmt-form"><label class="sr-only" for="cmt-${wrap.dataset.kind}-${wrap.dataset.id}">${t('cmt.writeAria')}</label>
+      <input class="input" id="cmt-${wrap.dataset.kind}-${wrap.dataset.id}" maxlength="1000" placeholder="${t('cmt.write')}" autocomplete="off">
+      <button class="btn primary sm">${t('cmt.send')}</button></form>`;
   setCount(wrap, comments.length);
 }
 function setCount(wrap, n) {
@@ -45,7 +46,7 @@ actions['cmt-toggle'] = async (el) => {
   if (open) { try { await load(wrap); $('input', box)?.focus(); } catch (e) { box.hidden = true; fail(e); } }
 };
 actions['cmt-del'] = async (el) => {
-  if (!(await confirmBox('Xóa bình luận?', 'Bình luận sẽ biến mất với mọi người.', 'Xóa', true))) return;
+  if (!(await confirmBox(t('cmt.delTitle'), t('cmt.delText'), t('news.delete'), true))) return;
   const wrap = el.closest('.cmt');
   try { await api('DELETE', `/comments/${el.dataset.cid}`); await load(wrap); } catch (e) { fail(e); }
 };
@@ -64,7 +65,7 @@ document.addEventListener('submit', async (e) => {
     $('.cmt-list', wrap).insertAdjacentHTML('beforeend', itemHtml(comment));
     setCount(wrap, Number($('.cmt-count', wrap).dataset.n) + 1);
     input.value = '';
-    toast('Đã gửi bình luận');
+    toast(t('cmt.sent'));
   } catch (er) { fail(er); }
   btn.disabled = false;
   input.focus();

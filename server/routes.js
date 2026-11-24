@@ -13,7 +13,8 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
-import { scheduleTranslate, newsTexts, isLang } from './translate.js';
+import { scheduleTranslate, newsTexts, isLang, pingGemini, sweepUntranslated } from './translate.js';
+import { geminiConfig, saveGemini, clearGeminiKey, maskKey, geminiUpdatedAt } from './secrets.js';
 import { track, statsReport, linkVisitor, VID_RE, liveSnapshot } from './stats.js';
 import { mountMuayThai } from './muaythai.js';
 import { mountPvp } from './pvp.js';
@@ -516,11 +517,46 @@ api.post(
 api.get('/me/countries', wrap((req, res) => {
   res.json({ countries: countriesFor(req.user).map(withSubs), current: req.user.country || COUNTRY.code, subdivision: req.user.subdivision || null });
 }));
+// Khoá Gemini (dịch bản tin): chỉ Admin hệ thống; khoá được mã hoá khi lưu và KHÔNG bao giờ trả lại, chỉ trả 4 ký tự cuối
+const geminiStatus = () => { const c = geminiConfig(); return { configured: !!c.key, source: c.source, masked: maskKey(c.key), model: c.model, customModel: c.customModel, updatedAt: geminiUpdatedAt() }; };
+api.get('/admin/gemini', superOnly, wrap((_req, res) => res.json(geminiStatus())));
+api.put('/admin/gemini', superOnly, wrap((req, res) => {
+  rateLimit(`gemini:${req.user.id}`, 20, 600_000);
+  const b = req.body || {};
+  const out = {};
+  if (b.apiKey !== undefined) {
+    const k = typeof b.apiKey === 'string' ? b.apiKey.trim() : '';
+    if (!/^[A-Za-z0-9_-]{20,200}$/.test(k)) throw bad('Khoá API không hợp lệ (chỉ gồm chữ, số, dấu - và _, dài 20 ký tự trở lên)');
+    out.apiKey = k;
+  }
+  if (b.model !== undefined) {
+    const m = typeof b.model === 'string' ? b.model.trim() : '';
+    if (m && !/^[A-Za-z0-9._-]{3,80}$/.test(m)) throw bad('Tên model không hợp lệ');
+    out.model = m;
+  }
+  if (!Object.keys(out).length) throw bad('Không có gì để lưu');
+  saveGemini(out);
+  log(req.user.id, out.apiKey ? 'gemini_key_set' : 'gemini_model_set', {});
+  res.json(geminiStatus());
+}));
+api.delete('/admin/gemini', superOnly, wrap((req, res) => {
+  clearGeminiKey();
+  log(req.user.id, 'gemini_key_clear', {});
+  res.json(geminiStatus());
+}));
+api.post('/admin/gemini/test', superOnly, wrap(async (req, res) => {
+  rateLimit(`geminitest:${req.user.id}`, 10, 600_000);
+  res.json(await pingGemini());
+}));
+api.post('/admin/gemini/sweep', superOnly, wrap((req, res) => {
+  rateLimit(`geminisweep:${req.user.id}`, 6, 600_000);
+  res.json({ queued: sweepUntranslated() });
+}));
 // Admin hệ thống: xem các quốc gia, số thành viên, và bật/tắt "mở cho mọi người"
 api.get('/admin/intl', superOnly, wrap((_req, res) => {
   const counts = Object.fromEntries(db.prepare("SELECT g.key AS k, COUNT(m.user_id) c FROM groups g LEFT JOIN members m ON m.group_id = g.id WHERE g.type = 'country' GROUP BY g.key").all().map((r) => [r.k, r.c]));
   const made = Object.fromEntries(db.prepare("SELECT substr(key, 1, instr(key, ':') - 1) AS k, COUNT(*) c FROM groups WHERE type = 'province' AND instr(key, ':') > 0 GROUP BY k").all().map((r) => [r.k, r.c]));
-  res.json({ public: intlPublic(), countries: COUNTRIES.map((c) => ({ code: c.code, names: c.names, members: counts[c.code] || 0, home: c.code === COUNTRY.code, provinces: c.code === COUNTRY.code ? PROVINCES.length : subdivisionsOf(c.code).length, provinceGroups: made[c.code] || 0 })) });
+  res.json({ public: intlPublic(), total: COUNTRIES.length, countries: COUNTRIES.filter((c) => c.sea || counts[c.code] || made[c.code]).map((c) => ({ code: c.code, names: c.names, members: counts[c.code] || 0, home: c.code === COUNTRY.code, provinces: c.code === COUNTRY.code ? PROVINCES.length : subdivisionsOf(c.code).length, provinceGroups: made[c.code] || 0 })) });
 }));
 api.patch('/admin/intl', superOnly, wrap((req, res) => {
   if (typeof req.body.public !== 'boolean') throw bad('Giá trị không hợp lệ');

@@ -7,7 +7,7 @@ import { adminEmoji } from './emoji.js';
 import { adminGame } from './mtadmin.js';
 import { renderStats } from './stats.js';
 import { commentBlock } from './comments.js';
-import { $, $$, esc, S, api, go, icon, locText, subLabel, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify, newsGallery, lightbox, lvBadge } from './core.js';
+import { $, $$, esc, S, api, go, icon, locText, subLabel, countryOptions, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify, newsGallery, lightbox, lvBadge } from './core.js';
 
 // ===========================================================================
 // Đăng nhập / đăng ký (render vào #root, ngoài shell)
@@ -50,7 +50,7 @@ export async function renderRegister(root) {
       <div class="field"><label for="dn">${t('auth.displayName')}</label><input class="input" id="dn" required minlength="2" maxlength="30" autocomplete="nickname" placeholder="${t('auth.dnPh')}"></div>
       <div class="field"><label for="pw">${t('auth.password')}</label><input class="input" id="pw" type="password" required minlength="8" autocomplete="new-password" placeholder="${t('set.pwHint')}"></div>
       <div class="field"><label for="pw2">${t('auth.confirmPw')}</label><input class="input" id="pw2" type="password" required minlength="8" autocomplete="new-password" placeholder="${t('auth.pw2Ph')}"></div>
-      ${(S.geo.countries || []).length > 1 ? `<div class="field"><label for="country">${t('auth.country')}</label><select class="input" id="country">${S.geo.countries.map((c) => `<option value="${c.code}">${esc(c.names[getLang()] || c.name)}</option>`).join('')}</select></div>` : ''}
+      ${(S.geo.countries || []).length > 1 ? `<div class="field"><label for="country">${t('auth.country')}</label><select class="input" id="country">${countryOptions(S.geo.countries)}</select></div>` : ''}
       <div class="field" id="subfield" hidden><label for="subdiv">${t('auth.city')}</label><select class="input" id="subdiv"></select></div>
       <div class="geo-card" id="geocard">
         <div style="font-weight:700">${t('auth.where')}</div>
@@ -253,7 +253,7 @@ export async function renderSettings(view) {
         <button class="btn">${t('set.changePw')}</button></form></section>
     <section class="card col"><div class="h2" style="margin:0">${t('set.home')}</div>
       <p class="small muted">${t('set.homeNote')}${cooldown ? ` <b>${t('set.homeCooldown')}</b>` : ''}</p>
-      <form id="hf" class="col">${myCountries.length > 1 ? `<div class="field"><label for="hc">${t('set.country')}</label><select class="input" id="hc">${myCountries.map((c) => `<option value="${c.code}" ${c.code === (u.country || 'VN') ? 'selected' : ''}>${esc(c.names[getLang()] || c.name)}</option>`).join('')}</select></div>` : ''}<div class="field" id="hsfield" hidden><label for="hs2">${t('auth.city')}</label><select class="input" id="hs2"></select></div><div class="field" id="hpfield" ${(u.country || 'VN') !== 'VN' ? 'hidden' : ''}><label for="hp">${t('auth.city')}</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+      <form id="hf" class="col">${myCountries.length > 1 ? `<div class="field"><label for="hc">${t('set.country')}</label><select class="input" id="hc">${countryOptions(myCountries, u.country || 'VN')}</select></div>` : ''}<div class="field" id="hsfield" hidden><label for="hs2">${t('auth.city')}</label><select class="input" id="hs2"></select></div><div class="field" id="hpfield" ${(u.country || 'VN') !== 'VN' ? 'hidden' : ''}><label for="hp">${t('auth.city')}</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
       <button class="btn" ${cooldown ? 'disabled' : ''}>${t('set.changeHome')}</button></form></section>
     <div id="pushslot"></div>
     <section class="card col"><div class="h2" style="margin:0">${t('set.privacy')}</div>
@@ -329,7 +329,7 @@ const LOG_LABEL = { delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng', ki
 export async function renderAdmin(view, tab = 'reports') {
   const admin = S.me.role === 'admin';
   if (!admin) tab = 'reports';
-  const tabs = admin ? [['reports', 'Báo cáo'], ['topics', 'Chủ đề chờ duyệt'], ['emoji', 'Emoji'], ['game', 'Game'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin'], ['intl', 'Quốc gia'], ['stats', 'Thống kê']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
+  const tabs = admin ? [['reports', 'Báo cáo'], ['topics', 'Chủ đề chờ duyệt'], ['emoji', 'Emoji'], ['game', 'Game'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin'], ['intl', 'Quốc gia'], ['gemini', 'Dịch tự động'], ['stats', 'Thống kê']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
   view.innerHTML = `<div class="page"><div class="page-inner"><h1>${admin ? 'Quản trị' : 'Báo cáo trong nhóm của bạn'}</h1>
     <div class="pillnav">${tabs.map(([k, n]) => `<button data-tab="${k}" aria-pressed="${k === tab}">${n}<span class="tab-cnt" data-cnt="${k}"></span></button>`).join('')}</div><div id="tabbody"></div></div></div>`;
   $$('[data-tab]', view).forEach((b) => (b.onclick = () => renderAdmin(view, b.dataset.tab)));
@@ -347,6 +347,7 @@ export async function renderAdmin(view, tab = 'reports') {
     if (tab === 'mods') await adminMods(body);
     if (tab === 'admins' && S.me.isSuper) await adminAdmins(body);
     if (tab === 'intl' && S.me.isSuper) await adminIntl(body);
+    if (tab === 'gemini' && S.me.isSuper) await adminGemini(body);
     if (tab === 'stats' && S.me.isSuper) await renderStats(body);
     if (tab === 'logs') await adminLogs(body);
   } catch (e) { body.innerHTML = `<div class="error">${esc(e.message)}</div>`; }
@@ -433,14 +434,62 @@ actions['revoke-admin'] = async (el) => {
   if (!(await confirmBox('Thu hồi quyền Admin?', 'Người này trở lại người dùng thường (quyền mod ở các nhóm, nếu có, vẫn giữ).', 'Thu hồi', true))) return;
   try { await api('DELETE', `/admin/admins/${el.dataset.id}`); renderAdmin($('#view'), 'admins'); } catch (e) { fail(e); }
 };
+async function adminGemini(body) {
+  const s = await api('GET', '/admin/gemini');
+  const when = s.updatedAt ? new Date(s.updatedAt).toLocaleString('vi-VN') : '';
+  body.innerHTML = `<section class="card col"><div class="h2" style="margin:0">Dịch bản tin tự động (Gemini)</div>
+    <p class="small muted" id="gstat" role="status">${s.configured
+      ? `<b>Đã có khoá</b> <code>${esc(s.masked)}</code> · nguồn: ${s.source === 'admin' ? 'nhập trong trang này' : 'biến môi trường GEMINI_API_KEY trên máy chủ'} · model: <code>${esc(s.model)}</code>${when && s.source === 'admin' ? ` · cập nhật ${esc(when)}` : ''}`
+      : '<b>Chưa có khoá.</b> Bản tin chỉ hiện bản gốc, chưa dịch sang ngôn ngữ khác.'}</p>
+    <form id="gf" class="col" autocomplete="off">
+      <div class="field"><label for="gk">Khoá API Gemini</label>
+        <input class="input" id="gk" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${s.configured ? 'Để trống nếu không đổi khoá' : 'Dán khoá API vào đây'}" ${s.configured ? '' : 'required'}>
+        <span class="tiny muted">Tạo khoá tại Google AI Studio (aistudio.google.com/apikey). Khoá được mã hoá khi lưu và không bao giờ hiện lại trên trang này.</span></div>
+      <div class="field"><label for="gm">Model (không bắt buộc)</label>
+        <input class="input" id="gm" type="text" autocomplete="off" spellcheck="false" value="${esc(s.customModel || '')}" placeholder="gemini-2.5-flash (mặc định)">
+        <span class="tiny muted">Để trống để dùng model mặc định.</span></div>
+      <div class="row wrap"><button class="btn primary" id="gsave">Lưu và kiểm tra</button>
+        ${s.configured ? '<button type="button" class="btn" id="gtest">Kiểm tra khoá</button><button type="button" class="btn" id="gsweep">Dịch các bản tin chưa dịch</button>' : ''}
+        ${s.source === 'admin' ? '<button type="button" class="btn danger" id="gdel">Xóa khoá</button>' : ''}</div>
+    </form>
+    <div id="gres" role="status" aria-live="polite"></div>
+    <p class="tiny muted">Khi đăng bản tin, tiêu đề và nội dung (nội dung đăng công khai, không kèm dữ liệu người dùng) được gửi tới Google Gemini để nhận diện ngôn ngữ và dịch. Khoá nhập ở đây được ưu tiên hơn biến môi trường trên máy chủ.</p></section>`;
+  const show = (ok, msg) => { $('#gres').innerHTML = `<div class="${ok ? 'notice' : 'error'} small" ${ok ? '' : 'role="alert"'}>${esc(msg)}</div>`; };
+  const test = async () => { show(true, 'Đang kiểm tra...'); const r = await api('POST', '/admin/gemini/test'); show(r.ok, r.ok ? 'Khoá hoạt động, Gemini đã trả lời.' : `Chưa dùng được: ${r.message || 'lỗi không rõ'}`); return r.ok; };
+  $('#gf').onsubmit = async (e) => {
+    e.preventDefault();
+    const k = $('#gk').value.trim(), m = $('#gm').value.trim();
+    const payload = {};
+    if (k) payload.apiKey = k;
+    if (m !== (s.customModel || '')) payload.model = m;
+    if (!Object.keys(payload).length) return show(false, 'Chưa có thay đổi nào để lưu.');
+    $('#gsave').disabled = true;
+    try {
+      await api('PUT', '/admin/gemini', payload);
+      $('#gk').value = '';
+      const ok = await test();
+      toast(ok ? 'Đã lưu khoá' : 'Đã lưu nhưng khoá chưa dùng được');
+      const msg = $('#gres').innerHTML;
+      await adminGemini(body);
+      $('#gres').innerHTML = msg;
+    } catch (er) { $('#gsave').disabled = false; show(false, er.message); }
+  };
+  if ($('#gtest')) $('#gtest').onclick = () => test().catch((er) => show(false, er.message));
+  if ($('#gsweep')) $('#gsweep').onclick = async () => { try { const r = await api('POST', '/admin/gemini/sweep'); show(true, r.queued ? `Đã xếp hàng dịch ${r.queued} bản tin chưa có bản dịch (làm nền, vài giây mỗi bài).` : 'Không có bản tin nào cần dịch.'); } catch (er) { show(false, er.message); } };
+  if ($('#gdel')) $('#gdel').onclick = async () => {
+    if (!(await confirmBox('Xóa khoá Gemini?', 'Bản tin mới sẽ không được dịch nữa (nếu không còn khoá trong biến môi trường). Bản dịch đã có vẫn giữ nguyên.', 'Xóa', true))) return;
+    try { await api('DELETE', '/admin/gemini'); toast('Đã xóa khoá'); await adminGemini(body); } catch (er) { fail(er); }
+  };
+}
+
 async function adminIntl(body) {
   const r = await api('GET', '/admin/intl');
-  body.innerHTML = `<section class="card col"><div class="h2" style="margin:0">Quốc gia Đông Nam Á</div>
+  body.innerHTML = `<section class="card col"><div class="h2" style="margin:0">Quốc gia trên thế giới</div>
     <p class="small muted">Việt Nam luôn mở. Các nước khác ${r.public ? '<b>đang mở cho mọi người</b>: ai cũng chọn được khi đăng ký và thấy nhóm quốc gia.' : '<b>đang chỉ Admin thấy</b>: người dùng thường và khách không thấy nhóm và không chọn được khi đăng ký.'}</p>
     <label class="check"><input type="checkbox" id="ipub" ${r.public ? 'checked' : ''}> Mở các quốc gia ngoài Việt Nam cho mọi người</label>
     <p class="tiny muted">Để thử trước: vào Cài đặt, mục "Vị trí home", chọn quốc gia (Admin không bị giới hạn 30 ngày), rồi quay lại Việt Nam khi xong. Mỗi nước có nhóm chat cấp quốc gia và nhóm theo tỉnh/thành; nhóm chỉ được tạo khi có người chọn nơi đó.</p>
-    <div class="stat-table" role="table" aria-label="Quốc gia">${r.countries.map((c) => `<div class="stat-row" role="row"><span role="cell">${esc(c.names.vi)} <span class="tiny muted">${esc(c.names.en)} · ${esc(c.names.th)} · ${esc(c.names.zh)}</span><span class="tiny muted" style="display:block">${c.provinces ? `${c.provinceGroups}/${c.provinces} nhóm tỉnh/thành đã tạo` : 'Thành quốc: chỉ cấp quốc gia'}</span></span><b role="cell">${c.members.toLocaleString('vi-VN')}</b></div>`).join('')}</div>
-    <p class="tiny muted">Số bên phải là số thành viên của nhóm quốc gia. Nhóm quốc gia và nhóm tỉnh/thành của các nước ngoài Việt Nam chỉ được tạo khi có người đầu tiên chọn nơi đó.</p></section>`;
+    <div class="stat-table" role="table" aria-label="Quốc gia">${r.countries.map((c) => `<div class="stat-row" role="row"><span role="cell"><b>${esc(c.names.vi)}</b> <span class="tiny muted" style="display:block">${esc(c.names.en)} · ${esc(c.names.th)} · ${esc(c.names.zh)}</span><span class="tiny muted" style="display:block">${c.provinces ? `${c.provinceGroups}/${c.provinces} nhóm tỉnh/thành đã tạo` : 'Thành quốc: chỉ cấp quốc gia'}</span></span><b role="cell">${c.members.toLocaleString('vi-VN')}</b></div>`).join('')}</div>
+    <p class="tiny muted">Danh sách rút gọn: Việt Nam, Đông Nam Á (có cả tỉnh/thành) và các nước đã có thành viên (chỉ cấp quốc gia). Tổng cộng ${r.total} quốc gia có thể chọn. Số bên phải là số thành viên của nhóm quốc gia. Nhóm quốc gia và nhóm tỉnh/thành của các nước ngoài Việt Nam chỉ được tạo khi có người đầu tiên chọn nơi đó.</p></section>`;
   $('#ipub').onchange = async (e) => {
     const on = e.target.checked;
     if (on && !(await confirmBox('Mở các quốc gia cho mọi người?', 'Người dùng mới sẽ chọn được Thái Lan, Indonesia, Malaysia... khi đăng ký, và mọi người thấy các nhóm quốc gia. Bạn có thể đóng lại, nhưng nhóm đã có thành viên sẽ bị ẩn với họ khi đóng.', 'Mở'))) { e.target.checked = false; return; }

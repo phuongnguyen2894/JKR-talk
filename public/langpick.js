@@ -34,6 +34,7 @@ export function openLangModal() {
     <div class="lang-list" role="group" aria-label="${esc(t('lang.title'))}">${LANGS.map((l) => `<button type="button" class="lang-card" data-act="lang-set" data-lang="${l.code}" aria-pressed="${cur === l.code}" lang="${l.code === 'zh' ? 'zh-Hans' : l.code}"><b>${esc(l.name)}</b></button>`).join('')}</div>
     <p class="small muted">${esc(t('lang.hint'))}</p>
     <div class="btns"><button type="button" class="btn" data-close>${esc(t('lang.close'))}</button></div>`);
+  $('.lang-card[aria-pressed="true"]', m)?.focus(); // vòng focus nằm đúng ngôn ngữ đang chọn, không gây hiểu nhầm hai ô cùng được chọn
   $('[data-close]', m).onclick = () => { try { localStorage.setItem('jkr_lang', getLang()); } catch { /* bỏ qua */ } closeModal(); };
 }
 

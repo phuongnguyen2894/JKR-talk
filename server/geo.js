@@ -19,23 +19,25 @@ export const PROVINCES = [
 export const provinceById = (id) => PROVINCES.find((p) => p.id === Number(id));
 export const regionByCode = (code) => REGIONS.find((r) => r.code === code);
 
-// ---- Quốc gia Đông Nam Á (mở rộng đa quốc gia) ---------------------------------
-// Mức quốc gia: mỗi nước một nhóm chat (chưa có tỉnh/thành, vùng). Việt Nam giữ nguyên 3 miền + 63 tỉnh/thành.
-// Các nước ngoài Việt Nam chỉ hiện cho Admin cho tới khi Admin bật "mở cho mọi người" (xem bảng app_settings, khoá intl_public).
-// Tên: [Việt, Anh, Thái, Trung giản thể]
-const C = (code, vi, en, th, zh) => ({ code, name: vi, names: { vi, en, th, zh } });
-export const COUNTRIES = [
-  C('VN', 'Việt Nam', 'Vietnam', 'เวียดนาม', '越南'),
-  C('TH', 'Thái Lan', 'Thailand', 'ไทย', '泰国'),
-  C('ID', 'Indonesia', 'Indonesia', 'อินโดนีเซีย', '印度尼西亚'),
-  C('MY', 'Malaysia', 'Malaysia', 'มาเลเซีย', '马来西亚'),
-  C('PH', 'Philippines', 'Philippines', 'ฟิลิปปินส์', '菲律宾'),
-  C('SG', 'Singapore', 'Singapore', 'สิงคโปร์', '新加坡'),
-  C('KH', 'Campuchia', 'Cambodia', 'กัมพูชา', '柬埔寨'),
-  C('LA', 'Lào', 'Laos', 'ลาว', '老挝'),
-  C('MM', 'Myanmar', 'Myanmar', 'เมียนมา', '缅甸'),
-  C('BN', 'Brunei', 'Brunei', 'บรูไน', '文莱'),
-  C('TL', 'Đông Timor', 'Timor-Leste', 'ติมอร์-เลสเต', '东帝汶'),
-];
+// ---- Quốc gia trên thế giới (mở rộng đa quốc gia) -------------------------------
+// Mọi nước đều ở mức quốc gia; tỉnh/thành chỉ có cho các nước Đông Nam Á (xem geo_sea.js), Việt Nam giữ 3 miền + 63 tỉnh/thành.
+// Các nước ngoài Việt Nam chỉ hiện cho Admin cho tới khi Admin bật "mở cho mọi người" (bảng app_settings, khoá intl_public).
+// Nhóm chat của từng nước CHỈ được tạo khi có người đầu tiên chọn nước đó. Tên nước 4 thứ tiếng lấy từ dữ liệu ICU của Node (Intl.DisplayNames).
+const CODES = ('AD AE AF AG AI AL AM AO AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ '
+  + 'DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GT GU GW GY HK HN HR HT HU ID IE IL IM IN IQ IR IS IT JE JM JO JP '
+  + 'KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ '
+  + 'OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TG TH TJ TK TL TM TN TO TR TT TV TW TZ '
+  + 'UA UG US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW').split(' ');
+// Đông Nam Á: hiện đầu danh sách chọn (sau Việt Nam)
+export const SEA_CODES = ['VN', 'TH', 'ID', 'MY', 'PH', 'SG', 'KH', 'LA', 'MM', 'BN', 'TL'];
+const LANGS4 = ['vi', 'en', 'th', 'zh-Hans'];
+const dn = Object.fromEntries(LANGS4.map((l) => [l, new Intl.DisplayNames([l], { type: 'region' })]));
+const nameIn = (code, l) => { try { const n = dn[l].of(code); return n && n !== code ? n : null; } catch { return null; } };
+export const COUNTRIES = CODES.map((code) => {
+  const en = nameIn(code, 'en');
+  if (!en) return null; // mã không có trong dữ liệu ICU
+  const names = { vi: nameIn(code, 'vi') || en, en, th: nameIn(code, 'th') || en, zh: nameIn(code, 'zh-Hans') || en };
+  return { code, name: names.vi, names, sea: SEA_CODES.includes(code) };
+}).filter(Boolean).sort((a, b) => (SEA_CODES.indexOf(a.code) + 1 || 999) - (SEA_CODES.indexOf(b.code) + 1 || 999) || a.names.en.localeCompare(b.names.en, 'en'));
 export const countryByCode = (code) => COUNTRIES.find((c) => c.code === code);
 export const isIntlCountry = (code) => !!countryByCode(code) && code !== COUNTRY.code;

@@ -1,5 +1,5 @@
 import { frameSvg } from './frames.js';
-import { LOCALE, getLang } from './i18n.js';
+import { LOCALE, getLang, t } from './i18n.js';
 // Trạng thái dùng chung, API client, modal, toast, tiện ích.
 export const $ = (s, el = document) => el.querySelector(s);
 export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -109,6 +109,14 @@ export const fmtDateTime = (t) => `${fmtDate(t)} ${fmtTime(t)}`;
 export const dayKey = (t) => new Date(t).toDateString();
 // Nơi ở: "Hà Nội, Việt Nam" hoặc chỉ quốc gia (nước chưa có cấp tỉnh/thành); tên quốc gia theo ngôn ngữ đang dùng
 export const locText = (l) => { if (!l) return ''; const c = l.countryNames?.[getLang()] || l.country; const p = l.provinceNames?.[getLang()] || l.province; return p ? `${p}, ${c}` : c; };
+// Các <option> quốc gia: Việt Nam + Đông Nam Á lên đầu, còn lại xếp theo tên trong ngôn ngữ đang dùng
+export const countryOptions = (list, selected) => {
+  const L = getLang(), nm = (c) => c.names?.[L] || c.name;
+  const opt = (c) => `<option value="${c.code}" ${c.code === selected ? 'selected' : ''}>${esc(nm(c))}</option>`;
+  const col = new Intl.Collator(LOCALE[L] || 'vi');
+  const sea = list.filter((c) => c.sea), rest = list.filter((c) => !c.sea).sort((a, b) => col.compare(nm(a), nm(b)));
+  return rest.length ? `<optgroup label="${esc(t('geo.sea'))}">${sea.map(opt).join('')}</optgroup><optgroup label="${esc(t('geo.world'))}">${rest.map(opt).join('')}</optgroup>` : sea.map(opt).join('');
+};
 // Tên tỉnh/thành của nước ngoài Việt Nam theo ngôn ngữ (Thái Lan có tên tiếng Thái cho người dùng ไทย)
 export const subLabel = (s) => (getLang() === 'th' && s.th ? s.th : s.name);
 
