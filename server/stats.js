@@ -16,16 +16,16 @@ const KEEP_DAYS = 400;
 const LIVE_MS = 45_000;
 const live = new Map(); // `${kind}:${id}` -> { page, target, at }
 const markLive = (actor, page, target) => live.set(`${actor.kind}:${actor.id}`, { page, target, at: Date.now() });
-// Chỉ trả những trang/nhóm có từ 2 người trở lên (không lộ trang chỉ có một người)
-export function liveCounts() {
-  const t = Date.now(), pages = {}, chat = {};
+// Chỉ dành cho admin: số người đang xem từng trang / từng nhóm chat, kèm số người đang online (đăng ký / khách)
+export function liveSnapshot() {
+  const t = Date.now(), pages = {}, chat = {}, userIds = new Set(); let guests = 0;
   for (const [k, v] of live) {
     if (t - v.at > LIVE_MS) { live.delete(k); continue; }
     pages[v.page] = (pages[v.page] || 0) + 1;
     if (v.page === 'chat' && v.target) chat[v.target] = (chat[v.target] || 0) + 1;
+    if (k.startsWith('u:')) userIds.add(Number(k.slice(2))); else guests++;
   }
-  const keep = (o) => Object.fromEntries(Object.entries(o).filter(([, n]) => n >= 2));
-  return { pages: keep(pages), chat: keep(chat) };
+  return { pages, chat, userIds, guests };
 }
 
 export function track(actor, { page, target, event, seconds }) {

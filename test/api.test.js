@@ -120,11 +120,16 @@ test('nơi ở: chỉ bạn bè thấy tỉnh/thành và quốc gia; người l�
   assert.equal((await call('GET', '/friends', null, mai.token)).data.friends.find((f) => f.id === khoa.id).location, undefined);
   await call('PATCH', '/me', { shareLocation: true }, khoa.token);
 });
-test('đang xem: đếm cả khách và người dùng, chỉ hiện trang có từ 2 người, mỗi người một lần', async () => {
-  const live = async () => (await (await fetch(BASE + '/public/live')).json());
+test('đang xem: chỉ admin xem được; đếm cả khách và người dùng, mỗi người một lần; có số online', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const live = async () => (await call('GET', '/admin/live', null, adm.token)).data;
   const gtrack = (vid, page, target) => fetch(BASE + '/public/track', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vid, event: 'view', page, target }) });
+  // quyền: người dùng thường 403, khách (không token) 401, endpoint công khai cũ không còn
+  assert.equal((await call('GET', '/admin/live', null, mai.token)).status, 403);
+  assert.equal((await call('GET', '/admin/live')).status, 401);
+  assert.notEqual((await fetch(BASE + '/public/live')).status, 200, 'endpoint công khai cũ không còn');
   await gtrack('khachvanglaiaaaa0001', 'tools');
-  assert.equal((await live()).pages.tools, undefined, 'một người thì không hiện');
+  assert.equal((await live()).pages.tools, 1);
   await gtrack('khachvanglaiaaaa0002', 'tools');
   assert.equal((await live()).pages.tools, 2, 'hai khách');
   await call('POST', '/track', { event: 'view', page: 'tools', vid: 'khachvanglaiaaaa0003' }, mai.token);
@@ -136,8 +141,8 @@ test('đang xem: đếm cả khách và người dùng, chỉ hiện trang có t
   await gtrack('khachvanglaiaaaa0001', 'chat', 5); await gtrack('khachvanglaiaaaa0002', 'chat', 5);
   const l = await live();
   assert.equal(l.chat[5], 2, 'chat đếm theo từng nhóm');
-  assert.equal(l.pages.friends, undefined);
-  assert.deepEqual(Object.keys(l).sort(), ['chat', 'pages'], 'chỉ có con số, không lộ ai');
+  assert.ok(l.online.guests >= 2 && l.online.users >= 1 && l.online.total === l.online.users + l.online.guests, JSON.stringify(l.online));
+  assert.deepEqual(Object.keys(l).sort(), ['chat', 'online', 'pages'], 'chỉ có con số, không lộ ai');
 });
 test('chặn: không thấy profile, không nhắn được', async () => {
   await call('POST', `/blocks/${mai.id}`, {}, khoa.token);

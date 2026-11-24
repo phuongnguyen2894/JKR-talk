@@ -7,12 +7,12 @@ import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
-  isSystemAdmin, isSuper, canPostTrend, locationOf, friendLocation, log, hub, isOnline, notify, pushOnly, messageDto, areFriends, isBlockedEither, shareGroup, pair,
+  isSystemAdmin, isSuper, canPostTrend, locationOf, friendLocation, log, hub, isOnline, onlineUserIds, notify, pushOnly, messageDto, areFriends, isBlockedEither, shareGroup, pair,
   AVATAR_COUNT, msgImages,
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
-import { track, statsReport, linkVisitor, VID_RE, liveCounts } from './stats.js';
+import { track, statsReport, linkVisitor, VID_RE, liveSnapshot } from './stats.js';
 import { mountMuayThai } from './muaythai.js';
 import { mountPvp } from './pvp.js';
 import { mountPets } from './pets.js';
@@ -241,8 +241,6 @@ api.post('/public/track', wrap((req, res) => {
   rateLimit(`gtrack:${event}:${vid}`, event === 'ping' ? 12 : 90, 60_000);
   res.json({ ok: track({ kind: 'g', id: vid }, { page: String(req.body.page || ''), target: req.body.target, event, seconds: req.body.seconds }) });
 }));
-// Số người đang xem từng trang / từng nhóm chat (cả khách; chỉ con số, chỉ trang có từ 2 người trở lên)
-api.get('/public/live', guestLimit, wrap((_req, res) => res.json(liveCounts())));
 const readTagsPub = () => readTags();
 api.get('/public/trend-tags', guestLimit, wrap((_req, res) => res.json({ tags: readTagsPub() })));
 api.get('/public/emoji', guestLimit, wrap((_req, res) => res.json({ emoji: activeEmoji().map(emojiDto) })));
@@ -275,6 +273,12 @@ api.post('/track', wrap((req, res) => {
   res.json({ ok: track({ kind: 'u', id: req.user.id }, { page: String(req.body.page || ''), target: req.body.target, event, seconds: req.body.seconds }) });
 }));
 // Thống kê cho Admin hệ thống
+// Chỉ admin: số người đang xem từng trang / nhóm chat (cả khách) và số người đang online. Người dùng thường và khách không gọi được.
+api.get('/admin/live', adminOnly, wrap((_req, res) => {
+  const { pages, chat, userIds, guests } = liveSnapshot();
+  const users = new Set([...userIds, ...onlineUserIds()]); // đang xem trong 45 giây qua, hoặc đang mở app (kết nối realtime)
+  res.json({ pages, chat, online: { users: users.size, guests, total: users.size + guests } });
+}));
 api.get('/admin/stats', superOnly, wrap((req, res) => res.json(statsReport(Number(req.query.days) || 30))));
 api.get('/me/level', wrap((req, res) => {
   recompute(req.user.id);

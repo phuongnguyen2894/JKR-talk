@@ -200,6 +200,7 @@ export const hub = {
   },
 };
 export const isOnline = (uid) => sockets.has(uid);
+export const onlineUserIds = () => [...sockets.keys()]; // người dùng đang mở kết nối realtime
 
 // Thông báo trong app (đẩy realtime nếu đang online)
 export function notify(uid, type, text, opts = {}) {

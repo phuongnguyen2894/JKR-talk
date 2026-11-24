@@ -1,8 +1,7 @@
-// Số người đang xem (cả khách) cho từng trang. Chỉ hiện khi có từ 2 người trở lên; chỉ là con số, không lộ ai đang xem.
-// Máy chủ tính từ các tin báo lượt xem (xem server/stats.js); trang hỏi lại mỗi 20 giây khi đang mở.
-import { icon } from './core.js';
-// Tạm ẩn tính năng: đổi thành true để hiện lại (máy chủ vẫn đếm, chỉ giao diện không hỏi và không vẽ nhãn)
-const ENABLED = false;
+// Số mắt xem (người đang xem, cả khách) của từng trang: CHỈ ADMIN thấy. Chỉ hiện khi có từ 2 người trở lên; chỉ là con số, không lộ ai.
+// Máy chủ tính từ các tin báo lượt xem (xem server/stats.js, /admin/live); trang hỏi lại mỗi 20 giây khi đang mở.
+import { icon, api, S } from './core.js';
+const isAdmin = () => S.me?.role === 'admin';
 let live = { pages: {}, chat: {} };
 let whereFn = null, started = false;
 
@@ -14,7 +13,7 @@ const count = () => {
 
 // gắn / cập nhật / gỡ nhãn "đang xem" ở tiêu đề trang (chat: cạnh tên nhóm, vì dòng phụ bên dưới bị cắt bằng dấu … trên màn hình nhỏ)
 function paint() {
-  const n = count();
+  const n = isAdmin() ? count() : 0;
   const old = document.querySelector('.live-pill');
   if (n < 2) { old?.remove(); return; }
   // tiêu đề đang hiển thị (bỏ qua h1 bị ẩn như tiêu đề danh sách nhóm trên máy tính)
@@ -33,15 +32,11 @@ function paint() {
 }
 
 async function poll() {
-  if (document.visibilityState !== 'visible') return;
-  try {
-    const r = await fetch('/api/public/live');
-    if (r.ok) { live = await r.json(); paint(); }
-  } catch { /* lỗi mạng: giữ số cũ */ }
+  if (document.visibilityState !== 'visible' || !isAdmin()) return;
+  try { live = await api('GET', '/admin/live'); paint(); } catch { /* lỗi mạng hoặc không đủ quyền: giữ số cũ */ }
 }
 
 export function startLive(where) {
-  if (!ENABLED) { document.querySelector('.live-pill')?.remove(); return; }
   whereFn = where;
   if (started) return;
   started = true;

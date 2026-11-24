@@ -64,7 +64,7 @@ let days = 30, hmMetric = 'users', seg = 'all';
 const SEG_NAMES = { all: 'Tất cả', users: 'Đã đăng ký', guests: 'Khách' };
 export async function renderStats(body, d = days) {
   days = d;
-  const raw = await api('GET', `/admin/stats?days=${days}`);
+  const [raw, lv] = await Promise.all([api('GET', `/admin/stats?days=${days}`), api('GET', '/admin/live').catch(() => null)]);
   const r = { ...raw.segments[seg], totalUsers: raw.totalUsers, trackedSince: raw.trackedSince };
   const s = { ...r.summary, totalUsers: raw.totalUsers, trackedSince: raw.trackedSince };
   const { all, users, guests } = raw.segments;
@@ -94,7 +94,13 @@ export async function renderStats(body, d = days) {
         ${tile(fmt(sg.total), 'Tổng số tài khoản')}
       </div>
       <div class="h2" style="margin:8px 0 0">Đăng ký mới mỗi ngày</div>${bars(all.series, 'newUsers', { label: 'Đăng ký mới mỗi ngày' })}</section>`;
-  body.innerHTML = `${signupBlock}${comparison}
+  // đang online ngay lúc này (đang xem trong 45 giây qua hoặc đang mở app); chỉ là con số
+  const livePages = lv ? Object.entries(lv.pages).sort((a, b) => b[1] - a[1]) : [];
+  const liveBlock = lv ? `<section class="card col"><div class="h2" style="margin:0">Đang online ngay bây giờ</div>
+      <div class="stat-grid">${tile(fmt(lv.online.total), 'Người đang online', 'khách và người dùng đã đăng ký')}${tile(fmt(lv.online.users), 'Đã đăng ký')}${tile(fmt(lv.online.guests), 'Khách')}</div>
+      ${livePages.length ? `<div class="h2" style="margin:8px 0 0">Số người đang xem từng trang</div><div class="stat-table" role="table" aria-label="Số người đang xem từng trang">${livePages.map(([p, n]) => `<div class="stat-row" role="row"><span role="cell">${esc(PAGE_NAMES[p] || p)}</span><b role="cell">${fmt(n)}</b></div>`).join('')}</div>` : '<p class="small muted">Chưa có ai đang xem trang nào.</p>'}
+      <p class="tiny muted">Tính người xem trong 45 giây gần nhất (đóng tab hoặc ẩn tab thì rời khỏi số này). "Đã đăng ký" gồm cả người đang mở app ở chế độ nền. Số này không lưu lại và tự làm mới khi bạn tải lại trang Thống kê.</p></section>` : '';
+  body.innerHTML = `${liveBlock}${signupBlock}${comparison}
     <div class="pillnav" role="group" aria-label="Xem số liệu của">${Object.entries(SEG_NAMES).map(([k, n]) => `<button data-seg="${k}" aria-pressed="${seg === k}">${n}</button>`).join('')}</div>
     <div class="pillnav" role="group" aria-label="Khoảng thời gian">${[7, 30, 90].map((n) => `<button data-sd="${n}" aria-pressed="${days === n}">${n} ngày</button>`).join('')}</div>
     <div class="stat-grid">
