@@ -52,9 +52,10 @@ export async function renderChat(view, gid) {
   } else {
     // chưa có WebSocket cho người xem ngoài: làm mới nhẹ mỗi 8 giây
     const mine = C;
+    if (group.type === 'topic') markRead(); // chủ đề chưa tham gia: ghi mốc đã xem để số tin mới về 0
     const t = setInterval(async () => {
       if (C !== mine || !$('#msgs')) return clearInterval(t);
-      try { for (const m of (await api('GET', `/groups/${mine.gid}/messages?limit=40`)).messages) appendMsg(m); } catch {}
+      try { for (const m of (await api('GET', `/groups/${mine.gid}/messages?limit=40`)).messages) appendMsg(m); if (mine.group.type === 'topic') markRead(); } catch {}
     }, 8000);
   }
 }
@@ -384,10 +385,12 @@ function appendMsg(m, initial = false) {
 const scrollBottom = () => { const b = $('#msgs'); if (b) b.scrollTop = b.scrollHeight; };
 
 async function markRead() {
-  if (!C || !C.joined || document.hidden) return;
+  if (!C || (!C.joined && C.group?.type !== 'topic') || document.hidden) return;
   try { await api('POST', `/groups/${C.gid}/read`); } catch {}
   const g = S.groups.find((x) => x.id === C.gid);
   if (g && g.unread) { g.unread = 0; S.hooks.renderSide?.(); }
+  const h = (S.highlights || []).find((x) => x.id === C.gid);
+  if (h && h.unread) { h.unread = 0; S.hooks.renderSide?.(); }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) markRead(); });
 

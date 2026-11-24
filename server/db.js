@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS members (
   PRIMARY KEY (group_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_members_user ON members(user_id);
+-- mốc đã đọc của chủ đề thảo luận mà người dùng chưa tham gia (chủ đề nổi bật hiện số tin mới dù chưa vào)
+CREATE TABLE IF NOT EXISTS topic_seen (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  last_id INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, group_id)
+);
 CREATE TABLE IF NOT EXISTS bans (
   group_id INTEGER NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (group_id, user_id)
 );

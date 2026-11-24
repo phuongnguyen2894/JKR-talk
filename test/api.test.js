@@ -956,6 +956,16 @@ test('chủ đề thảo luận: Admin/Mod tạo; mọi người xem, tham gia, 
   assert.equal(tl.topics[0].id, tid);
   assert.equal(tl.canHighlight, false);
   assert.ok((await call('GET', '/groups/mine', null, adm.token)).data.highlights.some((h) => h.id === tid));
+  // chủ đề nổi bật chưa tham gia vẫn báo số tin mới: lần đầu thấy lấy mốc (không báo tin cũ), tin mới của người khác thì +1, mở đọc thì về 0
+  const nu = (await call('POST', '/auth/register', { email: 'hlnew@test.com', password: 'password1', acceptCommunity: true, displayName: 'Hl New', provinceId: 1 })).data;
+  const hl0 = (await call('GET', '/groups/mine', null, nu.token)).data;
+  assert.ok(!hl0.groups.some((g) => g.id === tid), 'nu chưa tham gia chủ đề');
+  assert.equal(hl0.highlights.find((h) => h.id === tid).unread, 0);
+  assert.equal((await call('POST', `/groups/${tid}/messages`, { body: 'tin mới trong chủ đề' }, v.token)).status, 201);
+  assert.equal((await call('GET', '/groups/mine', null, nu.token)).data.highlights.find((h) => h.id === tid).unread, 1);
+  assert.equal((await call('POST', `/groups/${tid}/read`, {}, nu.token)).status, 200);
+  assert.equal((await call('GET', '/groups/mine', null, nu.token)).data.highlights.find((h) => h.id === tid).unread, 0);
+  assert.ok(!(await call('GET', '/groups/mine', null, nu.token)).data.groups.some((g) => g.id === tid), 'đọc không tự tham gia');
   assert.ok((await (await fetch(BASE + '/public/groups')).json()).groups.find((x) => x.id === tid).highlighted);
   assert.equal((await call('POST', `/topics/${tid}/highlight`, { on: false }, adm.token)).data.topic.highlighted, false);
   assert.equal((await call('GET', '/groups/mine', null, adm.token)).data.highlights.length, 0);

@@ -629,6 +629,13 @@ api.get(
     out.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name, 'vi'));
     // chủ đề nổi bật: hiện cho mọi người ở đầu mục Chủ đề thảo luận, kể cả khi chưa tham gia
     const highlights = db.prepare("SELECT id, name FROM groups WHERE type = 'topic' AND highlighted IS NOT NULL ORDER BY highlighted DESC").all();
+    // chủ đề nổi bật chưa tham gia: đếm tin mới từ mốc đã xem (lần đầu thấy thì lấy mốc là tin mới nhất, không báo tin cũ)
+    for (const h of highlights) {
+      if (out.some((g) => g.id === h.id)) continue;
+      const seen = db.prepare('SELECT last_id FROM topic_seen WHERE user_id = ? AND group_id = ?').get(req.user.id, h.id);
+      if (!seen) { db.prepare('INSERT OR IGNORE INTO topic_seen (user_id, group_id, last_id) VALUES (?, ?, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?), 0))').run(req.user.id, h.id, h.id); h.unread = 0; continue; }
+      h.unread = Math.min(db.prepare('SELECT COUNT(*) c FROM messages WHERE group_id = ? AND id > ? AND user_id != ? AND deleted = 0').get(h.id, seen.last_id, req.user.id).c, 99);
+    }
     res.json({ groups: out, highlights });
   })
 );
@@ -1060,6 +1067,10 @@ api.post('/groups/:id/mute', wrap((req, res) => {
 
 api.post('/groups/:id/read', wrap((req, res) => {
   const gid = int(req.params.id);
+  if (!getMember(gid, req.user.id) && getGroup(gid)?.type === 'topic') { // chủ đề chưa tham gia: chỉ ghi mốc đã xem
+    db.prepare('INSERT INTO topic_seen (user_id, group_id, last_id) VALUES (?, ?, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?), 0)) ON CONFLICT(user_id, group_id) DO UPDATE SET last_id = excluded.last_id').run(req.user.id, gid, gid);
+    return res.json({ ok: true });
+  }
   requireMember(gid, req.user.id);
   db.prepare('UPDATE members SET last_read_id = COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?),0) WHERE group_id = ? AND user_id = ?').run(gid, gid, req.user.id);
   res.json({ ok: true });

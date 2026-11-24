@@ -38,7 +38,7 @@ function renderSide() {
     const mine = S.groups.filter((g) => g.type === 'topic');
     const hot = hl.map((h) => {
       const g = mine.find((x) => x.id === h.id);
-      return `<a class="nav-item hl-topic" href="#/chat/${h.id}" ${h.id === activeId ? 'aria-current="page"' : ''}>${icon('star')}<span class="name">${esc(h.name)}<span class="sr-only"> (nổi bật)</span></span>${g?.unread ? `<span class="badge" aria-label="${g.unread} tin chưa đọc">${g.unread}</span>` : ''}</a>`;
+      return `<a class="nav-item hl-topic" href="#/chat/${h.id}" ${h.id === activeId ? 'aria-current="page"' : ''}>${icon('star')}<span class="name">${esc(h.name)}<span class="sr-only"> (nổi bật)</span></span>${(g ? g.unread : h.unread) ? `<span class="badge" aria-label="${g ? g.unread : h.unread} tin chưa đọc">${g ? g.unread : h.unread}</span>` : ''}</a>`;
     }).join('');
     return hot + mine.filter((g) => !hl.some((h) => h.id === g.id)).map(item).join('');
   };
@@ -78,7 +78,7 @@ function renderSide() {
     <a class="nav-item only-mobile" href="#/settings" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${icon('gear')}<span class="name">Cài đặt tài khoản</span></a>
     <div class="side-foot"><a class="nav-item" href="#/settings" style="min-height:48px" ${r.name === 'settings' ? 'aria-current="page"' : ''}>${avatar(S.me)}<span class="name${nameCls(S.me)}" style="font-weight:600">${esc(S.me.displayName)}${lvBadge(S.me.level)}</span>${icon('gear')}</a></div>`;
 
-  const chatUnread = S.groups.reduce((n, g) => n + (g.type === 'trend' ? 0 : g.unread || 0), 0);
+  const chatUnread = S.groups.reduce((n, g) => n + (g.type === 'trend' ? 0 : g.unread || 0), 0) + (S.highlights || []).reduce((n, h) => n + (S.groups.some((g) => g.id === h.id) ? 0 : h.unread || 0), 0);
   const trendTab = tg ? `<a href="#/chat/${tg.id}" ${tg.id === activeId ? 'aria-current="page"' : ''}>${icon('trend', 22)}Đẩy trend${tg.unread ? `<span class="badge">${tg.unread}</span>` : ''}</a>` : '';
   const tab = (hash, name, label, ic, badge) => `<a href="${hash}" ${(r.name === name && !(name === 'chat' && tg && activeId === tg.id)) ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}${badge ? `<span class="badge">${badge}</span>` : ''}</a>`;
   $('#tabs').innerHTML = tab('#/chat', 'chat', 'Nhóm', 'chat', chatUnread + S.unreadNotif) + trendTab + tab('#/news', 'news', 'Bản tin', 'news', S.unreadNews) + tab('#/hot', 'hot', 'Chủ đề nóng', 'flame', S.unreadHot) + `<a href="#/level" ${r.name === 'level' ? 'aria-current="page"' : ''}>${S.me.level ? lvBadge(S.me.level, 24) : coinIcon(24)}Thăng cấp</a>`;
@@ -199,6 +199,9 @@ async function boot() {
     await Promise.all([refreshGroups(), refreshCounters(), loadEmoji()]);
     connectWs();
     syncPush();
+    // chủ đề nổi bật chưa tham gia không nhận tin realtime: hỏi lại số tin mới mỗi 30 giây khi đang mở trang
+    clearInterval(S._hlTimer);
+    S._hlTimer = setInterval(() => { if (!document.hidden && S.token && (S.highlights || []).some((h) => !S.groups.some((g) => g.id === h.id))) refreshGroups().catch(() => {}); }, 30000);
     if (!parseHash().name || ['login', 'register'].includes(parseHash().name)) {
       // vừa đăng nhập/đăng ký từ một chủ đề được chia sẻ → quay lại đúng chủ đề đó
       let next = null;
