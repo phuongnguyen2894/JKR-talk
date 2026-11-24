@@ -1,6 +1,8 @@
 // Số người đang xem (cả khách) cho từng trang. Chỉ hiện khi có từ 2 người trở lên; chỉ là con số, không lộ ai đang xem.
 // Máy chủ tính từ các tin báo lượt xem (xem server/stats.js); trang hỏi lại mỗi 20 giây khi đang mở.
 import { icon } from './core.js';
+// Tạm ẩn tính năng: đổi thành true để hiện lại (máy chủ vẫn đếm, chỉ giao diện không hỏi và không vẽ nhãn)
+const ENABLED = false;
 let live = { pages: {}, chat: {} };
 let whereFn = null, started = false;
 
@@ -39,6 +41,7 @@ async function poll() {
 }
 
 export function startLive(where) {
+  if (!ENABLED) { document.querySelector('.live-pill')?.remove(); return; }
   whereFn = where;
   if (started) return;
   started = true;

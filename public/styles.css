@@ -647,3 +647,7 @@ details.card > summary { font-weight: 700; min-height: 44px; display: flex; alig
 .live-pill { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.5; vertical-align: middle; white-space: nowrap; background: var(--accent-soft, rgba(91, 61, 245, .12)); color: var(--accent, #5B3DF5); }
 .chat-head h1 .live-pill { font-size: 11px; margin-left: 6px; }
 .live-pill svg { flex: none; }
+
+/* dòng nơi ở: icon ghim + tỉnh/thành, quốc gia */
+.loc-line { display: flex; align-items: center; gap: 4px; }
+.loc-line svg { flex: none; }
