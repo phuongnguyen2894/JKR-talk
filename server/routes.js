@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { db, now, tx, homeGroupIds, homeGroupsOf, nameKey, trendGroupId, hotGroupId } from './db.js';
 import { COUNTRY, COUNTRIES, REGIONS, PROVINCES, provinceById, countryByCode, isIntlCountry } from './geo.js';
+import { subdivisionsOf, subdivisionOf } from './geo_sea.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
@@ -78,7 +79,8 @@ const superOnly = (req, _res, next) => {
 // ============================================================================
 // Công khai: địa lý, đăng ký, đăng nhập
 // ============================================================================
-api.get('/geo', (_req, res) => res.json({ country: COUNTRY, regions: REGIONS, provinces: PROVINCES, countries: COUNTRIES.filter((c) => c.code === COUNTRY.code || intlPublic()) }));
+const withSubs = (c) => (c.code === COUNTRY.code ? c : { ...c, subdivisions: subdivisionsOf(c.code) }); // nước khác kèm danh sách tỉnh/thành
+api.get('/geo', (_req, res) => res.json({ country: COUNTRY, regions: REGIONS, provinces: PROVINCES, countries: COUNTRIES.filter((c) => c.code === COUNTRY.code || intlPublic()).map(withSubs) }));
 
 // ---- Chào mừng thành viên mới: giao diện riêng của từng nhóm, không đăng vào khung chat chung ----
 db.exec(`CREATE TABLE IF NOT EXISTS welcomes (
@@ -158,6 +160,8 @@ api.post(
     if (displayName.includes('@') || displayName.toLowerCase() === email) throw bad('Tên hiển thị không được trùng email');
     const intl = countryCode !== COUNTRY.code;
     if (intl && (!isIntlCountry(countryCode) || !intlPublic())) throw bad('Hiện app mới hỗ trợ Việt Nam');
+    const sd = intl ? subdivisionOf(countryCode, req.body.subdivision) : null;
+    if (intl && subdivisionsOf(countryCode).length && !sd) throw bad('Vui lòng chọn tỉnh/thành');
     if (!intl && !province) throw bad('Vui lòng chọn tỉnh/thành');
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw bad('Email này đã được dùng');
     if (db.prepare('SELECT 1 FROM users WHERE name_key = ?').get(nameKey(displayName))) throw bad('Tên hiển thị này đã có người dùng, hãy chọn tên khác');
@@ -165,16 +169,16 @@ api.post(
     const id = tx(() => {
       const r = db
         .prepare(
-          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, created_at, language, country)
-           VALUES (?,?,?,?,?,?,1,?,?,?)`
+          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, created_at, language, country, subdivision)
+           VALUES (?,?,?,?,?,?,1,?,?,?,?)`
         )
-        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), intl ? 0 : province.id, now(), isLang(req.body.language) ? req.body.language : 'vi', countryCode);
+        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), intl ? 0 : province.id, now(), isLang(req.body.language) ? req.body.language : 'vi', countryCode, sd ? sd.code : null);
       const uid = Number(r.lastInsertRowid);
-      for (const gid of homeGroupsOf({ country: countryCode, province_id: intl ? 0 : province.id })) addMember(gid, uid); // auto-join: Việt Nam đủ 3 group; nước khác 1 group quốc gia
+      for (const gid of homeGroupsOf({ country: countryCode, province_id: intl ? 0 : province.id, subdivision: sd?.code })) addMember(gid, uid); // auto-join: Việt Nam đủ 3 group; nước khác: nhóm quốc gia + tỉnh/thành (tạo nhóm khi có người đầu tiên chọn)
       addMember(trendGroupId(), uid); // và nhóm Đẩy trend
       return uid;
     });
-    for (const gid of homeGroupsOf({ country: countryCode, province_id: intl ? 0 : province.id })) welcomeUser(id, getGroup(gid)); // lời chào tự động ở mục Chào mừng của 3 nhóm
+    for (const gid of homeGroupsOf({ country: countryCode, province_id: intl ? 0 : province.id, subdivision: sd?.code })) welcomeUser(id, getGroup(gid)); // lời chào tự động ở mục Chào mừng của 3 nhóm
     // không cần xác nhận email: đăng nhập luôn sau khi đăng ký
     const token = randomToken();
     db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, id, now());
@@ -510,12 +514,13 @@ api.post(
 
 // Các quốc gia người này được chọn làm "nhà" (Admin: tất cả; người thường: Việt Nam, thêm các nước khác khi đã mở)
 api.get('/me/countries', wrap((req, res) => {
-  res.json({ countries: countriesFor(req.user), current: req.user.country || COUNTRY.code });
+  res.json({ countries: countriesFor(req.user).map(withSubs), current: req.user.country || COUNTRY.code, subdivision: req.user.subdivision || null });
 }));
 // Admin hệ thống: xem các quốc gia, số thành viên, và bật/tắt "mở cho mọi người"
 api.get('/admin/intl', superOnly, wrap((_req, res) => {
   const counts = Object.fromEntries(db.prepare("SELECT g.key AS k, COUNT(m.user_id) c FROM groups g LEFT JOIN members m ON m.group_id = g.id WHERE g.type = 'country' GROUP BY g.key").all().map((r) => [r.k, r.c]));
-  res.json({ public: intlPublic(), countries: COUNTRIES.map((c) => ({ code: c.code, names: c.names, members: counts[c.code] || 0, home: c.code === COUNTRY.code })) });
+  const made = Object.fromEntries(db.prepare("SELECT substr(key, 1, instr(key, ':') - 1) AS k, COUNT(*) c FROM groups WHERE type = 'province' AND instr(key, ':') > 0 GROUP BY k").all().map((r) => [r.k, r.c]));
+  res.json({ public: intlPublic(), countries: COUNTRIES.map((c) => ({ code: c.code, names: c.names, members: counts[c.code] || 0, home: c.code === COUNTRY.code, provinces: c.code === COUNTRY.code ? PROVINCES.length : subdivisionsOf(c.code).length, provinceGroups: made[c.code] || 0 })) });
 }));
 api.patch('/admin/intl', superOnly, wrap((req, res) => {
   if (typeof req.body.public !== 'boolean') throw bad('Giá trị không hợp lệ');
@@ -534,7 +539,9 @@ api.post(
     if (toIntl && (!isIntlCountry(code) || !(intlPublic() || u.role === 'admin'))) throw bad('Quốc gia không hợp lệ');
     const p = toIntl ? null : provinceById(req.body.provinceId);
     if (!toIntl && !p) throw bad('Tỉnh/thành không hợp lệ');
-    if (toIntl ? (u.country === code) : ((u.country || COUNTRY.code) === COUNTRY.code && p.id === u.province_id)) throw bad(toIntl ? 'Bạn đang chọn quốc gia này rồi' : 'Bạn đang chọn tỉnh/thành này rồi');
+    const sd = toIntl ? subdivisionOf(code, req.body.subdivision) : null;
+    if (toIntl && subdivisionsOf(code).length && !sd) throw bad('Vui lòng chọn tỉnh/thành');
+    if (toIntl ? (u.country === code && (u.subdivision || null) === (sd?.code || null)) : ((u.country || COUNTRY.code) === COUNTRY.code && p.id === u.province_id)) throw bad(toIntl ? 'Bạn đang chọn nơi này rồi' : 'Bạn đang chọn tỉnh/thành này rồi');
     if (u.role !== 'admin' && u.home_changed_at && now() - u.home_changed_at < HOME_CHANGE_COOLDOWN) {
       const days = Math.ceil((HOME_CHANGE_COOLDOWN - (now() - u.home_changed_at)) / DAY);
       throw bad(`Bạn chỉ đổi được vị trí 1 lần / 30 ngày. Thử lại sau ${days} ngày.`);
@@ -542,10 +549,10 @@ api.post(
     const leaveOld = !!req.body.leaveOld;
     tx(() => {
       const oldIds = homeGroupsOf(u);
-      const newIds = homeGroupsOf({ country: code, province_id: p ? p.id : 0 });
+      const newIds = homeGroupsOf({ country: code, province_id: p ? p.id : 0, subdivision: sd?.code });
       if (leaveOld) for (const gid of oldIds) if (!newIds.includes(gid)) removeMember(gid, u.id);
       for (const gid of newIds) addMember(gid, u.id);
-      db.prepare('UPDATE users SET country = ?, province_id = ?, home_changed_at = ? WHERE id = ?').run(code, p ? p.id : 0, now(), u.id);
+      db.prepare('UPDATE users SET country = ?, province_id = ?, subdivision = ?, home_changed_at = ? WHERE id = ?').run(code, p ? p.id : 0, sd ? sd.code : null, now(), u.id);
     });
     res.json({ user: selfUser(getUser(u.id)) });
   })

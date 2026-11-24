@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { COUNTRY, COUNTRIES, REGIONS, PROVINCES } from './geo.js';
+import { subdivisionOf } from './geo_sea.js';
 
 const dbFile = process.env.DB_FILE || path.join(process.cwd(), 'data', 'jkr.db');
 if (dbFile !== ':memory:') fs.mkdirSync(path.dirname(dbFile), { recursive: true });
@@ -181,10 +182,10 @@ export function ensureGroup(type, key, name, short) {
 
 export function seedGeoGroups() {
   ensureGroup('country', COUNTRY.code, COUNTRY.name, 'VN');
-  for (const c of COUNTRIES) if (c.code !== COUNTRY.code) ensureGroup('country', c.code, c.name, c.code); // các nước Đông Nam Á khác (ẩn với người thường tới khi mở)
   for (const r of REGIONS) ensureGroup('region', `${COUNTRY.code}:${r.code}`, r.name, r.short);
   for (const p of PROVINCES) ensureGroup('province', `${COUNTRY.code}:p:${p.id}`, p.name, null);
 }
+try { db.exec('ALTER TABLE users ADD COLUMN subdivision TEXT'); } catch { /* đã có cột */ } // tỉnh/thành của nước ngoài Việt Nam (mã slug)
 db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
 seedGeoGroups();
 
@@ -203,10 +204,17 @@ export function homeGroupIds(province) {
   ];
 }
 
-// Các nhóm "nhà" của một người: Việt Nam = 3 nhóm (quốc gia, vùng, tỉnh/thành); nước khác = 1 nhóm quốc gia
+// Các nhóm "nhà" của một người: Việt Nam = 3 nhóm (quốc gia, vùng, tỉnh/thành)
+// Nước khác: nhóm quốc gia + nhóm tỉnh/thành (nếu đã chọn). Các nhóm này CHỈ được tạo khi có người chọn nơi đó (ensureGroup tạo theo yêu cầu).
 export function homeGroupsOf(u) {
   const code = u.country || COUNTRY.code;
-  if (code !== COUNTRY.code) { const c = COUNTRIES.find((x) => x.code === code); return [ensureGroup('country', code, c?.name || code, code)]; }
+  if (code !== COUNTRY.code) {
+    const c = COUNTRIES.find((x) => x.code === code);
+    const ids = [ensureGroup('country', code, c?.name || code, code)];
+    const s = u.subdivision ? subdivisionOf(code, u.subdivision) : null;
+    if (s) ids.push(ensureGroup('province', `${code}:p:${s.code}`, s.name, null));
+    return ids;
+  }
   const p = PROVINCES.find((x) => x.id === Number(u.province_id));
   return p ? homeGroupIds(p) : [ensureGroup('country', COUNTRY.code)];
 }

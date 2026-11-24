@@ -3,6 +3,7 @@ import { emojiMeta } from './emoji.js';
 import { pushToUser, PUSH_TYPE_MAP } from './push.js';
 import { db, now } from './db.js';
 import { provinceById, regionByCode, COUNTRY, COUNTRIES, countryByCode, isIntlCountry } from './geo.js';
+import { subdivisionOf, subdivisionName } from './geo_sea.js';
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -56,7 +57,10 @@ export function getUser(id) {
 
 export function locationOf(u) {
   const c = countryByCode(u.country) || countryByCode(COUNTRY.code);
-  if (c.code !== COUNTRY.code) return { country: c.name, countryCode: c.code, countryNames: c.names, province: null, region: null }; // nước khác: mới có cấp quốc gia
+  if (c.code !== COUNTRY.code) { // nước khác: quốc gia + tỉnh/thành (nếu đã chọn)
+    const s = u.subdivision ? subdivisionOf(c.code, u.subdivision) : null;
+    return { country: c.name, countryCode: c.code, countryNames: c.names, province: s?.name || null, ...(s?.th ? { provinceNames: { th: s.th } } : {}), region: null };
+  }
   const p = provinceById(u.province_id);
   const r = p && regionByCode(p.region);
   return { country: c.name, countryCode: c.code, countryNames: c.names, province: p?.name || null, region: r?.name || null };
@@ -66,9 +70,18 @@ export function locationOf(u) {
 export const intlPublic = () => db.prepare("SELECT value FROM app_settings WHERE key = 'intl_public'").get()?.value === '1';
 export const setIntlPublic = (on) => db.prepare("INSERT INTO app_settings (key, value) VALUES ('intl_public', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(on ? '1' : '0');
 // Nhóm quốc gia ngoài Việt Nam bị ẩn với người thường khi chưa mở; Admin luôn thấy
-export const groupHidden = (g, user) => !!g && g.type === 'country' && isIntlCountry(g.key) && !intlPublic() && user?.role !== 'admin';
+// (nhóm quốc gia và nhóm tỉnh/thành của nước đó; khoá dạng TH hoặc TH:p:chiang-mai)
+export const groupHidden = (g, user) => !!g && ['country', 'province', 'region'].includes(g.type) && isIntlCountry(String(g.key || '').split(':')[0]) && !intlPublic() && user?.role !== 'admin';
 // Tên nhóm quốc gia theo ngôn ngữ người xem
-export const groupNameFor = (g, lang) => (g.type === 'country' ? countryByCode(g.key)?.names[lang] || g.name : g.name);
+export function groupNameFor(g, lang) {
+  if (g.type === 'country') return countryByCode(g.key)?.names[lang] || g.name;
+  if (g.type === 'province') {
+    const [cc, , slug] = String(g.key || '').split(':');
+    const s = cc && cc !== COUNTRY.code ? subdivisionOf(cc, slug) : null;
+    if (s) return subdivisionName(s, lang); // tỉnh Thái: người dùng ไทย thấy tên tiếng Thái
+  }
+  return g.name;
+}
 // Danh sách quốc gia người này được chọn (Admin: tất cả; người thường: Việt Nam, và các nước khác khi đã mở)
 export const countriesFor = (user) => COUNTRIES.filter((c) => c.code === COUNTRY.code || intlPublic() || user?.role === 'admin');
 
@@ -78,7 +91,7 @@ export function friendLocation(u, viewerId) {
   if (!u || !viewerId || u.id === viewerId || !u.share_location || u.status === 'deleted') return undefined;
   if (!areFriends(viewerId, u.id) || isBlockedEither(viewerId, u.id)) return undefined;
   const l = locationOf(u);
-  return { province: l.province || undefined, country: l.country, countryNames: l.countryNames };
+  return { province: l.province || undefined, provinceNames: l.provinceNames, country: l.country, countryNames: l.countryNames };
 }
 
 // Thông tin công khai của một người dùng (không lộ email, chỉ tới cấp tỉnh/thành)
@@ -110,6 +123,7 @@ export function selfUser(u) {
     email: u.email,
     provinceId: u.province_id,
     country: u.country || 'VN', // mã quốc gia nhà
+    subdivision: u.subdivision || null, // tỉnh/thành của nước ngoài Việt Nam
     verified: !!u.verified,
     role: u.role,
     isSuper: u.role === 'admin' && !!u.is_super,
