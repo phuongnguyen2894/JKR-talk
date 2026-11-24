@@ -1,6 +1,7 @@
 // Ghi nhận lượt xem trang và thời gian hoạt động (gửi cho server để Admin hệ thống xem thống kê), cả khách và người dùng đăng ký.
 // Không gửi nội dung tin nhắn; chỉ gửi tên trang, nhóm đang xem (số id), số giây có thao tác và mã khách ẩn danh ngẫu nhiên.
 import { S, api } from './core.js';
+import { startLive } from './live.js';
 
 const TICK = 15_000; // gửi 15 giây một lần khi đang xem và có thao tác
 const IDLE_MS = 180_000; // quá 3 phút không thao tác thì không tính thời gian
@@ -56,4 +57,5 @@ export function startTracking() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { lastAct = Date.now(); view(); } });
   view();
   setInterval(tick, TICK);
+  startLive(where);
 }

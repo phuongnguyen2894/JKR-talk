@@ -120,6 +120,25 @@ test('nơi ở: chỉ bạn bè thấy tỉnh/thành và quốc gia; người l�
   assert.equal((await call('GET', '/friends', null, mai.token)).data.friends.find((f) => f.id === khoa.id).location, undefined);
   await call('PATCH', '/me', { shareLocation: true }, khoa.token);
 });
+test('đang xem: đếm cả khách và người dùng, chỉ hiện trang có từ 2 người, mỗi người một lần', async () => {
+  const live = async () => (await (await fetch(BASE + '/public/live')).json());
+  const gtrack = (vid, page, target) => fetch(BASE + '/public/track', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vid, event: 'view', page, target }) });
+  await gtrack('khachvanglaiaaaa0001', 'tools');
+  assert.equal((await live()).pages.tools, undefined, 'một người thì không hiện');
+  await gtrack('khachvanglaiaaaa0002', 'tools');
+  assert.equal((await live()).pages.tools, 2, 'hai khách');
+  await call('POST', '/track', { event: 'view', page: 'tools', vid: 'khachvanglaiaaaa0003' }, mai.token);
+  assert.equal((await live()).pages.tools, 3, 'cộng cả người dùng đăng ký');
+  await call('POST', '/track', { event: 'ping', page: 'tools', seconds: 15 }, mai.token);
+  assert.equal((await live()).pages.tools, 3, 'cùng một người báo nhiều lần chỉ tính một');
+  await call('POST', '/track', { event: 'view', page: 'friends' }, mai.token); // đổi trang: không còn tính ở trang cũ
+  assert.equal((await live()).pages.tools, 2);
+  await gtrack('khachvanglaiaaaa0001', 'chat', 5); await gtrack('khachvanglaiaaaa0002', 'chat', 5);
+  const l = await live();
+  assert.equal(l.chat[5], 2, 'chat đếm theo từng nhóm');
+  assert.equal(l.pages.friends, undefined);
+  assert.deepEqual(Object.keys(l).sort(), ['chat', 'pages'], 'chỉ có con số, không lộ ai');
+});
 test('chặn: không thấy profile, không nhắn được', async () => {
   await call('POST', `/blocks/${mai.id}`, {}, khoa.token);
   assert.equal((await call('GET', `/users/${khoa.id}`, null, mai.token)).status, 404);

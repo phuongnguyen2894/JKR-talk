@@ -11,9 +11,27 @@ const KEEP_DAYS = 400;
 
 // actor: { kind: 'u', id: <id người dùng> } hoặc { kind: 'g', id: <mã khách ẩn danh> }
 // event 'view': mở một trang; 'ping': thêm số giây hoạt động (gửi mỗi 15 giây khi đang xem và có thao tác)
+// Số người đang xem (cả khách): giữ trong bộ nhớ, không ghi DB. Mỗi người (tài khoản hoặc mã khách) tính một lần ở trang xem gần nhất;
+// quá LIVE_MS không có tin báo (đóng tab, ẩn tab, lâu không thao tác) thì không tính nữa.
+const LIVE_MS = 45_000;
+const live = new Map(); // `${kind}:${id}` -> { page, target, at }
+const markLive = (actor, page, target) => live.set(`${actor.kind}:${actor.id}`, { page, target, at: Date.now() });
+// Chỉ trả những trang/nhóm có từ 2 người trở lên (không lộ trang chỉ có một người)
+export function liveCounts() {
+  const t = Date.now(), pages = {}, chat = {};
+  for (const [k, v] of live) {
+    if (t - v.at > LIVE_MS) { live.delete(k); continue; }
+    pages[v.page] = (pages[v.page] || 0) + 1;
+    if (v.page === 'chat' && v.target) chat[v.target] = (chat[v.target] || 0) + 1;
+  }
+  const keep = (o) => Object.fromEntries(Object.entries(o).filter(([, n]) => n >= 2));
+  return { pages: keep(pages), chat: keep(chat) };
+}
+
 export function track(actor, { page, target, event, seconds }) {
   const pg = PAGES.includes(page) ? page : 'other';
   const tg = pg === 'chat' && Number.isInteger(Number(target)) && Number(target) > 0 ? Number(target) : 0;
+  if (pg !== 'other' && (event === 'view' || event === 'ping')) markLive(actor, pg, tg);
   const day = dayOf();
   const views = event === 'view' ? 1 : 0;
   const secs = event === 'ping' ? Math.max(0, Math.min(30, Math.round(Number(seconds) || 0))) : 0;
