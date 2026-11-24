@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
-import { COUNTRY, REGIONS, PROVINCES } from './geo.js';
+import { COUNTRY, COUNTRIES, REGIONS, PROVINCES } from './geo.js';
 
 const dbFile = process.env.DB_FILE || path.join(process.cwd(), 'data', 'jkr.db');
 if (dbFile !== ':memory:') fs.mkdirSync(path.dirname(dbFile), { recursive: true });
@@ -181,9 +181,11 @@ export function ensureGroup(type, key, name, short) {
 
 export function seedGeoGroups() {
   ensureGroup('country', COUNTRY.code, COUNTRY.name, 'VN');
+  for (const c of COUNTRIES) if (c.code !== COUNTRY.code) ensureGroup('country', c.code, c.name, c.code); // các nước Đông Nam Á khác (ẩn với người thường tới khi mở)
   for (const r of REGIONS) ensureGroup('region', `${COUNTRY.code}:${r.code}`, r.name, r.short);
   for (const p of PROVINCES) ensureGroup('province', `${COUNTRY.code}:p:${p.id}`, p.name, null);
 }
+db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
 seedGeoGroups();
 
 // Nhóm "Đẩy trend": ai cũng đọc/thả tim, chỉ admin và mod được đăng
@@ -199,6 +201,14 @@ export function homeGroupIds(province) {
     ensureGroup('region', `${COUNTRY.code}:${province.region}`),
     ensureGroup('province', `${COUNTRY.code}:p:${province.id}`),
   ];
+}
+
+// Các nhóm "nhà" của một người: Việt Nam = 3 nhóm (quốc gia, vùng, tỉnh/thành); nước khác = 1 nhóm quốc gia
+export function homeGroupsOf(u) {
+  const code = u.country || COUNTRY.code;
+  if (code !== COUNTRY.code) { const c = COUNTRIES.find((x) => x.code === code); return [ensureGroup('country', code, c?.name || code, code)]; }
+  const p = PROVINCES.find((x) => x.id === Number(u.province_id));
+  return p ? homeGroupIds(p) : [ensureGroup('country', COUNTRY.code)];
 }
 
 // ---- Tên hiển thị duy nhất (không phân biệt hoa/thường, bỏ khoảng trắng thừa) ----

@@ -2,12 +2,12 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { db, now, tx, homeGroupIds, nameKey, trendGroupId, hotGroupId } from './db.js';
-import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
+import { db, now, tx, homeGroupIds, homeGroupsOf, nameKey, trendGroupId, hotGroupId } from './db.js';
+import { COUNTRY, COUNTRIES, REGIONS, PROVINCES, provinceById, countryByCode, isIntlCountry } from './geo.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
-  isSystemAdmin, isSuper, canPostTrend, locationOf, friendLocation, log, hub, isOnline, onlineUserIds, notify, pushOnly, messageDto, areFriends, isBlockedEither, shareGroup, pair,
+  isSystemAdmin, isSuper, canPostTrend, locationOf, friendLocation, intlPublic, setIntlPublic, groupHidden, groupNameFor, countriesFor, log, hub, isOnline, onlineUserIds, notify, pushOnly, messageDto, areFriends, isBlockedEither, shareGroup, pair,
   AVATAR_COUNT, msgImages,
 } from './lib.js';
 
@@ -78,7 +78,7 @@ const superOnly = (req, _res, next) => {
 // ============================================================================
 // Công khai: địa lý, đăng ký, đăng nhập
 // ============================================================================
-api.get('/geo', (_req, res) => res.json({ country: COUNTRY, regions: REGIONS, provinces: PROVINCES }));
+api.get('/geo', (_req, res) => res.json({ country: COUNTRY, regions: REGIONS, provinces: PROVINCES, countries: COUNTRIES.filter((c) => c.code === COUNTRY.code || intlPublic()) }));
 
 // ---- Chào mừng thành viên mới: giao diện riêng của từng nhóm, không đăng vào khung chat chung ----
 db.exec(`CREATE TABLE IF NOT EXISTS welcomes (
@@ -148,6 +148,7 @@ api.post(
     const email = str(req.body.email, 200).toLowerCase();
     const password = typeof req.body.password === 'string' ? req.body.password : '';
     const displayName = str(req.body.displayName, 30);
+    const countryCode = typeof req.body.country === 'string' && req.body.country ? req.body.country.toUpperCase() : COUNTRY.code;
     const province = provinceById(req.body.provinceId);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw bad('Email không hợp lệ');
     if (password.length < 8) throw bad('Mật khẩu cần ít nhất 8 ký tự');
@@ -155,24 +156,25 @@ api.post(
     if (req.body.passwordConfirm !== undefined && req.body.passwordConfirm !== password) throw bad('Mật khẩu xác nhận không khớp');
     if (displayName.length < 2) throw bad('Tên hiển thị cần ít nhất 2 ký tự');
     if (displayName.includes('@') || displayName.toLowerCase() === email) throw bad('Tên hiển thị không được trùng email');
-    if (req.body.country && req.body.country !== COUNTRY.code) throw bad('Hiện app mới hỗ trợ Việt Nam');
-    if (!province) throw bad('Vui lòng chọn tỉnh/thành');
+    const intl = countryCode !== COUNTRY.code;
+    if (intl && (!isIntlCountry(countryCode) || !intlPublic())) throw bad('Hiện app mới hỗ trợ Việt Nam');
+    if (!intl && !province) throw bad('Vui lòng chọn tỉnh/thành');
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw bad('Email này đã được dùng');
     if (db.prepare('SELECT 1 FROM users WHERE name_key = ?').get(nameKey(displayName))) throw bad('Tên hiển thị này đã có người dùng, hãy chọn tên khác');
 
     const id = tx(() => {
       const r = db
         .prepare(
-          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, created_at, language)
-           VALUES (?,?,?,?,?,?,1,?,?)`
+          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, created_at, language, country)
+           VALUES (?,?,?,?,?,?,1,?,?,?)`
         )
-        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), province.id, now(), isLang(req.body.language) ? req.body.language : 'vi');
+        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), intl ? 0 : province.id, now(), isLang(req.body.language) ? req.body.language : 'vi', countryCode);
       const uid = Number(r.lastInsertRowid);
-      for (const gid of homeGroupIds(province)) addMember(gid, uid); // auto-join đủ 3 group
+      for (const gid of homeGroupsOf({ country: countryCode, province_id: intl ? 0 : province.id })) addMember(gid, uid); // auto-join: Việt Nam đủ 3 group; nước khác 1 group quốc gia
       addMember(trendGroupId(), uid); // và nhóm Đẩy trend
       return uid;
     });
-    for (const gid of homeGroupIds(province)) welcomeUser(id, getGroup(gid)); // lời chào tự động ở mục Chào mừng của 3 nhóm
+    for (const gid of homeGroupsOf({ country: countryCode, province_id: intl ? 0 : province.id })) welcomeUser(id, getGroup(gid)); // lời chào tự động ở mục Chào mừng của 3 nhóm
     // không cần xác nhận email: đăng nhập luôn sau khi đăng ký
     const token = randomToken();
     db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, id, now());
@@ -213,8 +215,11 @@ function guestMsg(m, extra = {}) {
     ...('groupName' in extra ? { groupName: extra.groupName } : {}),
   };
 }
-api.get('/public/groups', guestLimit, wrap((_req, res) => {
-  const rows = db.prepare(`SELECT id, type, name, highlighted FROM groups WHERE type IN ('trend','country','region','province','topic')`).all()
+api.get('/public/groups', guestLimit, wrap((req, res) => {
+  const lang = isLang(req.query.lang) ? req.query.lang : 'vi';
+  const rows = db.prepare(`SELECT id, type, key, name, highlighted FROM groups WHERE type IN ('trend','country','region','province','topic')`).all()
+    .filter((g) => !groupHidden(g, null))
+    .map((g) => ({ id: g.id, type: g.type, name: groupNameFor(g, lang), highlighted: g.highlighted }))
     .map(({ highlighted, ...g }) => (g.type === 'topic' ? { ...g, highlighted: !!highlighted, hlAt: highlighted || 0 } : g));
   const order = { trend: 0, country: 1, region: 2, province: 3, topic: 4 };
   rows.sort((a, b) => order[a.type] - order[b.type] || (b.hlAt || 0) - (a.hlAt || 0) || a.name.localeCompare(b.name, 'vi'));
@@ -223,7 +228,7 @@ api.get('/public/groups', guestLimit, wrap((_req, res) => {
 }));
 api.get('/public/groups/:id', guestLimit, wrap((req, res) => {
   const g = getGroup(int(req.params.id));
-  if (!g || !GUEST_TYPES.includes(g.type)) throw notFound('Không tìm thấy nhóm công khai');
+  if (!g || !GUEST_TYPES.includes(g.type) || groupHidden(g, null)) throw notFound('Không tìm thấy nhóm công khai');
   const rows = db.prepare('SELECT * FROM messages WHERE group_id = ? AND deleted = 0 ORDER BY id DESC LIMIT ?').all(g.id, GUEST_MSG_LIMIT);
   res.json({ group: { id: g.id, type: g.type, name: g.name }, messages: rows.reverse().map((m) => guestMsg(m)), limit: GUEST_MSG_LIMIT });
 }));
@@ -503,25 +508,44 @@ api.post(
   })
 );
 
+// Các quốc gia người này được chọn làm "nhà" (Admin: tất cả; người thường: Việt Nam, thêm các nước khác khi đã mở)
+api.get('/me/countries', wrap((req, res) => {
+  res.json({ countries: countriesFor(req.user), current: req.user.country || COUNTRY.code });
+}));
+// Admin hệ thống: xem các quốc gia, số thành viên, và bật/tắt "mở cho mọi người"
+api.get('/admin/intl', superOnly, wrap((_req, res) => {
+  const counts = Object.fromEntries(db.prepare("SELECT g.key AS k, COUNT(m.user_id) c FROM groups g LEFT JOIN members m ON m.group_id = g.id WHERE g.type = 'country' GROUP BY g.key").all().map((r) => [r.k, r.c]));
+  res.json({ public: intlPublic(), countries: COUNTRIES.map((c) => ({ code: c.code, names: c.names, members: counts[c.code] || 0, home: c.code === COUNTRY.code })) });
+}));
+api.patch('/admin/intl', superOnly, wrap((req, res) => {
+  if (typeof req.body.public !== 'boolean') throw bad('Giá trị không hợp lệ');
+  setIntlPublic(req.body.public);
+  log(req.user.id, req.body.public ? 'intl_open' : 'intl_close', {});
+  res.json({ public: intlPublic() });
+}));
+
 // Đổi vị trí home (giới hạn 1 lần / 30 ngày)
 api.post(
   '/me/home',
   wrap((req, res) => {
-    const p = provinceById(req.body.provinceId);
-    if (!p) throw bad('Tỉnh/thành không hợp lệ');
     const u = req.user;
-    if (p.id === u.province_id) throw bad('Bạn đang chọn tỉnh/thành này rồi');
-    if (u.home_changed_at && now() - u.home_changed_at < HOME_CHANGE_COOLDOWN) {
+    const code = typeof req.body.country === 'string' && req.body.country ? req.body.country.toUpperCase() : COUNTRY.code;
+    const toIntl = code !== COUNTRY.code;
+    if (toIntl && (!isIntlCountry(code) || !(intlPublic() || u.role === 'admin'))) throw bad('Quốc gia không hợp lệ');
+    const p = toIntl ? null : provinceById(req.body.provinceId);
+    if (!toIntl && !p) throw bad('Tỉnh/thành không hợp lệ');
+    if (toIntl ? (u.country === code) : ((u.country || COUNTRY.code) === COUNTRY.code && p.id === u.province_id)) throw bad(toIntl ? 'Bạn đang chọn quốc gia này rồi' : 'Bạn đang chọn tỉnh/thành này rồi');
+    if (u.role !== 'admin' && u.home_changed_at && now() - u.home_changed_at < HOME_CHANGE_COOLDOWN) {
       const days = Math.ceil((HOME_CHANGE_COOLDOWN - (now() - u.home_changed_at)) / DAY);
       throw bad(`Bạn chỉ đổi được vị trí 1 lần / 30 ngày. Thử lại sau ${days} ngày.`);
     }
     const leaveOld = !!req.body.leaveOld;
     tx(() => {
-      const oldIds = homeGroupIds(provinceById(u.province_id));
-      const newIds = homeGroupIds(p);
+      const oldIds = homeGroupsOf(u);
+      const newIds = homeGroupsOf({ country: code, province_id: p ? p.id : 0 });
       if (leaveOld) for (const gid of oldIds) if (!newIds.includes(gid)) removeMember(gid, u.id);
       for (const gid of newIds) addMember(gid, u.id);
-      db.prepare('UPDATE users SET province_id = ?, home_changed_at = ? WHERE id = ?').run(p.id, now(), u.id);
+      db.prepare('UPDATE users SET country = ?, province_id = ?, home_changed_at = ? WHERE id = ?').run(code, p ? p.id : 0, now(), u.id);
     });
     res.json({ user: selfUser(getUser(u.id)) });
   })
@@ -591,7 +615,7 @@ const isMuted = (m) => m.notif_muted_until === -1 || (m.notif_muted_until && m.n
 
 function groupDto(g, uid, member) {
   const dto = {
-    id: g.id, type: g.type, name: g.name, short: g.short, lang: g.lang, avatarUrl: g.avatar_url,
+    id: g.id, type: g.type, name: groupNameFor(g, getUser(uid)?.language), short: g.short, lang: g.lang, avatarUrl: g.avatar_url,
     memberLimit: g.member_limit, createdBy: g.created_by,
   };
   if (g.type === 'topic') { dto.description = g.description || ''; dto.highlighted = !!g.highlighted; }
@@ -627,6 +651,7 @@ api.get(
     const out = [];
     for (const r of rows) {
       const g = getGroup(r.gid);
+      if (groupHidden(g, req.user)) continue; // nước chưa mở cho mọi người
       const dto = groupDto(g, req.user.id, getMember(g.id, req.user.id));
       if (g.type === 'dm' && isBlockedEither(req.user.id, dto.peer.id)) continue;
       dto.unread = Math.min(r.unread, 99);
@@ -660,7 +685,10 @@ api.get(
       )
       .all(...(type ? [req.user.id, type] : [req.user.id]));
     const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/đ/g, 'd');
+    const lang = req.user.language;
     const groups = rows
+      .filter((g) => !groupHidden(g, req.user))
+      .map((g) => ({ ...g, name: groupNameFor(g, lang) }))
       .filter((g) => !q || norm(g.name).includes(norm(q)))
       .map((g) => ({ id: g.id, type: g.type, name: g.name, short: g.short, lang: g.lang, memberCount: g.cnt, joined: !!g.joined }))
       .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
@@ -674,6 +702,7 @@ api.get(
   wrap((req, res) => {
     if (req.user.hide_suggestions) return res.json({ groups: [], hidden: true });
     const home = provinceById(req.user.province_id);
+    if (!home) return res.json({ groups: [] });
     const sameRegion = PROVINCES.filter((p) => p.region === home.region && p.id !== home.id).slice(0, 4);
     const keys = sameRegion.map((p) => `${COUNTRY.code}:p:${p.id}`);
     const rows = keys
@@ -709,7 +738,7 @@ api.get(
   wrap((req, res) => {
     const id = int(req.params.id);
     const g = getGroup(id);
-    if (!g) throw notFound('Không tìm thấy nhóm');
+    if (!g || groupHidden(g, req.user)) throw notFound('Không tìm thấy nhóm');
     const m = getMember(id, req.user.id);
     if (!m && !PUBLIC_TYPES.includes(g.type)) throw forbidden();
     const dto = groupDto(g, req.user.id, m);
@@ -965,7 +994,7 @@ api.post(
   '/groups/:id/join',
   wrap((req, res) => {
     const g = getGroup(int(req.params.id));
-    if (!g || !PUBLIC_TYPES.includes(g.type)) throw notFound('Không tìm thấy nhóm công khai');
+    if (!g || !PUBLIC_TYPES.includes(g.type) || groupHidden(g, req.user)) throw notFound('Không tìm thấy nhóm công khai');
     if (db.prepare('SELECT 1 FROM bans WHERE group_id=? AND user_id=?').get(g.id, req.user.id)) throw forbidden('Bạn đã bị mời ra khỏi nhóm này');
     const had = !!getMember(g.id, req.user.id);
     addMember(g.id, req.user.id); // vào ngay, không cần duyệt; không đổi vị trí home
@@ -1090,6 +1119,7 @@ api.get(
     const gid = int(req.params.id);
     // nhóm công khai: ai cũng đọc được, không cần tham gia
     const pub = getGroup(gid);
+    if (groupHidden(pub, req.user)) throw notFound('Không tìm thấy nhóm');
     const { g } = pub && PUBLIC_TYPES.includes(pub.type) ? { g: pub } : requireMember(gid, req.user.id);
     if (g.type === 'dm' && isBlockedEither(req.user.id, memberIds(gid).find((x) => x !== req.user.id))) throw forbidden();
     const limit = Math.min(Math.max(int(req.query.limit) || 40, 1), 100);

@@ -2286,3 +2286,61 @@ test('dịch bản tin: nhận diện ngôn ngữ, dịch ra 3 ngôn ngữ còn 
   const to = await waitFor(async () => { const n = await newsFor(enU, titleOnly.id); return n.autoTranslated ? n : null; });
   assert.equal(to.body, '');
 });
+
+test('đa quốc gia: các nước ngoài Việt Nam ẩn với người thường tới khi admin mở; admin thấy sớm', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('nguoivn', 1);
+  const geo = async () => (await (await fetch(BASE + '/geo')).json()).countries.map((c) => c.code);
+  const pubGroups = async (lang = 'vi') => (await (await fetch(`${BASE}/public/groups?lang=${lang}`)).json()).groups;
+  const reg = (email, name, country) => call('POST', '/auth/register', { email, password: 'password1', acceptCommunity: true, displayName: name, country, language: 'th' });
+  // đang đóng: người thường chỉ thấy Việt Nam
+  assert.deepEqual(await geo(), ['VN']);
+  assert.deepEqual((await call('GET', '/me/countries', null, u.token)).data.countries.map((c) => c.code), ['VN']);
+  assert.equal((await reg('th1@test.com', 'Thai Một', 'TH')).status, 400, 'chưa mở thì chưa đăng ký được');
+  const admList = (await call('GET', '/groups/discover?type=country', null, adm.token)).data.groups;
+  const th = admList.find((g) => g.name === 'Thái Lan');
+  assert.ok(th, 'admin thấy nhóm Thái Lan');
+  assert.ok(admList.length >= 11, 'admin thấy đủ 11 quốc gia');
+  const uList = (await call('GET', '/groups/discover?type=country', null, u.token)).data.groups;
+  assert.deepEqual(uList.map((g) => g.name), ['Việt Nam'], 'người thường chỉ thấy Việt Nam');
+  assert.equal((await call('GET', `/groups/${th.id}`, null, u.token)).status, 404);
+  assert.equal((await call('GET', `/groups/${th.id}/messages`, null, u.token)).status, 404);
+  assert.equal((await call('POST', `/groups/${th.id}/join`, {}, u.token)).status, 404);
+  assert.ok(!(await pubGroups()).some((g) => g.name === 'Thái Lan'), 'khách không thấy');
+  assert.equal((await fetch(`${BASE}/public/groups/${th.id}`)).status, 404);
+  // chỉ Admin hệ thống bật được
+  assert.equal((await call('PATCH', '/admin/intl', { public: true }, u.token)).status, 403);
+  assert.equal((await call('PATCH', '/admin/intl', { public: 'yes' }, adm.token)).status, 400);
+  // admin tự chọn nhà là Thái Lan để thử: vào nhóm Thái Lan, tên theo ngôn ngữ của admin
+  const home = await call('POST', '/me/home', { country: 'TH', leaveOld: true }, adm.token);
+  assert.equal(home.status, 200); assert.equal(home.data.user.country, 'TH'); assert.equal(home.data.user.location.province, null);
+  const mine = (await call('GET', '/groups/mine', null, adm.token)).data.groups.filter((g) => g.type === 'country');
+  assert.equal(mine.length, 1); assert.equal(mine[0].id, th.id);
+  assert.equal((await call('POST', '/me/home', { country: 'XX' }, adm.token)).status, 400);
+  assert.equal((await call('POST', '/me/home', { country: 'VN', provinceId: 1, leaveOld: true }, adm.token)).status, 200, 'admin quay lại Việt Nam, không bị giới hạn 30 ngày');
+  // mở cho mọi người
+  assert.equal((await call('PATCH', '/admin/intl', { public: true }, adm.token)).data.public, true);
+  assert.equal((await geo()).length, 11);
+  assert.equal((await call('GET', `/groups/${th.id}`, null, u.token)).status, 200);
+  assert.ok((await pubGroups('zh')).some((g) => g.name === '泰国'), 'tên theo ngôn ngữ khách');
+  assert.ok((await pubGroups('th')).some((g) => g.name === 'ไทย'));
+  const r = await reg('th1@test.com', 'Thai Một', 'TH');
+  assert.equal(r.status, 201);
+  assert.equal(r.data.user.country, 'TH'); assert.equal(r.data.user.location.countryCode, 'TH'); assert.equal(r.data.user.location.province, null);
+  const rg = (await call('GET', '/groups/mine', null, r.data.token)).data.groups;
+  assert.ok(rg.some((g) => g.type === 'country' && g.name === 'ไทย'), 'vào nhóm quốc gia, tên tiếng Thái'); assert.ok(rg.some((g) => g.type === 'trend')); assert.ok(!rg.some((g) => g.type === 'province'));
+  assert.equal((await reg('xx1@test.com', 'Nước lạ', 'XX')).status, 400, 'mã nước không có');
+  // người Thái là bạn bè: thấy quốc gia (không có tỉnh)
+  await call('PATCH', '/me', { friendPolicy: 'everyone' }, r.data.token);
+  await call('POST', '/friends/request', { userId: u.id }, r.data.token);
+  const inc = (await call('GET', '/friends', null, u.token)).data.incoming[0];
+  await call('POST', `/friends/requests/${inc.id}/accept`, {}, u.token);
+  const loc = (await call('GET', `/users/${r.data.user.id}`, null, u.token)).data.user.location;
+  assert.equal(loc.country, 'Thái Lan'); assert.equal(loc.province, undefined); assert.equal(loc.countryNames.zh, '泰国');
+  // gợi ý nhóm không lỗi với người không có tỉnh
+  assert.equal((await call('GET', '/groups/suggestions', null, r.data.token)).status, 200);
+  // đóng lại: ẩn trở lại
+  await call('PATCH', '/admin/intl', { public: false }, adm.token);
+  assert.deepEqual(await geo(), ['VN']);
+  assert.equal((await call('GET', `/groups/${th.id}`, null, u.token)).status, 404);
+});

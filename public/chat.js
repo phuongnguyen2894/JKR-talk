@@ -1,4 +1,4 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, newsGallery, roleOf, avatarR, roleClass, roleSr, lvBadge, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
+import { $, $$, esc, S, api, go, icon, locText, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, dayKey, toast, fail, openModal, closeModal, ask, confirmBox, lightbox, refreshGroups, actions, mutedNow, imageToDataUrl, linkify, newsGallery, roleOf, avatarR, roleClass, roleSr, lvBadge, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
 import { maybeAskPush } from './push.js';
 import { rememberRx, reactsHtml, composerPanelHtml, wireEmojiSuggest, reactIcon } from './emoji.js';
 import { nameCls } from './frames.js';
@@ -656,7 +656,7 @@ export async function openProfile(uid, gid = C?.gid) {
   const staff = g && canModerate(g) && r.relation !== 'self';
   openModal(`<div class="row">${avatar(u, 'lg')}<div class="grow"><h2>${esc(u.displayName)} ${u.isAdmin ? '<span class="pill">Admin</span>' : ''}</h2>
       ${u.online ? '<div class="small"><span class="dot"></span> Đang online</div>' : ''}
-      ${u.location ? `<div class="small muted loc-line">${icon('pin', 14)}${esc(u.location.province)}, ${esc(u.location.country)}</div>` : ''}</div></div>
+      ${u.location ? `<div class="small muted loc-line">${icon('pin', 14)}${esc(locText(u.location))}</div>` : ''}</div></div>
     <div class="row wrap">${rel}</div>
     <div class="row wrap">
       ${r.relation === 'friend' ? `<button class="btn sm" data-act="unfriend" data-id="${u.id}">Hủy kết bạn</button>` : ''}

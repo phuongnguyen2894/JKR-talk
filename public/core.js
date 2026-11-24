@@ -107,6 +107,8 @@ export const fmtTime = (t) => new Date(t).toLocaleTimeString(LOCALE[getLang()] |
 export const fmtDate = (t) => new Date(t).toLocaleDateString(LOCALE[getLang()] || 'vi-VN');
 export const fmtDateTime = (t) => `${fmtDate(t)} ${fmtTime(t)}`;
 export const dayKey = (t) => new Date(t).toDateString();
+// Nơi ở: "Hà Nội, Việt Nam" hoặc chỉ quốc gia (nước chưa có cấp tỉnh/thành); tên quốc gia theo ngôn ngữ đang dùng
+export const locText = (l) => { if (!l) return ''; const c = l.countryNames?.[getLang()] || l.country; return l.province ? `${l.province}, ${c}` : c; };
 
 // ---- toast ---------------------------------------------------------------------
 export function toast(text, ms = 4500) {

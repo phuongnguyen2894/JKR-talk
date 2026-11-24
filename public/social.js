@@ -1,10 +1,10 @@
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, toast, fail, openModal, closeModal, confirmBox, refreshGroups, refreshCounters, actions, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
+import { $, $$, esc, S, api, go, icon, locText, avatar, groupAvatar, toast, fail, openModal, closeModal, confirmBox, refreshGroups, refreshCounters, actions, memberPickerHtml, wireMemberPicker, pickedIds } from './core.js';
 
 export async function renderFriends(view) {
   view.innerHTML = '<div class="page"><div class="page-inner muted">Đang tải…</div></div>';
   const [f, jr] = await Promise.all([api('GET', '/friends'), api('GET', '/private/requests')]);
   const priv = S.groups.filter((g) => g.type === 'private');
-  const person = (u, right) => `<div class="card">${avatar(u, '')}<button class="grow" style="background:none;border:0;text-align:left;font-weight:600;font-size:15px;padding:0" data-act="profile" data-id="${u.id}">${esc(u.displayName)}${u.online ? ' <span class="dot" title="Đang online"></span>' : ''}${u.location ? `<span class="small muted loc-line" style="font-weight:400">${icon('pin', 14)}${esc(u.location.province)}, ${esc(u.location.country)}</span>` : ''}</button>${right}</div>`;
+  const person = (u, right) => `<div class="card">${avatar(u, '')}<button class="grow" style="background:none;border:0;text-align:left;font-weight:600;font-size:15px;padding:0" data-act="profile" data-id="${u.id}">${esc(u.displayName)}${u.online ? ' <span class="dot" title="Đang online"></span>' : ''}${u.location ? `<span class="small muted loc-line" style="font-weight:400">${icon('pin', 14)}${esc(locText(u.location))}</span>` : ''}</button>${right}</div>`;
   view.innerHTML = `<div class="page"><div class="page-inner">
     <div class="row between"><h1>Bạn bè</h1><button class="btn primary" data-act="add-friend-hint">Thêm bạn</button></div>
     ${f.incoming.length || f.outgoing.length ? `<section><div class="h2">Lời mời kết bạn</div><div class="list">

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { emojiMeta } from './emoji.js';
 import { pushToUser, PUSH_TYPE_MAP } from './push.js';
 import { db, now } from './db.js';
-import { provinceById, regionByCode } from './geo.js';
+import { provinceById, regionByCode, COUNTRY, COUNTRIES, countryByCode, isIntlCountry } from './geo.js';
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -55,17 +55,30 @@ export function getUser(id) {
 }
 
 export function locationOf(u) {
+  const c = countryByCode(u.country) || countryByCode(COUNTRY.code);
+  if (c.code !== COUNTRY.code) return { country: c.name, countryCode: c.code, countryNames: c.names, province: null, region: null }; // nước khác: mới có cấp quốc gia
   const p = provinceById(u.province_id);
   const r = p && regionByCode(p.region);
-  return { country: 'Việt Nam', province: p?.name || null, region: r?.name || null };
+  return { country: c.name, countryCode: c.code, countryNames: c.names, province: p?.name || null, region: r?.name || null };
 }
 
-// Nơi ở (tỉnh/thành + quốc gia): chỉ bạn bè đã kết bạn, chưa chặn nhau, và người đó đang bật chia sẻ mới thấy
+// Cờ mở các quốc gia ngoài Việt Nam cho mọi người (mặc định tắt: chỉ Admin thấy). Lưu trong app_settings.
+export const intlPublic = () => db.prepare("SELECT value FROM app_settings WHERE key = 'intl_public'").get()?.value === '1';
+export const setIntlPublic = (on) => db.prepare("INSERT INTO app_settings (key, value) VALUES ('intl_public', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(on ? '1' : '0');
+// Nhóm quốc gia ngoài Việt Nam bị ẩn với người thường khi chưa mở; Admin luôn thấy
+export const groupHidden = (g, user) => !!g && g.type === 'country' && isIntlCountry(g.key) && !intlPublic() && user?.role !== 'admin';
+// Tên nhóm quốc gia theo ngôn ngữ người xem
+export const groupNameFor = (g, lang) => (g.type === 'country' ? countryByCode(g.key)?.names[lang] || g.name : g.name);
+// Danh sách quốc gia người này được chọn (Admin: tất cả; người thường: Việt Nam, và các nước khác khi đã mở)
+export const countriesFor = (user) => COUNTRIES.filter((c) => c.code === COUNTRY.code || intlPublic() || user?.role === 'admin');
+
+// Nơi ở (tỉnh/thành + quốc gia): chỉ bạn bè đã kết bạn, chưa chặn nhau, và người đó đang bật chia sẻ mới thấy.
+// Nước khác Việt Nam chưa có cấp tỉnh/thành nên chỉ trả quốc gia.
 export function friendLocation(u, viewerId) {
   if (!u || !viewerId || u.id === viewerId || !u.share_location || u.status === 'deleted') return undefined;
   if (!areFriends(viewerId, u.id) || isBlockedEither(viewerId, u.id)) return undefined;
   const l = locationOf(u);
-  return l.province ? { province: l.province, country: l.country } : undefined;
+  return { province: l.province || undefined, country: l.country, countryNames: l.countryNames };
 }
 
 // Thông tin công khai của một người dùng (không lộ email, chỉ tới cấp tỉnh/thành)
@@ -96,6 +109,7 @@ export function selfUser(u) {
     location: locationOf(u), // chỉ chính chủ (và admin) mới thấy vị trí
     email: u.email,
     provinceId: u.province_id,
+    country: u.country || 'VN', // mã quốc gia nhà
     verified: !!u.verified,
     role: u.role,
     isSuper: u.role === 'admin' && !!u.is_super,

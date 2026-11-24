@@ -7,7 +7,7 @@ import { adminEmoji } from './emoji.js';
 import { adminGame } from './mtadmin.js';
 import { renderStats } from './stats.js';
 import { commentBlock } from './comments.js';
-import { $, $$, esc, S, api, go, icon, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify, newsGallery, lightbox, lvBadge } from './core.js';
+import { $, $$, esc, S, api, go, icon, locText, avatar, groupAvatar, fmtTime, fmtDate, fmtDateTime, toast, fail, openModal, closeModal, ask, confirmBox, refreshGroups, refreshCounters, actions, setToken, provinceName, imageToDataUrl, linkify, newsGallery, lightbox, lvBadge } from './core.js';
 
 // ===========================================================================
 // Đăng nhập / đăng ký (render vào #root, ngoài shell)
@@ -50,7 +50,8 @@ export async function renderRegister(root) {
       <div class="field"><label for="dn">${t('auth.displayName')}</label><input class="input" id="dn" required minlength="2" maxlength="30" autocomplete="nickname" placeholder="${t('auth.dnPh')}"></div>
       <div class="field"><label for="pw">${t('auth.password')}</label><input class="input" id="pw" type="password" required minlength="8" autocomplete="new-password" placeholder="${t('set.pwHint')}"></div>
       <div class="field"><label for="pw2">${t('auth.confirmPw')}</label><input class="input" id="pw2" type="password" required minlength="8" autocomplete="new-password" placeholder="${t('auth.pw2Ph')}"></div>
-      <div class="geo-card">
+      ${(S.geo.countries || []).length > 1 ? `<div class="field"><label for="country">${t('auth.country')}</label><select class="input" id="country">${S.geo.countries.map((c) => `<option value="${c.code}">${esc(c.names[getLang()] || c.name)}</option>`).join('')}</select></div>` : ''}
+      <div class="geo-card" id="geocard">
         <div style="font-weight:700">${t('auth.where')}</div>
         <div class="field"><label for="region">${t('auth.region')}</label><select class="input" id="region">${regions.map((r) => `<option value="${r.code}">${esc(r.name)}</option>`).join('')}</select></div>
         <div class="field"><label for="city">${t('auth.city')}</label><select class="input" id="city"></select></div>
@@ -70,15 +71,24 @@ export async function renderRegister(root) {
     $('#geohint').textContent = t('auth.geoHint', { r: r.name, c: c?.name });
   };
   $('#accept').onchange = (e) => { $('#regbtn').disabled = !e.target.checked; };
+  const pickCountry = () => {
+    const cc = $('#country')?.value || 'VN';
+    $('#geocard').hidden = cc !== 'VN';
+    $('#cnote')?.remove();
+    if (cc !== 'VN') $('#geocard').insertAdjacentHTML('beforebegin', `<div class="small muted" id="cnote">${esc(t('auth.intlHint', { c: S.geo.countries.find((x) => x.code === cc).names[getLang()] }))}</div>`);
+    $('#city').required = cc === 'VN';
+  };
+  if ($('#country')) $('#country').onchange = pickCountry;
   $('#region').onchange = fillCities;
   $('#city').onchange = hint;
   fillCities();
   restoreForm();
+  pickCountry();
   $('#rf').onsubmit = async (e) => {
     e.preventDefault();
     if ($('#pw').value !== $('#pw2').value) { $('#err').innerHTML = `<div class="error" role="alert">${t('auth.pwMismatch')}</div>`; $('#pw2').focus(); return; }
     try {
-      const r = await api('POST', '/auth/register', { email: $('#email').value, displayName: $('#dn').value, password: $('#pw').value, passwordConfirm: $('#pw2').value, acceptCommunity: $('#accept').checked, provinceId: Number($('#city').value), country: 'VN', language: getLang() });
+      const r = await api('POST', '/auth/register', { email: $('#email').value, displayName: $('#dn').value, password: $('#pw').value, passwordConfirm: $('#pw2').value, acceptCommunity: $('#accept').checked, provinceId: Number($('#city').value), country: $('#country')?.value || 'VN', language: getLang() });
       setToken(r.token);
       S.hooks.boot();
     } catch (er) { $('#err').innerHTML = `<div class="error" role="alert">${esc(er.message)}</div>`; }
@@ -209,14 +219,15 @@ actions['news-del'] = async (el) => {
 // ===========================================================================
 // Cài đặt
 // ===========================================================================
-export function renderSettings(view) {
+export async function renderSettings(view) {
   const u = S.me;
+  const myCountries = await api('GET', '/me/countries').then((r) => r.countries).catch(() => []); // chỉ hiện ô quốc gia khi có hơn một nước
   const { regions, provinces } = S.geo;
   const cooldown = u.homeChangedAt && Date.now() - u.homeChangedAt < 30 * 864e5;
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>${t('set.title')}</h1>
     <section class="card col"><div class="h2" style="margin:0">${t('set.profile')}</div>
-      <div class="row">${avatar(u, 'lg')}<div class="grow"><div class="small muted">${esc(u.email)}</div><div class="small muted">${esc(u.location.province)} · ${esc(u.location.region)}</div></div></div>
+      <div class="row">${avatar(u, 'lg')}<div class="grow"><div class="small muted">${esc(u.email)}</div><div class="small muted">${esc(u.location.province ? `${u.location.province} · ${u.location.region}` : locText(u.location))}</div></div></div>
       <form id="pf" class="col">
         <div class="field"><label for="dn">${t('auth.displayName')}</label><input class="input" id="dn" value="${esc(u.displayName)}" required minlength="2" maxlength="30"></div>
         <div class="field"><label for="lang">${t('lang.label')}</label><select class="input" id="lang">${LANGS.map((l) => `<option value="${l.code}" ${u.language === l.code ? 'selected' : ''}>${l.name}</option>`).join('')}</select></div>
@@ -232,7 +243,7 @@ export function renderSettings(view) {
         <button class="btn">${t('set.changePw')}</button></form></section>
     <section class="card col"><div class="h2" style="margin:0">${t('set.home')}</div>
       <p class="small muted">${t('set.homeNote')}${cooldown ? ` <b>${t('set.homeCooldown')}</b>` : ''}</p>
-      <form id="hf" class="col"><div class="field"><label for="hp">${t('auth.city')}</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+      <form id="hf" class="col">${myCountries.length > 1 ? `<div class="field"><label for="hc">${t('set.country')}</label><select class="input" id="hc">${myCountries.map((c) => `<option value="${c.code}" ${c.code === (u.country || 'VN') ? 'selected' : ''}>${esc(c.names[getLang()] || c.name)}</option>`).join('')}</select></div>` : ''}<div class="field" id="hpfield" ${(u.country || 'VN') !== 'VN' ? 'hidden' : ''}><label for="hp">${t('auth.city')}</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
       <button class="btn" ${cooldown ? 'disabled' : ''}>${t('set.changeHome')}</button></form></section>
     <div id="pushslot"></div>
     <section class="card col"><div class="h2" style="margin:0">${t('set.privacy')}</div>
@@ -268,13 +279,17 @@ export function renderSettings(view) {
     } catch (er) { fail(er); }
   };
   $('#savepriv').onclick = () => save({ friendPolicy: $('#fp').value, showOnline: $('#so').checked, shareLocation: $('#sl').checked, newsPush: $('#np').checked, hideSuggestions: $('#hs').checked });
+  if ($('#hc')) $('#hc').onchange = () => { $('#hpfield').hidden = $('#hc').value !== 'VN'; };
   $('#hf').onsubmit = async (e) => {
     e.preventDefault();
+    const cc = $('#hc') ? $('#hc').value : 'VN';
     const pid = Number($('#hp').value);
-    if (pid === u.provinceId) return toast('Bạn đang chọn tỉnh/thành này rồi');
-    const v = await ask({ title: `Đổi vị trí sang ${provinceName(pid)}?`, text: 'Bạn sẽ vào các nhóm theo vị trí mới. Bạn chỉ đổi được 1 lần / 30 ngày.', fields: [{ name: 'leaveOld', type: 'checkbox', label: 'Rời các nhóm vùng và tỉnh/thành cũ', value: true }], ok: 'Đổi vị trí' });
+    if (cc === 'VN' && (u.country || 'VN') === 'VN' && pid === u.provinceId) return toast('Bạn đang chọn tỉnh/thành này rồi');
+    if (cc !== 'VN' && cc === u.country) return toast('Bạn đang chọn quốc gia này rồi');
+    const cname = myCountries.find((c) => c.code === cc)?.names[getLang()] || cc;
+    const v = await ask({ title: `Đổi vị trí sang ${cc === 'VN' ? provinceName(pid) : cname}?`, text: 'Bạn sẽ vào các nhóm theo vị trí mới. Bạn chỉ đổi được 1 lần / 30 ngày.', fields: [{ name: 'leaveOld', type: 'checkbox', label: 'Rời các nhóm vùng và tỉnh/thành cũ', value: true }], ok: 'Đổi vị trí' });
     if (!v) return;
-    try { const r = await api('POST', '/me/home', { provinceId: pid, leaveOld: v.leaveOld }); S.me = r.user; await refreshGroups(); toast('Đã đổi vị trí'); renderSettings(view); } catch (er) { fail(er); }
+    try { const r = await api('POST', '/me/home', cc === 'VN' ? { country: 'VN', provinceId: pid, leaveOld: v.leaveOld } : { country: cc, leaveOld: v.leaveOld }); S.me = r.user; await refreshGroups(); toast('Đã đổi vị trí'); renderSettings(view); } catch (er) { fail(er); }
   };
 };
 actions.logout = () => S.hooks.logout();
@@ -293,7 +308,7 @@ const LOG_LABEL = { delete_message: 'Xóa tin nhắn', mute: 'Tắt tiếng', ki
 export async function renderAdmin(view, tab = 'reports') {
   const admin = S.me.role === 'admin';
   if (!admin) tab = 'reports';
-  const tabs = admin ? [['reports', 'Báo cáo'], ['topics', 'Chủ đề chờ duyệt'], ['emoji', 'Emoji'], ['game', 'Game'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin'], ['stats', 'Thống kê']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
+  const tabs = admin ? [['reports', 'Báo cáo'], ['topics', 'Chủ đề chờ duyệt'], ['emoji', 'Emoji'], ['game', 'Game'], ['users', 'Người dùng'], ['mods', 'Mod'], ...(S.me.isSuper ? [['admins', 'Admin'], ['intl', 'Quốc gia'], ['stats', 'Thống kê']] : []), ['logs', 'Nhật ký']] : [['reports', 'Báo cáo']];
   view.innerHTML = `<div class="page"><div class="page-inner"><h1>${admin ? 'Quản trị' : 'Báo cáo trong nhóm của bạn'}</h1>
     <div class="pillnav">${tabs.map(([k, n]) => `<button data-tab="${k}" aria-pressed="${k === tab}">${n}<span class="tab-cnt" data-cnt="${k}"></span></button>`).join('')}</div><div id="tabbody"></div></div></div>`;
   $$('[data-tab]', view).forEach((b) => (b.onclick = () => renderAdmin(view, b.dataset.tab)));
@@ -310,6 +325,7 @@ export async function renderAdmin(view, tab = 'reports') {
     if (tab === 'users') await adminUsers(body);
     if (tab === 'mods') await adminMods(body);
     if (tab === 'admins' && S.me.isSuper) await adminAdmins(body);
+    if (tab === 'intl' && S.me.isSuper) await adminIntl(body);
     if (tab === 'stats' && S.me.isSuper) await renderStats(body);
     if (tab === 'logs') await adminLogs(body);
   } catch (e) { body.innerHTML = `<div class="error">${esc(e.message)}</div>`; }
@@ -396,6 +412,20 @@ actions['revoke-admin'] = async (el) => {
   if (!(await confirmBox('Thu hồi quyền Admin?', 'Người này trở lại người dùng thường (quyền mod ở các nhóm, nếu có, vẫn giữ).', 'Thu hồi', true))) return;
   try { await api('DELETE', `/admin/admins/${el.dataset.id}`); renderAdmin($('#view'), 'admins'); } catch (e) { fail(e); }
 };
+async function adminIntl(body) {
+  const r = await api('GET', '/admin/intl');
+  body.innerHTML = `<section class="card col"><div class="h2" style="margin:0">Quốc gia Đông Nam Á</div>
+    <p class="small muted">Việt Nam luôn mở. Các nước khác ${r.public ? '<b>đang mở cho mọi người</b>: ai cũng chọn được khi đăng ký và thấy nhóm quốc gia.' : '<b>đang chỉ Admin thấy</b>: người dùng thường và khách không thấy nhóm và không chọn được khi đăng ký.'}</p>
+    <label class="check"><input type="checkbox" id="ipub" ${r.public ? 'checked' : ''}> Mở các quốc gia ngoài Việt Nam cho mọi người</label>
+    <p class="tiny muted">Để thử trước: vào Cài đặt, mục "Vị trí home", chọn quốc gia (Admin không bị giới hạn 30 ngày), rồi quay lại Việt Nam khi xong. Mỗi nước hiện có một nhóm chat cấp quốc gia, chưa có tỉnh/thành.</p>
+    <div class="stat-table" role="table" aria-label="Quốc gia">${r.countries.map((c) => `<div class="stat-row" role="row"><span role="cell">${esc(c.names.vi)} <span class="tiny muted">${esc(c.names.en)} · ${esc(c.names.th)} · ${esc(c.names.zh)}</span></span><b role="cell">${c.members.toLocaleString('vi-VN')}</b></div>`).join('')}</div>
+    <p class="tiny muted">Số bên phải là số thành viên của nhóm quốc gia.</p></section>`;
+  $('#ipub').onchange = async (e) => {
+    const on = e.target.checked;
+    if (on && !(await confirmBox('Mở các quốc gia cho mọi người?', 'Người dùng mới sẽ chọn được Thái Lan, Indonesia, Malaysia... khi đăng ký, và mọi người thấy các nhóm quốc gia. Bạn có thể đóng lại, nhưng nhóm đã có thành viên sẽ bị ẩn với họ khi đóng.', 'Mở'))) { e.target.checked = false; return; }
+    try { await api('PATCH', '/admin/intl', { public: on }); toast(on ? 'Đã mở cho mọi người' : 'Đã đóng, chỉ Admin thấy'); await adminIntl(body); } catch (er) { e.target.checked = !on; fail(er); }
+  };
+}
 async function adminMods(body) {
   const { mods } = await api('GET', '/admin/mods');
   body.innerHTML = `<p class="small muted">Trao quyền mod cho bất kỳ ai ở tab "Người dùng" (tìm theo tên hoặc email). Mod là tùy chọn cho mỗi nhóm công khai.</p><div class="list">${mods.map((m) => `<div class="card">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b><div class="tiny muted">Mod của ${esc(m.groupName)}</div></div><button class="btn sm danger" data-act="revoke-mod" data-gid="${m.groupId}" data-id="${m.user.id}">Thu hồi</button></div>`).join('') || '<p class="muted">Chưa có mod nào.</p>'}</div>`;
