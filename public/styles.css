@@ -644,5 +644,6 @@ details.card > summary { font-weight: 700; min-height: 44px; display: flex; alig
 .mtad-head { width: 64px; height: 64px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; border: 2px solid var(--line); flex: none; }
 
 /* số người đang xem trang */
-.live-pill { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.5; vertical-align: middle; white-space: nowrap; background: var(--accent-soft, rgba(91, 61, 245, .12)); color: var(--accent, #5B3DF5); }
+.live-pill { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.5; vertical-align: middle; white-space: nowrap; background: var(--accent-soft, rgba(91, 61, 245, .12)); color: var(--accent, #5B3DF5); }
 .chat-head h1 .live-pill { font-size: 11px; margin-left: 6px; }
+.live-pill svg { flex: none; }

@@ -1,5 +1,6 @@
 // Số người đang xem (cả khách) cho từng trang. Chỉ hiện khi có từ 2 người trở lên; chỉ là con số, không lộ ai đang xem.
 // Máy chủ tính từ các tin báo lượt xem (xem server/stats.js); trang hỏi lại mỗi 20 giây khi đang mở.
+import { icon } from './core.js';
 let live = { pages: {}, chat: {} };
 let whereFn = null, started = false;
 
@@ -18,13 +19,14 @@ function paint() {
   const visible = (el) => el && el.getClientRects().length > 0;
   const host = [...document.querySelectorAll('#view h1, #root h1')].find(visible);
   if (!host) { old?.remove(); return; }
-  const text = `👁 ${n} đang xem`;
-  if (old && old.parentElement === host) { if (old.textContent !== text) old.textContent = text; return; }
+  const text = `${n} đang xem`;
+  if (old && old.parentElement === host) { if (old.dataset.n !== String(n)) { old.dataset.n = String(n); old.innerHTML = `${icon('eye', 14)}${text}`; } return; }
   old?.remove();
   const el = document.createElement('span');
   el.className = 'live-pill';
   el.setAttribute('role', 'status');
-  el.textContent = text;
+  el.dataset.n = String(n);
+  el.innerHTML = `${icon('eye', 14)}${text}`;
   host.appendChild(el);
 }
 
