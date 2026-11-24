@@ -256,6 +256,11 @@ CREATE TABLE IF NOT EXISTS user_titles (
 
 // ---- Cửa hàng xu tím và khung avatar / màu tên ------------------------------
 // coins_spent: tổng xu đã tiêu (số dư = coins - coins_spent); frame, name_color: đồ đang dùng ('shop:3', 'title:1'...)
+// Bạn bè thấy tỉnh/thành và quốc gia của nhau (mặc định bật; tắt trong Cài đặt). Lần đầu thêm cột thì báo một lần cho mọi người.
+try {
+  db.exec('ALTER TABLE users ADD COLUMN share_location INTEGER NOT NULL DEFAULT 1');
+  db.exec("INSERT INTO notifications (user_id, type, text, created_at) SELECT id, 'system', 'Bạn bè giờ có thể thấy tỉnh/thành và quốc gia của bạn. Muốn ẩn thì tắt trong Cài đặt tài khoản > Quyền riêng tư.', " + Date.now() + " FROM users WHERE status = 'active' AND role != 'admin'");
+} catch { /* đã có cột */ }
 for (const c of ['coins_spent INTEGER NOT NULL DEFAULT 0', 'frame TEXT', 'name_color TEXT']) { try { db.exec(`ALTER TABLE users ADD COLUMN ${c}`); } catch { /* đã có cột */ } }
 db.exec(`
 CREATE TABLE IF NOT EXISTS user_items (

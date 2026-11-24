@@ -231,6 +231,7 @@ export function renderSettings(view) {
     <section class="card col"><div class="h2" style="margin:0">Quyền riêng tư & thông báo</div>
       <div class="field"><label for="fp">Ai được gửi lời mời kết bạn cho tôi</label><select class="input" id="fp">${[['shared', 'Chỉ người chung nhóm'], ['everyone', 'Mọi người'], ['none', 'Không ai']].map(([c, n]) => `<option value="${c}" ${u.friendPolicy === c ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
       <label class="check"><input type="checkbox" id="so" ${u.showOnline ? 'checked' : ''}> Hiển thị trạng thái online (tắt thì bạn cũng không thấy trạng thái của người khác)</label>
+      <label class="check"><input type="checkbox" id="sl" ${u.shareLocation ? 'checked' : ''}> Cho bạn bè thấy tỉnh/thành và quốc gia của tôi (người lạ không thấy)</label>
       <label class="check"><input type="checkbox" id="np" ${u.newsPush ? 'checked' : ''}> Nhận thông báo khi có bản tin mới</label>
       <label class="check"><input type="checkbox" id="hs" ${u.hideSuggestions ? 'checked' : ''}> Ẩn gợi ý nhóm</label>
       <button class="btn" id="savepriv">Lưu cài đặt</button></section>
@@ -259,7 +260,7 @@ export function renderSettings(view) {
       toast('Đã đổi mật khẩu');
     } catch (er) { fail(er); }
   };
-  $('#savepriv').onclick = () => save({ friendPolicy: $('#fp').value, showOnline: $('#so').checked, newsPush: $('#np').checked, hideSuggestions: $('#hs').checked });
+  $('#savepriv').onclick = () => save({ friendPolicy: $('#fp').value, showOnline: $('#so').checked, shareLocation: $('#sl').checked, newsPush: $('#np').checked, hideSuggestions: $('#hs').checked });
   $('#hf').onsubmit = async (e) => {
     e.preventDefault();
     const pid = Number($('#hp').value);

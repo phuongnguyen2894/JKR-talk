@@ -107,6 +107,19 @@ test('kết bạn: policy none chặn; mặc định cho phép; không gửi tr�
   assert.equal(dm.status, 200);
   assert.equal((await call('POST', `/groups/${dm.data.group.id}/messages`, { body: 'alo' }, mai.token)).status, 201);
 });
+test('nơi ở: chỉ bạn bè thấy tỉnh/thành và quốc gia; người lạ không; tắt chia sẻ thì ẩn', async () => {
+  const xa = await signup('nguoila', 1);
+  assert.equal((await call('GET', '/me', null, khoa.token)).data.user.shareLocation, true, 'mặc định bật');
+  const loc = (await call('GET', `/users/${khoa.id}`, null, mai.token)).data.user.location;
+  assert.ok(loc && loc.province && loc.country === 'Việt Nam', JSON.stringify(loc));
+  assert.equal(loc.region, undefined, 'không lộ vùng/toạ độ');
+  assert.equal((await call('GET', `/users/${khoa.id}`, null, xa.token)).data.user.location, undefined);
+  assert.equal((await call('GET', '/friends', null, mai.token)).data.friends.find((f) => f.id === khoa.id).location.province, loc.province);
+  await call('PATCH', '/me', { shareLocation: false }, khoa.token);
+  assert.equal((await call('GET', `/users/${khoa.id}`, null, mai.token)).data.user.location, undefined);
+  assert.equal((await call('GET', '/friends', null, mai.token)).data.friends.find((f) => f.id === khoa.id).location, undefined);
+  await call('PATCH', '/me', { shareLocation: true }, khoa.token);
+});
 test('chặn: không thấy profile, không nhắn được', async () => {
   await call('POST', `/blocks/${mai.id}`, {}, khoa.token);
   assert.equal((await call('GET', `/users/${khoa.id}`, null, mai.token)).status, 404);

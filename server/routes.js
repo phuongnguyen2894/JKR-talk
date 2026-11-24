@@ -7,7 +7,7 @@ import { COUNTRY, REGIONS, PROVINCES, provinceById } from './geo.js';
 import {
   bad, forbidden, notFound, HttpError, hashPassword, checkPassword, randomToken, rateLimit,
   getUser, publicUser, selfUser, getGroup, getMember, memberIds, addMember, removeMember,
-  isSystemAdmin, isSuper, canPostTrend, locationOf, log, hub, isOnline, notify, pushOnly, messageDto, areFriends, isBlockedEither, shareGroup, pair,
+  isSystemAdmin, isSuper, canPostTrend, locationOf, friendLocation, log, hub, isOnline, notify, pushOnly, messageDto, areFriends, isBlockedEither, shareGroup, pair,
   AVATAR_COUNT, msgImages,
 } from './lib.js';
 
@@ -471,7 +471,7 @@ api.patch(
       if (!['everyone', 'shared', 'none'].includes(b.friendPolicy)) throw bad('Giá trị không hợp lệ');
       set('friend_policy', b.friendPolicy);
     }
-    for (const [k, col] of [['showOnline', 'show_online'], ['newsPush', 'news_push'], ['hideSuggestions', 'hide_suggestions']])
+    for (const [k, col] of [['showOnline', 'show_online'], ['shareLocation', 'share_location'], ['newsPush', 'news_push'], ['hideSuggestions', 'hide_suggestions']])
       if (b[k] !== undefined) set(col, b[k] ? 1 : 0);
     if (sets.length) db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.user.id);
     res.json({ user: selfUser(getUser(req.user.id)) });
@@ -1487,7 +1487,7 @@ api.get(
     if (!u || (id !== req.user.id && isBlockedEither(req.user.id, id))) throw notFound('Không tìm thấy người dùng');
     const pending = db.prepare("SELECT * FROM friend_requests WHERE status='pending' AND ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?))").get(req.user.id, id, id, req.user.id);
     res.json({
-      user: publicUser(u, req.user.id),
+      user: { ...publicUser(u, req.user.id), location: friendLocation(u, req.user.id) },
       relation: id === req.user.id ? 'self' : areFriends(req.user.id, id) ? 'friend' : pending ? (pending.from_id === req.user.id ? 'sent' : 'received') : 'none',
       requestId: pending?.id,
     });
@@ -1500,7 +1500,7 @@ api.get(
     const me = req.user.id;
     const friends = db.prepare('SELECT a, b FROM friends WHERE a = ? OR b = ?').all(me, me)
       .map((r) => (r.a === me ? r.b : r.a))
-      .map((id) => publicUser(getUser(id), me))
+      .map((id) => { const fu = getUser(id); return { ...publicUser(fu, me), location: friendLocation(fu, me) }; })
       .sort((x, y) => x.displayName.localeCompare(y.displayName, 'vi'));
     const incoming = db.prepare("SELECT * FROM friend_requests WHERE to_id = ? AND status = 'pending' ORDER BY id DESC").all(me)
       .map((r) => ({ id: r.id, user: publicUser(getUser(r.from_id)), createdAt: r.created_at }));

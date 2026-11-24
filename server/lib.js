@@ -60,6 +60,14 @@ export function locationOf(u) {
   return { country: 'Việt Nam', province: p?.name || null, region: r?.name || null };
 }
 
+// Nơi ở (tỉnh/thành + quốc gia): chỉ bạn bè đã kết bạn, chưa chặn nhau, và người đó đang bật chia sẻ mới thấy
+export function friendLocation(u, viewerId) {
+  if (!u || !viewerId || u.id === viewerId || !u.share_location || u.status === 'deleted') return undefined;
+  if (!areFriends(viewerId, u.id) || isBlockedEither(viewerId, u.id)) return undefined;
+  const l = locationOf(u);
+  return l.province ? { province: l.province, country: l.country } : undefined;
+}
+
 // Thông tin công khai của một người dùng (không lộ email, chỉ tới cấp tỉnh/thành)
 export function publicUser(u, viewerId) {
   if (!u) return { id: 0, displayName: 'Người dùng đã xóa', avatarColor: 0, deleted: true };
@@ -93,6 +101,7 @@ export function selfUser(u) {
     isSuper: u.role === 'admin' && !!u.is_super,
     friendPolicy: u.friend_policy,
     showOnline: !!u.show_online,
+    shareLocation: !!u.share_location,
     newsPush: !!u.news_push,
     hideSuggestions: !!u.hide_suggestions,
     coins: u.coins || 0,
