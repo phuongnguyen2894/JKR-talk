@@ -9,14 +9,14 @@ const count = () => {
   return (w.page === 'chat' && w.target ? live.chat[w.target] : live.pages[w.page]) || 0;
 };
 
-// gắn / cập nhật / gỡ nhãn "đang xem" ở tiêu đề trang (chat: dòng phụ dưới tên nhóm)
+// gắn / cập nhật / gỡ nhãn "đang xem" ở tiêu đề trang (chat: cạnh tên nhóm, vì dòng phụ bên dưới bị cắt bằng dấu … trên màn hình nhỏ)
 function paint() {
   const n = count();
   const old = document.querySelector('.live-pill');
   if (n < 2) { old?.remove(); return; }
   // tiêu đề đang hiển thị (bỏ qua h1 bị ẩn như tiêu đề danh sách nhóm trên máy tính)
   const visible = (el) => el && el.getClientRects().length > 0;
-  const host = [document.querySelector('.chat-head .sub'), ...document.querySelectorAll('#view h1, #root h1')].find(visible);
+  const host = [...document.querySelectorAll('#view h1, #root h1')].find(visible);
   if (!host) { old?.remove(); return; }
   const text = `👁 ${n} đang xem`;
   if (old && old.parentElement === host) { if (old.textContent !== text) old.textContent = text; return; }
