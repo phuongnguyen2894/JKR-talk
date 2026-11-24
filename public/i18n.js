@@ -1,13 +1,16 @@
-// Đa ngôn ngữ giao diện: vi (gốc) / en / th / zh (giản thể). Thiếu bản dịch thì rơi về tiếng Anh rồi tiếng Việt.
-// Mỗi khoá: [vi, en, th, zh]. Chỉ các màn đã chuyển (menu, đăng nhập/đăng ký, Bản tin, Cài đặt, khách) dùng t(); phần còn lại vẫn là tiếng Việt.
+// Đa ngôn ngữ giao diện: vi (gốc) / en / th / zh (giản thể) / es (Tây Ban Nha, trung tính) / pt (Bồ Đào Nha, Brazil). Thiếu bản dịch thì rơi về tiếng Anh rồi tiếng Việt.
+// Mỗi khoá: [vi, en, th, zh]; bản es và pt nằm ở i18n-es-pt.js và được ghép vào vị trí 4 và 5. Chỉ các màn đã chuyển (menu, đăng nhập/đăng ký, Bản tin, Cài đặt, khách) dùng t(); phần còn lại vẫn là tiếng Việt.
 export const LANGS = [
   { code: 'vi', name: 'Tiếng Việt' },
   { code: 'en', name: 'English' },
   { code: 'th', name: 'ไทย' },
   { code: 'zh', name: '中文' },
+  { code: 'es', name: 'Español' },
+  { code: 'pt', name: 'Português' },
 ];
-const IDX = { vi: 0, en: 1, th: 2, zh: 3 };
-export const LOCALE = { vi: 'vi-VN', en: 'en-US', th: 'th-TH', zh: 'zh-CN' };
+const IDX = { vi: 0, en: 1, th: 2, zh: 3, es: 4, pt: 5 };
+export const LOCALE = { vi: 'vi-VN', en: 'en-US', th: 'th-TH', zh: 'zh-CN', es: 'es-419', pt: 'pt-BR' };
+import { ES_PT } from './i18n-es-pt.js';
 
 const D = {
   // ---- ngôn ngữ ----
@@ -175,6 +178,8 @@ const D = {
   'set.logout': ['Đăng xuất', 'Log out', 'ออกจากระบบ', '退出登录'],
 };
 
+for (const [k, v] of Object.entries(ES_PT)) if (D[k]) { D[k][4] = v[0]; D[k][5] = v[1]; }
+
 let cur = 'vi';
 export const getLang = () => cur;
 export const isLang = (c) => c in IDX;
@@ -199,7 +204,7 @@ export function storedLang() { try { const l = localStorage.getItem('jkr_lang');
 export function setLang(code, persist = true) {
   if (!isLang(code)) return;
   cur = code;
-  document.documentElement.lang = code === 'zh' ? 'zh-Hans' : code;
+  document.documentElement.lang = code === 'zh' ? 'zh-Hans' : code === 'pt' ? 'pt-BR' : code;
   if (persist) { try { localStorage.setItem('jkr_lang', code); } catch { /* bỏ qua */ } }
 }
 // Khởi động: dùng lựa chọn đã lưu; chưa có thì theo trình duyệt (không lưu để còn hỏi khách)

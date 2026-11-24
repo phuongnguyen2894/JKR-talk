@@ -38,7 +38,7 @@ const gemMock = http.createServer((req, res) => {
     const input = JSON.parse(prompt.slice(prompt.indexOf('INPUT: ') + 7));
     const src = /[฀-๿]/.test(input.title + input.body) ? 'th' : /[àáạảãăâđêôơư]/i.test(input.title + input.body) ? 'vi' : 'en';
     const tr = {};
-    for (const l of ['vi', 'en', 'th', 'zh']) tr[l] = l === src ? input : { title: input.title ? `[${l}] ${input.title}` : '', body: input.body ? `[${l}] ${input.body}` : '' };
+    for (const l of ['vi', 'en', 'th', 'zh', 'es', 'pt']) tr[l] = l === src ? input : { title: input.title ? `[${l}] ${input.title}` : '', body: input.body ? `[${l}] ${input.body}` : '' };
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ source: src, translations: tr }) }] } }] }));
   });
@@ -2270,9 +2270,21 @@ test('dịch bản tin: nhận diện ngôn ngữ, dịch ra 3 ngôn ngữ còn 
   const vi = await newsFor(viU, made.id);
   assert.equal(vi.autoTranslated, false); assert.equal(vi.title, 'Chào mừng bạn', 'người dùng tiếng Việt thấy bản gốc');
   assert.equal((await newsFor(zhU, made.id)).title, '[zh] Chào mừng bạn');
+  // tiếng Tây Ban Nha và Bồ Đào Nha: chọn được, thấy bản dịch riêng
+  const esU = await signup('esuser', 1), ptU = await signup('ptuser', 1);
+  assert.equal((await call('PATCH', '/me', { language: 'es' }, esU.token)).data.user.language, 'es');
+  assert.equal((await call('PATCH', '/me', { language: 'pt' }, ptU.token)).data.user.language, 'pt');
+  assert.equal((await newsFor(esU, made.id)).title, '[es] Chào mừng bạn');
+  assert.equal((await newsFor(ptU, made.id)).title, '[pt] Chào mừng bạn');
+  assert.equal((await newsFor(ptU, made.id)).autoTranslated, true);
+  assert.equal((await call('PATCH', '/me', { language: 'fr' }, esU.token)).status, 400, 'ngôn ngữ chưa hỗ trợ');
+  const regPt = await call('POST', '/auth/register', { email: 'ptlang@test.com', password: 'password1', acceptCommunity: true, displayName: 'Pt Lang', provinceId: 1, language: 'pt' });
+  assert.equal(regPt.data.user.language, 'pt', 'đăng ký chọn tiếng Bồ Đào Nha');
   const guest = async (lang) => (await (await fetch(`${BASE}/public/news?lang=${lang}`)).json()).news.find((x) => x.id === made.id);
   assert.equal((await guest('th')).title, '[th] Chào mừng bạn', 'khách chọn ngôn ngữ');
   assert.equal((await guest('vi')).autoTranslated, false);
+  assert.equal((await guest('es')).title, '[es] Chào mừng bạn');
+  assert.equal((await guest('pt')).title, '[pt] Chào mừng bạn');
   assert.equal((await guest('xx')).autoTranslated, false, 'ngôn ngữ lạ: hiện bản gốc');
   // bài tiếng Thái: người dùng tiếng Việt thấy bản dịch
   const thPost = (await call('POST', '/admin/news', { title: 'สวัสดี', body: 'ข่าวใหม่' }, adm.token)).data.news;
@@ -2304,6 +2316,8 @@ test('đa quốc gia: tỉnh/thành từng nước, nhóm chỉ tạo khi có ng
   const meC = (await call('GET', '/me/countries', null, adm.token)).data.countries;
   assert.ok(meC.length > 200, 'admin thấy mọi quốc gia trên thế giới');
   assert.equal(meC.find((c) => c.code === 'JP').names.zh, '日本');
+  assert.deepEqual([meC.find((c) => c.code === 'JP').names.es, meC.find((c) => c.code === 'JP').names.pt], ['Japón', 'Japão'], 'tên nước tiếng Tây Ban Nha, Bồ Đào Nha');
+  assert.deepEqual(Object.keys(meC.find((c) => c.code === 'JP').names).sort(), ['en', 'es', 'pt', 'th', 'vi', 'zh'], 'tên nước chỉ trong phạm vi 6 ngôn ngữ của web');
   assert.deepEqual(meC.slice(0, 3).map((c) => c.code), ['VN', 'TH', 'ID'], 'Việt Nam rồi Đông Nam Á lên đầu');
   assert.equal(meC.find((c) => c.code === 'TH').subdivisions.length, 77);
   assert.equal(meC.find((c) => c.code === 'SG').subdivisions.length, 0);
@@ -2347,6 +2361,8 @@ test('đa quốc gia: tỉnh/thành từng nước, nhóm chỉ tạo khi có ng
   assert.equal((await geo()).find((c) => c.code === 'ID').subdivisions.length, 38);
   assert.equal((await call('GET', `/groups/${th.id}`, null, u.token)).status, 200);
   assert.ok((await pubGroups('zh')).some((g) => g.name === '泰国'), 'tên theo ngôn ngữ khách');
+  assert.ok((await pubGroups('es')).some((g) => g.name === 'Tailandia'));
+  assert.ok((await pubGroups('pt')).some((g) => g.name === 'Tailândia'));
   assert.equal((await reg('th0@test.com', 'Thiếu tỉnh', 'TH')).status, 400, 'nước có tỉnh phải chọn tỉnh');
   assert.equal((await reg('th0@test.com', 'Sai tỉnh', 'TH', 'abc')).status, 400);
   const r = await reg('th1@test.com', 'Thai Một', 'TH', 'phuket');
@@ -2445,6 +2461,12 @@ test('khoá Gemini: chỉ Admin hệ thống; lưu mã hoá, không bao giờ tr
   await call('POST', '/admin/news', { title: 'Tin dùng khoá env', body: 'nội dung' }, adm.token);
   for (let i = 0; i < 40 && !gemKeys.length; i++) await new Promise((r) => setTimeout(r, 50));
   assert.ok(gemKeys.length > 0 && gemKeys.every((k) => k === 'test-key'), 'xoá khoá thì quay về khoá môi trường');
+  // thêm ngôn ngữ mới (es, pt) cho bản tin cũ: bài chỉ có 4 bản dịch được dịch bù khi bấm "Dịch các bản tin chưa dịch"
+  db.prepare("DELETE FROM news_i18n WHERE lang IN ('es', 'pt')").run();
+  const sw = (await call('POST', '/admin/gemini/sweep', {}, adm.token)).data;
+  assert.ok(sw.queued > 0, 'có bài thiếu bản dịch es/pt');
+  for (let i = 0; i < 60 && !db.prepare("SELECT 1 FROM news_i18n WHERE lang = 'pt'").get(); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(db.prepare("SELECT 1 FROM news_i18n WHERE lang = 'es'").get() && db.prepare("SELECT 1 FROM news_i18n WHERE lang = 'pt'").get(), 'đã dịch bù es và pt');
   // dịch các bản tin chưa dịch: trả số bài xếp hàng, không lỗi
   assert.equal(typeof (await call('POST', '/admin/gemini/sweep', {}, adm.token)).data.queued, 'number');
   // khoá sai: test báo lỗi dễ hiểu (mock luôn trả OK nên chỉ kiểm tra khi không có khoá nào)

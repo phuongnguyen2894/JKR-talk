@@ -22,7 +22,7 @@ export const regionByCode = (code) => REGIONS.find((r) => r.code === code);
 // ---- Quốc gia trên thế giới (mở rộng đa quốc gia) -------------------------------
 // Mọi nước đều ở mức quốc gia; tỉnh/thành chỉ có cho các nước Đông Nam Á (xem geo_sea.js), Việt Nam giữ 3 miền + 63 tỉnh/thành.
 // Các nước ngoài Việt Nam chỉ hiện cho Admin cho tới khi Admin bật "mở cho mọi người" (bảng app_settings, khoá intl_public).
-// Nhóm chat của từng nước CHỈ được tạo khi có người đầu tiên chọn nước đó. Tên nước 4 thứ tiếng lấy từ dữ liệu ICU của Node (Intl.DisplayNames).
+// Nhóm chat của từng nước CHỈ được tạo khi có người đầu tiên chọn nước đó. Tên nước 6 thứ tiếng lấy từ dữ liệu ICU của Node (Intl.DisplayNames).
 const CODES = ('AD AE AF AG AI AL AM AO AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ '
   + 'DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GT GU GW GY HK HN HR HT HU ID IE IL IM IN IQ IR IS IT JE JM JO JP '
   + 'KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ '
@@ -30,13 +30,14 @@ const CODES = ('AD AE AF AG AI AL AM AO AR AS AT AU AW AX AZ BA BB BD BE BF BG B
   + 'UA UG US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW').split(' ');
 // Đông Nam Á: hiện đầu danh sách chọn (sau Việt Nam)
 export const SEA_CODES = ['VN', 'TH', 'ID', 'MY', 'PH', 'SG', 'KH', 'LA', 'MM', 'BN', 'TL'];
-const LANGS4 = ['vi', 'en', 'th', 'zh-Hans'];
-const dn = Object.fromEntries(LANGS4.map((l) => [l, new Intl.DisplayNames([l], { type: 'region' })]));
+// Tên nước chỉ có trong phạm vi các ngôn ngữ của web: vi, en, th, zh (giản thể), es, pt (Brazil)
+const LANGS6 = ['vi', 'en', 'th', 'zh-Hans', 'es', 'pt-BR'];
+const dn = Object.fromEntries(LANGS6.map((l) => [l, new Intl.DisplayNames([l], { type: 'region' })]));
 const nameIn = (code, l) => { try { const n = dn[l].of(code); return n && n !== code ? n : null; } catch { return null; } };
 export const COUNTRIES = CODES.map((code) => {
   const en = nameIn(code, 'en');
   if (!en) return null; // mã không có trong dữ liệu ICU
-  const names = { vi: nameIn(code, 'vi') || en, en, th: nameIn(code, 'th') || en, zh: nameIn(code, 'zh-Hans') || en };
+  const names = { vi: nameIn(code, 'vi') || en, en, th: nameIn(code, 'th') || en, zh: nameIn(code, 'zh-Hans') || en, es: nameIn(code, 'es') || en, pt: nameIn(code, 'pt-BR') || en };
   return { code, name: names.vi, names, sea: SEA_CODES.includes(code) };
 }).filter(Boolean).sort((a, b) => (SEA_CODES.indexOf(a.code) + 1 || 999) - (SEA_CODES.indexOf(b.code) + 1 || 999) || a.names.en.localeCompare(b.names.en, 'en'));
 export const countryByCode = (code) => COUNTRIES.find((c) => c.code === code);
