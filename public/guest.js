@@ -4,6 +4,9 @@ import { previewHtml } from './chat.js';
 import { boardCard, HOT_TABS, sectionHead, ALL_N } from './hot.js';
 import { loadEmoji, emojiHtml } from './emoji.js';
 import { renderTools } from './pages.js';
+import { t, getLang } from './i18n.js';
+import { langButton, maybeAskLang } from './langpick.js';
+import { newsText, fitNews } from './newstext.js';
 
 const G = { groups: null, trendId: 0 };
 const GROUP_ICON = { country: 'flag', region: 'grid', province: 'pin', topic: 'chat' };
@@ -17,16 +20,16 @@ async function loadGroups() {
   return G.groups;
 }
 
-const cta = (text = 'Đăng ký để thả tim, trò chuyện và tham gia các nhóm.') =>
-  `<div class="guest-cta" role="region" aria-label="Mời đăng ký"><span class="grow small">${text}</span>
-    <a class="btn sm" href="#/login">Đăng nhập</a><a class="btn primary sm" href="#/register">Đăng ký</a></div>`;
+const cta = (text = t('guest.cta')) =>
+  `<div class="guest-cta" role="region" aria-label="${esc(t('guest.ctaAria'))}"><span class="grow small">${text}</span>
+    ${langButton()}<a class="btn sm" href="#/login">${t('auth.login')}</a><a class="btn primary sm" href="#/register">${t('guest.signup')}</a></div>`;
 
 function buildGuestShell(root) {
   if ($('#app.guest')) return;
   root.innerHTML = `<div class="app guest" id="app">
-    <nav class="side" id="side" aria-label="Nhóm công khai"></nav>
+    <nav class="side" id="side" aria-label="${t('nav.guestGroups')}"></nav>
     <main class="main" id="view"></main>
-    <nav class="tabs-bar" id="tabs" aria-label="Điều hướng"></nav></div>`;
+    <nav class="tabs-bar" id="tabs" aria-label="${t('nav.navAria')}"></nav></div>`;
 }
 
 function renderGuestSide(r) {
@@ -37,23 +40,23 @@ function renderGuestSide(r) {
     return list.length ? `<div class="sec">${title}</div>${list.map(item).join('')}` : '';
   };
   const nav = (hash, name, label, ic) => `<a class="nav-item" href="${hash}" ${r.name === name ? 'aria-current="page"' : ''}>${icon(ic)}<span class="name">${label}</span></a>`;
-  $('#side').innerHTML = `<div class="brand"><span class="logo">JK</span>JKR talks</div><h1 class="mob-title">Nhóm công khai</h1>
+  $('#side').innerHTML = `<div class="brand"><span class="logo">JK</span>JKR talks</div><h1 class="mob-title">${t('nav.guestGroups')}</h1>
     <div class="card col guest-welcome" style="gap:8px;margin:4px 8px 8px">
-      <div class="small">Bạn đang xem với tư cách <b>khách</b>. Chỉ đọc được các nhóm công khai, tin nhắn chỉ được lưu 38 ngày.</div>
-      <div class="row" style="gap:8px"><a class="btn sm grow" href="#/login">Đăng nhập</a><a class="btn primary sm grow" href="#/register">Đăng ký</a></div></div>
-    <div class="sec">Khác</div>
-    ${G.trendId ? `<a class="nav-item" href="#/g/${G.trendId}" ${G.trendId === activeId ? 'aria-current="page"' : ''}>${icon('trend')}<span class="name">Đẩy trend</span></a>` : ''}
-    ${nav('#/hot', 'hot', 'Chủ đề nóng', 'flame')}
-    ${nav('#/news', 'news', 'Bản tin', 'news')}
-    ${nav('#/tools', 'tools', 'Công cụ', 'tool')}
-    ${sec('Cả nước', 'country')}${sec('Vùng', 'region')}${sec('Tỉnh / Thành phố', 'province')}${sec('Chủ đề thảo luận', 'topic')}`;
+      <div class="small">${t('guest.welcome')}</div>
+      <div class="row" style="gap:8px">${langButton()}<a class="btn sm grow" href="#/login">${t('auth.login')}</a><a class="btn primary sm grow" href="#/register">${t('guest.signup')}</a></div></div>
+    <div class="sec">${t('nav.other')}</div>
+    ${G.trendId ? `<a class="nav-item" href="#/g/${G.trendId}" ${G.trendId === activeId ? 'aria-current="page"' : ''}>${icon('trend')}<span class="name">${t('nav.trend')}</span></a>` : ''}
+    ${nav('#/hot', 'hot', t('nav.hot'), 'flame')}
+    ${nav('#/news', 'news', t('nav.news'), 'news')}
+    ${nav('#/tools', 'tools', t('nav.tools'), 'tool')}
+    ${sec(t('nav.country'), 'country')}${sec(t('nav.region'), 'region')}${sec(t('nav.province'), 'province')}${sec(t('nav.topics'), 'topic')}`;
   const tab = (hash, on, label, ic) => `<a href="${hash}" ${on ? 'aria-current="page"' : ''}>${icon(ic, 22)}${label}</a>`;
   $('#tabs').innerHTML =
-    tab('#/explore', r.name === 'explore' || (r.name === 'g' && activeId !== G.trendId), 'Nhóm', 'chat') +
-    (G.trendId ? tab(`#/g/${G.trendId}`, activeId === G.trendId, 'Đẩy trend', 'trend') : '') +
-    tab('#/news', r.name === 'news', 'Bản tin', 'news') +
-    tab('#/hot', r.name === 'hot', 'Chủ đề nóng', 'flame') +
-    tab('#/login', false, 'Đăng nhập', 'friends');
+    tab('#/explore', r.name === 'explore' || (r.name === 'g' && activeId !== G.trendId), t('tab.groups'), 'chat') +
+    (G.trendId ? tab(`#/g/${G.trendId}`, activeId === G.trendId, t('nav.trend'), 'trend') : '') +
+    tab('#/news', r.name === 'news', t('nav.news'), 'news') +
+    tab('#/hot', r.name === 'hot', t('nav.hot'), 'flame') +
+    tab('#/login', false, t('auth.login'), 'friends');
 }
 
 function msgHtml(m) {
@@ -80,7 +83,7 @@ async function renderGuestGroup(view, gid) {
     if (k !== last) { list += `<div class="day">${fmtDate(m.createdAt)}</div>`; last = k; }
     list += msgHtml(m);
   }
-  const sub = g.type === 'trend' ? 'Nơi đăng các bài cần tương tác' : g.type === 'topic' ? 'Chủ đề thảo luận' : 'Nhóm công khai';
+  const sub = g.type === 'trend' ? t('guest.subTrend') : g.type === 'topic' ? t('nav.topics') : t('nav.guestGroups');
   view.innerHTML = `
   <div class="chat-head">
     <a class="icon-btn back" href="#/explore" aria-label="Quay lại danh sách">${icon('back', 22)}</a>
@@ -90,10 +93,10 @@ async function renderGuestGroup(view, gid) {
   </div>
   <div class="chat-body"><div class="chat-col">
     <div class="msgs" id="msgs">
-      ${messages.length >= limit ? `<div class="notice small" style="margin:8px">Khách chỉ xem được ${limit} tin gần nhất. <a href="#/register" style="color:var(--accent);font-weight:600">Đăng ký</a> để xem toàn bộ.</div>` : ''}
+      ${messages.length >= limit ? `<div class="notice small" style="margin:8px">${t('guest.limit', { n: limit })} <a href="#/register" style="color:var(--accent);font-weight:600">${t('guest.signup')}</a> ${t('guest.limitCta')}</div>` : ''}
       ${list || '<div class="gate muted">Chưa có tin nhắn nào.</div>'}
     </div>
-    <div class="composer">${cta(g.type === 'trend' ? 'Đăng ký để thả tim và lan tỏa các bài đẩy trend.' : 'Đăng ký để tham gia nhóm, thả tim và trò chuyện.')}</div>
+    <div class="composer">${cta(g.type === 'trend' ? t('guest.ctaTrend') : t('guest.ctaGroup'))}</div>
   </div></div>`;
   const box = $('#msgs');
   box.scrollTop = box.scrollHeight;
@@ -141,19 +144,18 @@ async function renderGuestHot(view, tab = gtab) {
 }
 
 async function renderGuestNews(view) {
-  const { news } = await api('GET', '/public/news');
+  const { news } = await api('GET', `/public/news?lang=${getLang()}`);
   view.innerHTML = `<div class="page"><div class="page-inner">
-    <h1>Bản tin</h1>
-    <p class="small muted">Thông báo từ đội vận hành JKR talks.</p>
+    <h1>${t('nav.news')}</h1>
+    <p class="small muted">${t('news.introGuest')}</p>
     ${cta()}
     <div class="list">${news.map((n) => `<article class="card col">
-      <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
-      ${n.title ? `<h2 style="font-size:18px">${esc(n.title)}</h2>` : ''}
-      ${n.body ? `<p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>` : ''}
+      <div class="row wrap">${n.pinned ? `<span class="pill warn">${t('news.pinned')}</span>` : ''}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? `<span class="tiny muted">${t('news.edited')}</span>` : ''}</div>
+      ${newsText(n)}
       ${newsGallery(n.imageUrls, 'guest-zoom')}
-      <div class="row" style="gap:4px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${n.hearts} tim">${icon('heart', 15)}<span class="hc">${n.hearts || ''}</span></button></div>
-    </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
-  view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });
+      <div class="row" style="gap:4px"><button type="button" class="heart" data-act="guest-cta" aria-label="${t('news.heartGuest', { n: n.hearts })}">${icon('heart', 15)}<span class="hc">${n.hearts || ''}</span></button></div>
+    </article>`).join('') || `<p class="muted">${t('news.empty')}</p>`}</div></div></div>`;
+  fitNews(view);
 }
 
 // Điều hướng cho khách. Trả về false nếu route này không dành cho khách.
@@ -162,6 +164,7 @@ export async function routeGuest(root, r) {
   if (!['explore', 'g', 'hot', 'news', 'tools', ''].includes(r.name)) return false;
   if (!r.name) return go('#/news'), true; // vào trang gốc → Bản tin
   buildGuestShell(root);
+  maybeAskLang();
   await Promise.all([loadGroups(), loadEmoji(true)]);
   const app = $('#app');
   app.classList.toggle('show-side', r.name === 'explore');

@@ -25,6 +25,23 @@ const capMock = http.createServer((req, res) => {
   res.statusCode = 404; res.end('{}');
 }).listen(3997);
 
+// Gemini giả lập: nhận diện ngôn ngữ theo chữ, "dịch" bằng cách gắn mã ngôn ngữ đứng trước
+process.env.GEMINI_API_KEY = 'test-key';
+process.env.GEMINI_BASE = 'http://localhost:3996';
+let gemCalls = 0;
+const gemMock = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => {
+    gemCalls++;
+    const prompt = JSON.parse(b).contents[0].parts[0].text;
+    const input = JSON.parse(prompt.slice(prompt.indexOf('INPUT: ') + 7));
+    const src = /[฀-๿]/.test(input.title + input.body) ? 'th' : /[àáạảãăâđêôơư]/i.test(input.title + input.body) ? 'vi' : 'en';
+    const tr = {};
+    for (const l of ['vi', 'en', 'th', 'zh']) tr[l] = l === src ? input : { title: input.title ? `[${l}] ${input.title}` : '', body: input.body ? `[${l}] ${input.body}` : '' };
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ source: src, translations: tr }) }] } }] }));
+  });
+}).listen(3996);
+
 before(async () => {
   await import('../server/index.js');
 });
@@ -2232,4 +2249,40 @@ test('Nuôi thú: nhà, lồng, bể đặt trong khu nhà và chiếm diện t�
     assert.equal((await buy('tank:tank3')).status, 200); assert.equal((await buy('cage:cage3')).status, 200);
     assert.deepEqual((await shop()).area, { total: 10, used: 9 });
   } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
+});
+test('dịch bản tin: nhận diện ngôn ngữ, dịch ra 3 ngôn ngữ còn lại, hiện theo ngôn ngữ người dùng, sửa thì dịch lại', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const viU = await signup('viuser', 1), enU = await signup('enuser', 1), zhU = await signup('zhuser', 1);
+  assert.equal((await call('PATCH', '/me', { language: 'xx' }, enU.token)).status, 400);
+  assert.equal((await call('PATCH', '/me', { language: 'en' }, enU.token)).status, 200);
+  assert.equal((await call('PATCH', '/me', { language: 'zh' }, zhU.token)).data.user.language, 'zh');
+  const reg = await call('POST', '/auth/register', { email: 'thlang@test.com', password: 'password1', acceptCommunity: true, displayName: 'Thai Lang', provinceId: 1, language: 'th' });
+  assert.equal(reg.data.user.language, 'th', 'đăng ký chọn ngôn ngữ');
+  const newsFor = async (u, id) => (await call('GET', '/news', null, u.token)).data.news.find((x) => x.id === id);
+  const waitFor = async (fn) => { for (let i = 0; i < 40; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } return null; };
+  const made = (await call('POST', '/admin/news', { title: 'Chào mừng bạn', body: 'Nội dung bản tin' }, adm.token)).data.news;
+  const en = await waitFor(async () => { const n = await newsFor(enU, made.id); return n.autoTranslated ? n : null; });
+  assert.ok(en, 'có bản dịch tiếng Anh');
+  assert.equal(en.title, '[en] Chào mừng bạn'); assert.equal(en.body, '[en] Nội dung bản tin');
+  assert.equal(en.sourceLang, 'vi'); assert.equal(en.titleOrig, 'Chào mừng bạn', 'luôn kèm bản gốc');
+  const vi = await newsFor(viU, made.id);
+  assert.equal(vi.autoTranslated, false); assert.equal(vi.title, 'Chào mừng bạn', 'người dùng tiếng Việt thấy bản gốc');
+  assert.equal((await newsFor(zhU, made.id)).title, '[zh] Chào mừng bạn');
+  const guest = async (lang) => (await (await fetch(`${BASE}/public/news?lang=${lang}`)).json()).news.find((x) => x.id === made.id);
+  assert.equal((await guest('th')).title, '[th] Chào mừng bạn', 'khách chọn ngôn ngữ');
+  assert.equal((await guest('vi')).autoTranslated, false);
+  assert.equal((await guest('xx')).autoTranslated, false, 'ngôn ngữ lạ: hiện bản gốc');
+  // bài tiếng Thái: người dùng tiếng Việt thấy bản dịch
+  const thPost = (await call('POST', '/admin/news', { title: 'สวัสดี', body: 'ข่าวใหม่' }, adm.token)).data.news;
+  const viTh = await waitFor(async () => { const n = await newsFor(viU, thPost.id); return n.autoTranslated ? n : null; });
+  assert.equal(viTh.sourceLang, 'th'); assert.equal(viTh.title, '[vi] สวัสดี');
+  // sửa nội dung → bản dịch cũ bị bỏ và dịch lại
+  const before = gemCalls;
+  await call('PATCH', `/admin/news/${made.id}`, { title: 'Tiêu đề mới', body: 'Nội dung bản tin' }, adm.token);
+  const en2 = await waitFor(async () => { const n = await newsFor(enU, made.id); return n.title === '[en] Tiêu đề mới' ? n : null; });
+  assert.ok(en2, 'dịch lại sau khi sửa'); assert.ok(gemCalls > before);
+  // chỉ có tiêu đề (không có nội dung): vẫn dịch, nội dung rỗng giữ rỗng
+  const titleOnly = (await call('POST', '/admin/news', { title: 'Thông báo ngắn', body: '' }, adm.token)).data.news;
+  const to = await waitFor(async () => { const n = await newsFor(enU, titleOnly.id); return n.autoTranslated ? n : null; });
+  assert.equal(to.body, '');
 });

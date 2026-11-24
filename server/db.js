@@ -256,6 +256,16 @@ CREATE TABLE IF NOT EXISTS user_titles (
 
 // ---- Cửa hàng xu tím và khung avatar / màu tên ------------------------------
 // coins_spent: tổng xu đã tiêu (số dư = coins - coins_spent); frame, name_color: đồ đang dùng ('shop:3', 'title:1'...)
+// Dịch bản tin tự động: ngôn ngữ gốc và bản dịch theo ngôn ngữ (vi, en, th, zh)
+try { db.exec('ALTER TABLE news ADD COLUMN source_lang TEXT'); } catch { /* đã có cột */ }
+db.exec(`CREATE TABLE IF NOT EXISTS news_i18n (
+  news_id INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,
+  lang TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'auto',  -- auto = dịch tự động | manual = admin sửa tay
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (news_id, lang)
+)`);
 // Bạn bè thấy tỉnh/thành và quốc gia của nhau (mặc định bật; tắt trong Cài đặt). Lần đầu thêm cột thì báo một lần cho mọi người.
 try {
   db.exec('ALTER TABLE users ADD COLUMN share_location INTEGER NOT NULL DEFAULT 1');

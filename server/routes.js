@@ -12,6 +12,7 @@ import {
 } from './lib.js';
 
 import { firstUrl, buildPreview } from './preview.js';
+import { scheduleTranslate, newsTexts, isLang } from './translate.js';
 import { track, statsReport, linkVisitor, VID_RE, liveSnapshot } from './stats.js';
 import { mountMuayThai } from './muaythai.js';
 import { mountPvp } from './pvp.js';
@@ -162,10 +163,10 @@ api.post(
     const id = tx(() => {
       const r = db
         .prepare(
-          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, created_at)
-           VALUES (?,?,?,?,?,?,1,?)`
+          `INSERT INTO users (email, pass_hash, display_name, name_key, avatar_color, province_id, verified, created_at, language)
+           VALUES (?,?,?,?,?,?,1,?,?)`
         )
-        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), province.id, now());
+        .run(email, hashPassword(password), displayName, nameKey(displayName), crypto.randomInt(AVATAR_COUNT), province.id, now(), isLang(req.body.language) ? req.body.language : 'vi');
       const uid = Number(r.lastInsertRowid);
       for (const gid of homeGroupIds(province)) addMember(gid, uid); // auto-join đủ 3 group
       addMember(trendGroupId(), uid); // và nhóm Đẩy trend
@@ -244,9 +245,9 @@ api.post('/public/track', wrap((req, res) => {
 const readTagsPub = () => readTags();
 api.get('/public/trend-tags', guestLimit, wrap((_req, res) => res.json({ tags: readTagsPub() })));
 api.get('/public/emoji', guestLimit, wrap((_req, res) => res.json({ emoji: activeEmoji().map(emojiDto) })));
-api.get('/public/news', guestLimit, wrap((_req, res) => {
+api.get('/public/news', guestLimit, wrap((req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
-  res.json({ news: rows.map((n) => ({ id: n.id, title: n.title, body: n.body, imageUrl: newsImgs(n)[0] || null, imageUrls: newsImgs(n), pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at, hearts: newsHearts(n.id) })) });
+  res.json({ news: rows.map((n) => ({ ...newsTexts(n, req.query.lang), id: n.id, imageUrl: newsImgs(n)[0] || null, imageUrls: newsImgs(n), pinned: !!n.pinned, edited: !!n.edited, createdAt: n.created_at, hearts: newsHearts(n.id) })) });
 }));
 
 // Mọi route bên dưới cần đăng nhập
@@ -468,7 +469,7 @@ api.patch(
       set('name_key', nameKey(n));
     }
     if (b.language !== undefined) {
-      if (!['vi', 'en', 'th'].includes(b.language)) throw bad('Ngôn ngữ không hợp lệ');
+      if (!isLang(b.language)) throw bad('Ngôn ngữ không hợp lệ');
       set('language', b.language);
     }
     if (b.avatarColor !== undefined) set('avatar_color', Math.abs(int(b.avatarColor)) % AVATAR_COUNT || 0);
@@ -1938,13 +1939,14 @@ function cleanNewsImages(list) {
   if (urls.length > NEWS_MAX_IMAGES) throw bad(`Mỗi bản tin tối đa ${NEWS_MAX_IMAGES} ảnh`);
   return urls;
 }
-const newsDto = (n, uid) => ({
+const newsDto = (n, uid, lang) => ({
+  ...newsTexts(n, lang),
   commentCount: db.prepare("SELECT COUNT(*) c FROM comments WHERE kind = 'news' AND target_id = ?").get(n.id).c,
   imageUrls: newsImgs(n),
   hearts: newsHearts(n.id), hearted: !!db.prepare('SELECT 1 FROM news_hearts WHERE news_id = ? AND user_id = ?').get(n.id, uid),
   author: (() => { const a = getUser(n.author_id); return a && a.role !== 'admin' ? { id: a.id, displayName: publicUser(a).displayName, level: publicUser(a).level } : null; })(),
   mine: n.author_id === uid,
-  id: n.id, title: n.title, body: n.body, imageUrl: newsImgs(n)[0] || null, pinned: !!n.pinned, edited: !!n.edited,
+  id: n.id, imageUrl: newsImgs(n)[0] || null, pinned: !!n.pinned, edited: !!n.edited,
   createdAt: n.created_at, read: !!db.prepare('SELECT 1 FROM news_reads WHERE user_id=? AND news_id=?').get(uid, n.id),
 });
 
@@ -1968,7 +1970,7 @@ api.patch('/push/prefs', wrap((req, res) => {
 
 api.get('/news', wrap((req, res) => {
   const rows = db.prepare('SELECT * FROM news ORDER BY pinned DESC, id DESC LIMIT 100').all();
-  const items = rows.map((n) => newsDto(n, req.user.id));
+  const items = rows.map((n) => newsDto(n, req.user.id, req.user.language));
   res.json({ news: items, unread: items.filter((n) => !n.read).length });
 }));
 api.post('/news/read-all', wrap((req, res) => {
@@ -1994,7 +1996,8 @@ api.post('/admin/news', adminOnly, wrap((req, res) => {
     if (u.id !== req.user.id) pushOnly(u.id, 'news', { body: `Bản tin mới: ${newsLabel(n)}`, url: '/#/news', tag: `news-${n.id}` });
   }
   hub.sendMany(db.prepare("SELECT id FROM users WHERE status='active' AND news_push=0").all().map((u) => u.id), { type: 'news_silent' });
-  res.status(201).json({ news: newsDto(n, req.user.id) });
+  scheduleTranslate(n.id);
+  res.status(201).json({ news: newsDto(n, req.user.id, req.user.language) });
 }));
 // Từ cấp 4 (Tím Thủy Chung) được đăng bài lên Bản tin; bài của thành viên không đẩy thông báo tới mọi người
 api.post('/news', wrap((req, res) => {
@@ -2008,7 +2011,8 @@ api.post('/news', wrap((req, res) => {
   hub.sendMany(db.prepare("SELECT id FROM users WHERE status='active'").all().map((u) => u.id).filter((id) => id !== req.user.id), { type: 'news_silent' });
   onNewsPost(req.user.id, n.id);
   recompute(req.user.id);
-  res.status(201).json({ news: newsDto(n, req.user.id) });
+  scheduleTranslate(n.id);
+  res.status(201).json({ news: newsDto(n, req.user.id, req.user.language) });
 }));
 // Người đăng tự xóa bài của mình
 api.delete('/news/:id', wrap((req, res) => {
@@ -2017,6 +2021,7 @@ api.delete('/news/:id', wrap((req, res) => {
   db.prepare('DELETE FROM news_hearts WHERE news_id = ?').run(n.id);
   db.prepare("DELETE FROM comments WHERE kind = 'news' AND target_id = ?").run(n.id);
   db.prepare('DELETE FROM news_reads WHERE news_id = ?').run(n.id);
+  db.prepare('DELETE FROM news_i18n WHERE news_id = ?').run(n.id);
   db.prepare('DELETE FROM news WHERE id = ?').run(n.id);
   res.json({ ok: true });
 }));
@@ -2032,7 +2037,8 @@ api.patch('/admin/news/:id', adminOnly, wrap((req, res) => {
   if (!title && !body && !imgs.length) throw bad('Bản tin cần có tiêu đề, nội dung hoặc ảnh');
   const contentChanged = title !== n.title || body !== n.body || JSON.stringify(imgs) !== JSON.stringify(cur);
   db.prepare('UPDATE news SET title=?, body=?, image_url=?, images=?, pinned=?, edited=? WHERE id=?').run(title, body, imgs[0] || null, JSON.stringify(imgs), b.pinned !== undefined ? (b.pinned ? 1 : 0) : n.pinned, contentChanged ? 1 : n.edited, n.id);
-  res.json({ news: newsDto(db.prepare('SELECT * FROM news WHERE id = ?').get(n.id), req.user.id) });
+  if (contentChanged && (title !== n.title || body !== n.body)) { db.prepare('DELETE FROM news_i18n WHERE news_id = ?').run(n.id); scheduleTranslate(n.id); } // sửa chữ: dịch lại
+  res.json({ news: newsDto(db.prepare('SELECT * FROM news WHERE id = ?').get(n.id), req.user.id, req.user.language) });
 }));
 api.post('/news/:id/heart', wrap((req, res) => {
   rateLimit(`nheart:${req.user.id}`, 60, 60_000);
@@ -2046,6 +2052,7 @@ api.post('/news/:id/heart', wrap((req, res) => {
 api.delete('/admin/news/:id', adminOnly, wrap((req, res) => {
   db.prepare('DELETE FROM news_hearts WHERE news_id = ?').run(int(req.params.id));
   db.prepare("DELETE FROM comments WHERE kind = 'news' AND target_id = ?").run(int(req.params.id));
+  db.prepare('DELETE FROM news_i18n WHERE news_id = ?').run(int(req.params.id));
   db.prepare('DELETE FROM news WHERE id = ?').run(int(req.params.id));
   db.prepare('DELETE FROM news_reads WHERE news_id = ?').run(int(req.params.id));
   res.json({ ok: true });

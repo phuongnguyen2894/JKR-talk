@@ -1,4 +1,8 @@
 import { pushSectionHtml } from './push.js';
+import { t, getLang, setLang } from './i18n.js';
+import { langBar, restoreForm, applyLang } from './langpick.js';
+import { newsText, fitNews } from './newstext.js';
+import { LANGS } from './i18n.js';
 import { adminEmoji } from './emoji.js';
 import { adminGame } from './mtadmin.js';
 import { renderStats } from './stats.js';
@@ -12,15 +16,17 @@ export function renderLogin(root, query) {
   const note = '';
   root.innerHTML = `<div class="auth"><div class="auth-box">
     <div class="brand" style="padding:0"><span class="logo">JK</span>JKR talks</div>
-    <div><h1>Đăng nhập</h1><p class="muted small" style="margin-top:8px">Kết nối và lan tỏa những điều tích cực về LingOrm.</p><p class="muted small" style="margin-top:4px">Tập trung vào LingOrm. <b>Only LingOrm</b></p></div>
+    ${langBar()}
+    <div><h1>${t('auth.login')}</h1><p class="muted small" style="margin-top:8px">${t('auth.loginSub')}</p><p class="muted small" style="margin-top:4px">${t('auth.focus')}</p></div>
     ${note}<div id="err"></div>
     <form id="lf" class="col">
-      <div class="field"><label for="email">Email</label><input class="input" id="email" type="email" required autocomplete="email" placeholder="ban@email.com"></div>
-      <div class="field"><label for="pw">Mật khẩu</label><input class="input" id="pw" type="password" required autocomplete="current-password"></div>
-      <button class="btn primary block" style="min-height:52px;font-size:16px;border-radius:14px">Đăng nhập</button>
+      <div class="field"><label for="email">${t('auth.email')}</label><input class="input" id="email" type="email" required autocomplete="email" placeholder="you@email.com"></div>
+      <div class="field"><label for="pw">${t('auth.password')}</label><input class="input" id="pw" type="password" required autocomplete="current-password"></div>
+      <button class="btn primary block" style="min-height:52px;font-size:16px;border-radius:14px">${t('auth.login')}</button>
     </form>
-    <p class="small muted">Chưa có tài khoản? <a href="#/register" style="color:var(--accent);font-weight:600">Tạo tài khoản</a></p>
-    <p class="small muted"><a href="#/explore" style="color:var(--accent);font-weight:600">Xem trước không cần đăng ký →</a></p></div></div>`;
+    <p class="small muted">${t('auth.noAccount')} <a href="#/register" style="color:var(--accent);font-weight:600">${t('auth.signup')}</a></p>
+    <p class="small muted"><a href="#/explore" style="color:var(--accent);font-weight:600">${t('auth.preview')}</a></p></div></div>`;
+  restoreForm();
   $('#lf').onsubmit = async (e) => {
     e.preventDefault();
     try {
@@ -36,23 +42,24 @@ export async function renderRegister(root) {
   const { regions, provinces } = S.geo;
   root.innerHTML = `<div class="auth"><div class="auth-box">
     <div class="brand" style="padding:0"><span class="logo">JK</span>JKR talks</div>
-    <div><h1>Tạo tài khoản</h1><p class="muted small" style="margin-top:8px">Chọn nơi bạn ở để vào đúng các nhóm chat cùng khu vực.</p></div>
+    ${langBar()}
+    <div><h1>${t('auth.signup')}</h1><p class="muted small" style="margin-top:8px">${t('auth.signupSub')}</p></div>
     <div id="err"></div>
     <form id="rf" class="col">
-      <div class="field"><label for="email">Email</label><input class="input" id="email" type="email" required autocomplete="email" placeholder="ban@email.com"></div>
-      <div class="field"><label for="dn">Tên hiển thị</label><input class="input" id="dn" required minlength="2" maxlength="30" autocomplete="nickname" placeholder="Tên mọi người sẽ thấy"></div>
-      <div class="field"><label for="pw">Mật khẩu</label><input class="input" id="pw" type="password" required minlength="8" autocomplete="new-password" placeholder="Ít nhất 8 ký tự"></div>
-      <div class="field"><label for="pw2">Xác nhận mật khẩu</label><input class="input" id="pw2" type="password" required minlength="8" autocomplete="new-password" placeholder="Nhập lại mật khẩu"></div>
+      <div class="field"><label for="email">${t('auth.email')}</label><input class="input" id="email" type="email" required autocomplete="email" placeholder="you@email.com"></div>
+      <div class="field"><label for="dn">${t('auth.displayName')}</label><input class="input" id="dn" required minlength="2" maxlength="30" autocomplete="nickname" placeholder="${t('auth.dnPh')}"></div>
+      <div class="field"><label for="pw">${t('auth.password')}</label><input class="input" id="pw" type="password" required minlength="8" autocomplete="new-password" placeholder="${t('set.pwHint')}"></div>
+      <div class="field"><label for="pw2">${t('auth.confirmPw')}</label><input class="input" id="pw2" type="password" required minlength="8" autocomplete="new-password" placeholder="${t('auth.pw2Ph')}"></div>
       <div class="geo-card">
-        <div style="font-weight:700">Bạn ở đâu tại Việt Nam?</div>
-        <div class="field"><label for="region">Vùng</label><select class="input" id="region">${regions.map((r) => `<option value="${r.code}">${esc(r.name)}</option>`).join('')}</select></div>
-        <div class="field"><label for="city">Tỉnh / Thành phố</label><select class="input" id="city"></select></div>
+        <div style="font-weight:700">${t('auth.where')}</div>
+        <div class="field"><label for="region">${t('auth.region')}</label><select class="input" id="region">${regions.map((r) => `<option value="${r.code}">${esc(r.name)}</option>`).join('')}</select></div>
+        <div class="field"><label for="city">${t('auth.city')}</label><select class="input" id="city"></select></div>
         <div class="small muted" id="geohint"></div>
       </div>
-      <label class="check" style="align-items:flex-start"><input type="checkbox" id="accept" required style="margin-top:2px"><span>JKR talks chỉ dành cho fan <b>Only LingOrm</b>, không chào đón multi, only toxic, anti, chỉ bàn luận về LingOrm ở các nhóm công khai</span></label>
-      <button class="btn primary block" id="regbtn" disabled style="min-height:52px;font-size:16px;border-radius:14px">Tạo tài khoản</button>
+      <label class="check" style="align-items:flex-start"><input type="checkbox" id="accept" required style="margin-top:2px"><span>${t('auth.accept')}</span></label>
+      <button class="btn primary block" id="regbtn" disabled style="min-height:52px;font-size:16px;border-radius:14px">${t('auth.signup')}</button>
     </form>
-    <p class="small muted">Đã có tài khoản? <a href="#/login" style="color:var(--accent);font-weight:600">Đăng nhập</a></p></div></div>`;
+    <p class="small muted">${t('auth.haveAccount')} <a href="#/login" style="color:var(--accent);font-weight:600">${t('auth.login')}</a></p></div></div>`;
   const fillCities = () => {
     $('#city').innerHTML = provinces.filter((p) => p.region === $('#region').value).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
     hint();
@@ -60,17 +67,18 @@ export async function renderRegister(root) {
   const hint = () => {
     const r = regions.find((x) => x.code === $('#region').value);
     const c = provinces.find((p) => p.id === Number($('#city').value));
-    $('#geohint').textContent = `Hiện app mới hỗ trợ Việt Nam. Bạn sẽ tự vào 3 nhóm: Việt Nam, ${r.name}, ${c?.name}. Có thể vào thêm nhóm vùng, tỉnh/thành khác sau.`;
+    $('#geohint').textContent = t('auth.geoHint', { r: r.name, c: c?.name });
   };
   $('#accept').onchange = (e) => { $('#regbtn').disabled = !e.target.checked; };
   $('#region').onchange = fillCities;
   $('#city').onchange = hint;
   fillCities();
+  restoreForm();
   $('#rf').onsubmit = async (e) => {
     e.preventDefault();
-    if ($('#pw').value !== $('#pw2').value) { $('#err').innerHTML = '<div class="error" role="alert">Mật khẩu xác nhận không khớp</div>'; $('#pw2').focus(); return; }
+    if ($('#pw').value !== $('#pw2').value) { $('#err').innerHTML = `<div class="error" role="alert">${t('auth.pwMismatch')}</div>`; $('#pw2').focus(); return; }
     try {
-      const r = await api('POST', '/auth/register', { email: $('#email').value, displayName: $('#dn').value, password: $('#pw').value, passwordConfirm: $('#pw2').value, acceptCommunity: $('#accept').checked, provinceId: Number($('#city').value), country: 'VN' });
+      const r = await api('POST', '/auth/register', { email: $('#email').value, displayName: $('#dn').value, password: $('#pw').value, passwordConfirm: $('#pw2').value, acceptCommunity: $('#accept').checked, provinceId: Number($('#city').value), country: 'VN', language: getLang() });
       setToken(r.token);
       S.hooks.boot();
     } catch (er) { $('#err').innerHTML = `<div class="error" role="alert">${esc(er.message)}</div>`; }
@@ -120,18 +128,17 @@ export async function renderNews(view) {
   const admin = S.me.role === 'admin';
   const canPost = admin || (S.me.level || 0) >= 4; // từ cấp Tím Thủy Chung được đăng bản tin
   view.innerHTML = `<div class="page"><div class="page-inner">
-    <div class="row between"><h1>Bản tin</h1>${canPost ? '<button class="btn primary" data-act="news-new">Đăng bản tin</button>' : ''}</div>
-    <p class="small muted">Thông báo từ đội vận hành JKR talks. Bạn có thể thả tim và bình luận dưới mỗi bản tin.</p>
+    <div class="row between"><h1>${t('nav.news')}</h1>${canPost ? '<button class="btn primary" data-act="news-new">Đăng bản tin</button>' : ''}</div>
+    <p class="small muted">${t('news.intro')}</p>
     <div class="list">${news.map((n) => `<article class="card col" ${n.read ? '' : 'style="border-color:var(--accent)"'}>
-      <div class="row wrap">${n.pinned ? '<span class="pill warn">Ghim</span>' : ''}${n.read ? '' : '<span class="pill">Mới</span>'}${n.author ? `<span class="tiny" style="font-weight:600">${esc(n.author.displayName)}${lvBadge(n.author.level, 16)}</span>` : ''}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
-      ${n.title ? `<h2 style="font-size:18px">${esc(n.title)}</h2>` : ''}
-      ${n.body ? `<p class="news-body clamp" style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(n.body)}</p><button type="button" class="link-btn news-more" data-act="news-more" hidden>Xem thêm</button>` : ''}
+      <div class="row wrap">${n.pinned ? `<span class="pill warn">${t('news.pinned')}</span>` : ''}${n.read ? '' : `<span class="pill">${t('news.new')}</span>`}${n.author ? `<span class="tiny" style="font-weight:600">${esc(n.author.displayName)}${lvBadge(n.author.level, 16)}</span>` : ''}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
+      ${newsText(n)}
       ${newsGallery(n.imageUrls)}
-      <div class="row" style="gap:4px"><button type="button" class="heart ${n.hearted ? 'on' : ''}" data-act="news-heart" data-id="${n.id}" aria-pressed="${n.hearted}" aria-label="Thả tim, hiện có ${n.hearts} tim">${icon('heart', 15, n.hearted ? 'fill="currentColor"' : '')}<span class="hc">${n.hearts || ''}</span></button>${commentBlock('news', n.id, n.commentCount)}</div>
-      ${!admin && n.mine ? `<div class="row wrap"><button class="btn sm danger" data-act="news-del" data-id="${n.id}" data-mine="1">Xóa</button></div>` : ''}
-      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.title)}" data-body="${esc(n.body)}" data-imgs="${esc(JSON.stringify(n.imageUrls || []))}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
-    </article>`).join('') || '<p class="muted">Chưa có bản tin nào.</p>'}</div></div></div>`;
-  view.querySelectorAll('.news-body').forEach((p) => { if (p.scrollHeight > p.clientHeight + 1) p.nextElementSibling.hidden = false; else p.classList.remove('clamp'); });
+      <div class="row" style="gap:4px"><button type="button" class="heart ${n.hearted ? 'on' : ''}" data-act="news-heart" data-id="${n.id}" aria-pressed="${n.hearted}" aria-label="${t('news.heart', { n: n.hearts })}">${icon('heart', 15, n.hearted ? 'fill="currentColor"' : '')}<span class="hc">${n.hearts || ''}</span></button>${commentBlock('news', n.id, n.commentCount)}</div>
+      ${!admin && n.mine ? `<div class="row wrap"><button class="btn sm danger" data-act="news-del" data-id="${n.id}" data-mine="1">${t('news.delete')}</button></div>` : ''}
+      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.titleOrig)}" data-body="${esc(n.bodyOrig)}" data-imgs="${esc(JSON.stringify(n.imageUrls || []))}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
+    </article>`).join('') || `<p class="muted">${t('news.empty')}</p>`}</div></div></div>`;
+  fitNews(view);
   if (S.unreadNews) { api('POST', '/news/read-all').then(() => { S.unreadNews = 0; S.hooks.renderSide(); }).catch(() => {}); }
 }
 const newsForm = (v = {}) => [
@@ -143,10 +150,10 @@ actions['news-heart'] = async (el) => {
   el.classList.toggle('on', r.hearted);
   el.setAttribute('aria-pressed', r.hearted);
   el.innerHTML = icon('heart', 15, r.hearted ? 'fill="currentColor"' : '') + `<span class="hc">${r.hearts || ''}</span>`;
-  el.setAttribute('aria-label', `Thả tim, hiện có ${r.hearts} tim`);
+  el.setAttribute('aria-label', t('news.heart', { n: r.hearts }));
 };
 actions['news-zoom'] = (el) => lightbox(el.dataset.src);
-actions['news-more'] = (el) => { const p = el.previousElementSibling; const open = p.classList.toggle('clamp'); el.textContent = open ? 'Xem thêm' : 'Thu gọn'; };
+actions['news-more'] = (el) => { const p = el.previousElementSibling; const open = p.classList.toggle('clamp'); el.textContent = open ? t('news.more') : t('news.less'); };
 actions['news-new'] = async () => {
   const m = openModal(`<form id="nf" class="col"><h2>Đăng bản tin</h2>
     <div class="field"><label for="nt">Tiêu đề (không bắt buộc)</label><input class="input" id="nt" maxlength="150"></div>
@@ -207,36 +214,36 @@ export function renderSettings(view) {
   const { regions, provinces } = S.geo;
   const cooldown = u.homeChangedAt && Date.now() - u.homeChangedAt < 30 * 864e5;
   view.innerHTML = `<div class="page"><div class="page-inner">
-    <h1>Cài đặt</h1>
-    <section class="card col"><div class="h2" style="margin:0">Hồ sơ</div>
+    <h1>${t('set.title')}</h1>
+    <section class="card col"><div class="h2" style="margin:0">${t('set.profile')}</div>
       <div class="row">${avatar(u, 'lg')}<div class="grow"><div class="small muted">${esc(u.email)}</div><div class="small muted">${esc(u.location.province)} · ${esc(u.location.region)}</div></div></div>
       <form id="pf" class="col">
-        <div class="field"><label for="dn">Tên hiển thị</label><input class="input" id="dn" value="${esc(u.displayName)}" required minlength="2" maxlength="30"></div>
-        <div class="field"><label for="lang">Ngôn ngữ</label><select class="input" id="lang">${[['vi', 'Tiếng Việt'], ['en', 'English'], ['th', 'ภาษาไทย']].map(([c, n]) => `<option value="${c}" ${u.language === c ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
-        <div class="field"><label for="av">Màu ảnh đại diện</label><div class="row">${[0, 1, 2, 3, 4, 5].map((i) => `<label style="cursor:pointer"><input type="radio" name="avc" value="${i}" class="sr-only" ${u.avatarColor === i ? 'checked' : ''}><span class="av c${i}" style="${u.avatarColor === i ? 'outline:3px solid var(--accent);outline-offset:2px' : ''}" data-avc>${esc([...u.displayName][0].toUpperCase())}</span></label>`).join('')}</div></div>
-        <div class="field"><label for="avf">Hoặc tải ảnh đại diện</label><input type="file" id="avf" accept="image/png,image/jpeg,image/gif,image/webp"></div>
-        <button class="btn primary">Lưu hồ sơ</button></form></section>
-    <section class="card col"><div class="h2" style="margin:0">Đổi mật khẩu</div>
+        <div class="field"><label for="dn">${t('auth.displayName')}</label><input class="input" id="dn" value="${esc(u.displayName)}" required minlength="2" maxlength="30"></div>
+        <div class="field"><label for="lang">${t('lang.label')}</label><select class="input" id="lang">${LANGS.map((l) => `<option value="${l.code}" ${u.language === l.code ? 'selected' : ''}>${l.name}</option>`).join('')}</select></div>
+        <div class="field"><label for="av">${t('set.avatarColor')}</label><div class="row">${[0, 1, 2, 3, 4, 5].map((i) => `<label style="cursor:pointer"><input type="radio" name="avc" value="${i}" class="sr-only" ${u.avatarColor === i ? 'checked' : ''}><span class="av c${i}" style="${u.avatarColor === i ? 'outline:3px solid var(--accent);outline-offset:2px' : ''}" data-avc>${esc([...u.displayName][0].toUpperCase())}</span></label>`).join('')}</div></div>
+        <div class="field"><label for="avf">${t('set.avatarUpload')}</label><input type="file" id="avf" accept="image/png,image/jpeg,image/gif,image/webp"></div>
+        <button class="btn primary">${t('set.saveProfile')}</button></form></section>
+    <section class="card col"><div class="h2" style="margin:0">${t('set.changePw')}</div>
       <form id="pwf" class="col" autocomplete="off">
-        <div class="field"><label for="pw0">Mật khẩu hiện tại</label><input class="input" id="pw0" type="password" required autocomplete="current-password"></div>
-        <div class="field"><label for="pw1">Mật khẩu mới</label><input class="input" id="pw1" type="password" required minlength="8" autocomplete="new-password" placeholder="Ít nhất 8 ký tự"></div>
-        <div class="field"><label for="pw2">Xác nhận mật khẩu mới</label><input class="input" id="pw2" type="password" required minlength="8" autocomplete="new-password"></div>
-        <p class="small muted">Sau khi đổi, các thiết bị khác đang đăng nhập sẽ bị đăng xuất.</p>
-        <button class="btn">Đổi mật khẩu</button></form></section>
-    <section class="card col"><div class="h2" style="margin:0">Vị trí "home"</div>
-      <p class="small muted">Chỉ hiển thị tới cấp tỉnh/thành. Đổi được 1 lần / 30 ngày.${cooldown ? ' <b>Bạn vừa đổi gần đây nên tạm thời chưa đổi được.</b>' : ''}</p>
-      <form id="hf" class="col"><div class="field"><label for="hp">Tỉnh / Thành phố</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
-      <button class="btn" ${cooldown ? 'disabled' : ''}>Đổi vị trí</button></form></section>
+        <div class="field"><label for="pw0">${t('set.curPw')}</label><input class="input" id="pw0" type="password" required autocomplete="current-password"></div>
+        <div class="field"><label for="pw1">${t('set.newPw')}</label><input class="input" id="pw1" type="password" required minlength="8" autocomplete="new-password" placeholder="${t('set.pwHint')}"></div>
+        <div class="field"><label for="pw2">${t('set.newPw2')}</label><input class="input" id="pw2" type="password" required minlength="8" autocomplete="new-password"></div>
+        <p class="small muted">${t('set.pwNote')}</p>
+        <button class="btn">${t('set.changePw')}</button></form></section>
+    <section class="card col"><div class="h2" style="margin:0">${t('set.home')}</div>
+      <p class="small muted">${t('set.homeNote')}${cooldown ? ` <b>${t('set.homeCooldown')}</b>` : ''}</p>
+      <form id="hf" class="col"><div class="field"><label for="hp">${t('auth.city')}</label><select class="input" id="hp" ${cooldown ? 'disabled' : ''}>${regions.map((r) => `<optgroup label="${esc(r.name)}">${provinces.filter((p) => p.region === r.code).map((p) => `<option value="${p.id}" ${p.id === u.provinceId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+      <button class="btn" ${cooldown ? 'disabled' : ''}>${t('set.changeHome')}</button></form></section>
     <div id="pushslot"></div>
-    <section class="card col"><div class="h2" style="margin:0">Quyền riêng tư & thông báo</div>
-      <div class="field"><label for="fp">Ai được gửi lời mời kết bạn cho tôi</label><select class="input" id="fp">${[['shared', 'Chỉ người chung nhóm'], ['everyone', 'Mọi người'], ['none', 'Không ai']].map(([c, n]) => `<option value="${c}" ${u.friendPolicy === c ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
-      <label class="check"><input type="checkbox" id="so" ${u.showOnline ? 'checked' : ''}> Hiển thị trạng thái online (tắt thì bạn cũng không thấy trạng thái của người khác)</label>
-      <label class="check"><input type="checkbox" id="sl" ${u.shareLocation ? 'checked' : ''}> Cho bạn bè thấy tỉnh/thành và quốc gia của tôi (người lạ không thấy)</label>
-      <label class="check"><input type="checkbox" id="np" ${u.newsPush ? 'checked' : ''}> Nhận thông báo khi có bản tin mới</label>
-      <label class="check"><input type="checkbox" id="hs" ${u.hideSuggestions ? 'checked' : ''}> Ẩn gợi ý nhóm</label>
-      <button class="btn" id="savepriv">Lưu cài đặt</button></section>
-    <section class="card col"><div class="h2" style="margin:0">Tài khoản</div>
-      <div class="row wrap">${S.me.role === 'admin' ? '' : '<button class="btn" data-act="report-bug">Báo lỗi</button>'}<button class="btn" data-act="logout">Đăng xuất</button><button class="btn danger" data-act="delete-account">Xóa tài khoản và dữ liệu</button></div></section>
+    <section class="card col"><div class="h2" style="margin:0">${t('set.privacy')}</div>
+      <div class="field"><label for="fp">${t('set.friendPolicy')}</label><select class="input" id="fp">${[['shared', t('set.fp.shared')], ['everyone', t('set.fp.everyone')], ['none', t('set.fp.none')]].map(([c, n]) => `<option value="${c}" ${u.friendPolicy === c ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <label class="check"><input type="checkbox" id="so" ${u.showOnline ? 'checked' : ''}> ${t('set.showOnline')}</label>
+      <label class="check"><input type="checkbox" id="sl" ${u.shareLocation ? 'checked' : ''}> ${t('set.shareLoc')}</label>
+      <label class="check"><input type="checkbox" id="np" ${u.newsPush ? 'checked' : ''}> ${t('set.newsPush')}</label>
+      <label class="check"><input type="checkbox" id="hs" ${u.hideSuggestions ? 'checked' : ''}> ${t('set.hideSug')}</label>
+      <button class="btn" id="savepriv">${t('set.savePriv')}</button></section>
+    <section class="card col"><div class="h2" style="margin:0">${t('set.account')}</div>
+      <div class="row wrap">${S.me.role === 'admin' ? '' : `<button class="btn" data-act="report-bug">${t('nav.reportBug')}</button>`}<button class="btn" data-act="logout">${t('set.logout')}</button><button class="btn danger" data-act="delete-account">${t('set.deleteAccount')}</button></div></section>
   </div></div>`;
   pushSectionHtml().then((html) => { const slot = $('#pushslot'); if (slot) slot.outerHTML = html; }).catch(() => {});
   let pendingAvatar;
@@ -244,7 +251,7 @@ export function renderSettings(view) {
     const f = e.target.files[0]; if (!f) return;
     try { const dataUrl = await imageToDataUrl(f, 512); pendingAvatar = (await api('POST', '/upload', { dataUrl })).url; toast('Đã chọn ảnh. Bấm "Lưu hồ sơ".'); } catch (er) { fail(er); }
   };
-  const save = async (body) => { try { const r = await api('PATCH', '/me', body); S.me = r.user; toast('Đã lưu'); S.hooks.renderSide(); return true; } catch (e) { fail(e); } };
+  const save = async (body) => { try { const r = await api('PATCH', '/me', body); S.me = r.user; if (body.language) setLang(S.me.language); toast(t('set.saved')); S.hooks.renderSide(); return true; } catch (e) { fail(e); } };
   $('#pf').onsubmit = async (e) => {
     e.preventDefault();
     const body = { displayName: $('#dn').value, language: $('#lang').value, avatarColor: Number($('[name=avc]:checked')?.value ?? 0) };

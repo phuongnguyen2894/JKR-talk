@@ -651,3 +651,13 @@ details.card > summary { font-weight: 700; min-height: 44px; display: flex; alig
 /* dòng nơi ở: icon ghim + tỉnh/thành, quốc gia */
 .loc-line { display: flex; align-items: center; gap: 4px; }
 .loc-line svg { flex: none; }
+
+/* chọn ngôn ngữ */
+.lang-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.lang-opt { border: 1.5px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 36px; }
+.lang-opt[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.lang-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.lang-card { border: 1.5px solid var(--line); background: var(--surface); color: var(--text); border-radius: 14px; padding: 16px 8px; font-size: 16px; cursor: pointer; min-height: 56px; }
+.lang-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.lang-btn { margin-left: auto; }
+.news-tr { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }

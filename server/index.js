@@ -8,6 +8,7 @@ import { db, now, homeGroupIds, nameKey, trendGroupId } from './db.js';
 import { provinceById } from './geo.js';
 import { api, UPLOAD_DIR } from './routes.js';
 import { startRetention } from './retention.js';
+import { sweepUntranslated } from './translate.js';
 import { hub, hashPassword, getUser, addMember } from './lib.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -129,4 +130,4 @@ function shutdown() {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-server.listen(PORT, () => console.log(`JKR talks chạy tại http://localhost:${PORT}`));
+server.listen(PORT, () => { console.log(`JKR talks chạy tại http://localhost:${PORT}`); sweepUntranslated(); });
