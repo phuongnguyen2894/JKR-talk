@@ -117,6 +117,10 @@
 /* ảnh nền phòng pixel art: phủ đúng khung 10:7, nét sắc; thú trong cảnh rộng 15,67% cảnh = khớp 1:1 lưới pixel của nền */
 .pt-scene.has-bg { background-color: #EADCF7; background-repeat: no-repeat; background-position: 0 0; background-size: 100% 100%; image-rendering: pixelated; }
 .pt-spr.sc { width: 15.67cqw; height: 15.67cqw; }
+/* thú có hình pixel art tự đi khắp phòng (game dời vị trí), không trôi qua lại; đi sang phải thì lật hình (hình gốc quay mặt trái) */
+.pt-pet.has-spr { animation: none; }
+.pt-pet.flip .pt-spr img { transform: scaleX(-1); }
+.pt-pet.flip.has-spr .pt-mood { right: auto; left: -16%; } /* lật hình thì bong bóng sang bên kia, không che mặt */
 /* lồng vẹt trên kệ (khung 640 px của nền 2450 = 26,12% chiều rộng cảnh); thú trong lồng: khung 384 = 60% khung lồng,
    chân (y 361) đặt lên sàn lồng (y 595 của khung 640) */
 .pt-cage { position: absolute; left: 36.94%; top: -3.5%; width: 26.12cqw; height: 26.12cqw; border: 0; padding: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }

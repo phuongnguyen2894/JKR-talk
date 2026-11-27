@@ -42,7 +42,7 @@ export async function renderPets(view, arg) {
   const root = $('#pt', view);
   root.onclick = onClick;
   try { await refresh(root); } catch (e) { root.innerHTML = `<p class="pt-hint">${esc(e.message)}</p><a class="pt-btn" href="#/games">Quay lại</a>`; return; }
-  const wt = setInterval(() => { if (!document.body.contains(root)) clearInterval(wt); else walkTick(root); }, 1000);
+  const wt = setInterval(() => { if (!document.body.contains(root)) clearInterval(wt); else walkTick(root); }, 250);
   P.tick = setInterval(() => {
     if (!document.body.contains(root)) return clearInterval(P?.tick);
     for (const b of $$('[data-cd]', root)) {
@@ -184,6 +184,7 @@ function draw(root) {
     ${S.me?.role === 'admin' ? adminHtml() : ''}
     <p class="pt-foot">Chăm sóc miễn phí, không kiếm xu. Thân thiết tăng khi bạn chăm đúng lúc, mỗi bạn tối đa +${s.dailyCap} mỗi ngày. Nếu để bạn ấy buồn (có chỉ số dưới 20) thì Thân thiết bị trừ theo giờ, nhưng không tụt khỏi giai đoạn đã đạt và thú không bao giờ mất.</p>`;
   mountAnims(root);
+  mountMoves(root);
   loadFriends(root);
 }
 async function loadFriends(root) {
@@ -266,7 +267,7 @@ function mountAnims(root) {
 // thỉnh thoảng các bạn có hoạt hình đứng yên rồi đi dạo một lúc (chỉ ở cảnh khu nhà); đang đi dạo thì mới trôi qua lại
 function walkTick(root) {
   if (!P?.s || P.view !== 'home' || P.visit) return;
-  const t = Date.now();
+  const t = Date.now(), still = reducedMotion();
   for (const p of P.s.pets) {
     if (!p.anim) continue;
     // đang vui: thỉnh thoảng (cách nhau 20 đến 45 giây) xòe cánh nhảy khoảng 2,4 giây rồi lại đứng yên hoặc đi dạo
@@ -275,13 +276,50 @@ function walkTick(root) {
       if (!nb[p.id]) nb[p.id] = t + 6000 + Math.random() * 10000;
       else if (t >= nb[p.id]) { (P.burst ||= {})[p.id] = t + 2400; nb[p.id] = t + 2400 + 20000 + Math.random() * 25000; }
     }
-    const w = (P.walkAt ||= {})[p.id] || { on: false, until: t + 2000 + Math.random() * 4000 };
-    if (t >= w.until) { w.on = !w.on; w.until = t + (w.on ? 3000 + Math.random() * 2500 : 4000 + Math.random() * 4000); }
-    if (!['idle', 'walk'].includes(animMode(p.id, false)) && w.on) { w.on = false; w.until = t + 3000; } // đang đói, buồn, vui...: đứng tại chỗ, không đi dạo
-    P.walkAt[p.id] = w; (P.walk ||= {})[p.id] = w.on;
     const b = $(`.pt-pet[data-pid="${p.id}"]`, root);
+    const roam = !!(b && b.classList.contains('has-spr') && !still); // có hình pixel art, đang ở dưới sàn: đi khắp phòng
+    const w = (P.walkAt ||= {})[p.id] || { on: false, until: t + 2000 + Math.random() * 4000 };
+    if (roam && !P.pos?.[p.id]) { // vị trí ban đầu: chỗ đứng đã xếp sẵn
+      const x = parseFloat(b.style.left), y = parseFloat(b.style.top) + SPR_H * FOOT;
+      (P.pos ||= {})[p.id] = { x0: x, y0: y, x1: x, y1: y, t0: t, dur: 1, flip: false };
+    }
+    const canWalk = ['idle', 'walk'].includes(animMode(p.id, false));
+    if (t >= w.until) {
+      if (!w.on && canWalk && roam) { // đi tới một chỗ ngẫu nhiên trên sàn, tốc độ đều
+        const c = petPos(p.id), x1 = ROAM.x[0] + Math.random() * (ROAM.x[1] - ROAM.x[0]), y1 = ROAM.y[0] + Math.random() * (ROAM.y[1] - ROAM.y[0]);
+        const dur = Math.max(1200, (Math.hypot(x1 - c.x, (y1 - c.y) * 0.7) / ROAM.speed) * 1000);
+        P.pos[p.id] = { x0: c.x, y0: c.y, x1, y1, t0: t, dur, flip: x1 > c.x }; // hình quay mặt trái: đi sang phải thì lật
+        w.on = true; w.until = t + dur;
+        if (b) moveEl(b, p.id);
+      } else if (!w.on && !roam) { w.on = true; w.until = t + 3000 + Math.random() * 2500; } // hình tạm: trôi qua lại như cũ
+      else { w.on = false; w.until = t + 4000 + Math.random() * 5000; }
+    }
+    if (!canWalk && w.on) { // đang đói, buồn, vui, ăn...: dừng ngay tại chỗ
+      w.on = false; w.until = t + 3000;
+      if (roam && P.pos?.[p.id]) { const c = petPos(p.id); P.pos[p.id] = { ...P.pos[p.id], x0: c.x, y0: c.y, x1: c.x, y1: c.y, t0: t, dur: 1 }; if (b) moveEl(b, p.id); }
+    }
+    P.walkAt[p.id] = w; (P.walk ||= {})[p.id] = w.on;
     if (b && p.anim) { const busy = P.react?.petId === p.id || (P.ev && (P.ev.a === p.id || P.ev.b === p.id)); b.classList.toggle('walking', w.on); b.classList.toggle('still', !w.on && !busy); }
   }
+}
+// đi khắp phòng: vùng sàn thú được đi (x là tâm, y là chân, theo % cảnh) và tốc độ (% chiều rộng cảnh mỗi giây)
+const ROAM = { x: [10, 90], y: [58, 87], speed: 9 };
+function petPos(id) {
+  const m = P.pos?.[id]; if (!m) return null;
+  const k = Math.min(1, (Date.now() - m.t0) / m.dur);
+  return { x: m.x0 + (m.x1 - m.x0) * k, y: m.y0 + (m.y1 - m.y0) * k, left: Math.max(0, m.t0 + m.dur - Date.now()) };
+}
+function placeEl(b, x, y) { b.style.left = `${x.toFixed(2)}%`; b.style.top = `${(y - SPR_H * FOOT).toFixed(2)}%`; b.style.zIndex = String(Math.round(y)); }
+// đặt thú đúng vị trí hiện tại rồi cho đi tiếp phần đường còn lại (vẽ lại giữa chừng cũng không bị nhảy)
+function moveEl(b, id) {
+  const m = P.pos?.[id], c = petPos(id); if (!m || !c) return;
+  b.classList.toggle('flip', !!m.flip);
+  b.style.transition = 'none'; placeEl(b, c.x, c.y);
+  if (c.left > 0) { void b.offsetWidth; b.style.transition = `left ${c.left}ms linear, top ${c.left}ms linear`; placeEl(b, m.x1, m.y1); }
+}
+function mountMoves(root) {
+  if (P.visit || P.view !== 'home') return;
+  for (const b of $$('.pt-pet.has-spr[data-pid]', root)) moveEl(b, Number(b.dataset.pid));
 }
 // ---- thăm nhà ----------------------------------------------------------------------------------------------------------
 function drawVisit(root) {
@@ -384,6 +422,8 @@ async function onClick(e) {
     return run(async () => {
       P.s = await api('POST', `/pets/${bird.id}/home`, { in: !bird.inHome });
       const b = P.s.pets.find((q) => q.id === bird.id);
+      if (P.pos) delete P.pos[bird.id]; // ra khỏi lồng: bắt đầu lại từ chỗ ngay dưới lồng
+      if (P.walkAt) delete P.walkAt[bird.id];
       (P.burst ||= {})[bird.id] = Date.now() + 1600; // vừa bay vào hoặc ra: vỗ cánh một lúc
       P.sel = bird.id; draw(root);
       toast(b.inHome ? `${b.name} đã bay vào lồng` : `${b.name} đã ra khỏi lồng`, 1800);
