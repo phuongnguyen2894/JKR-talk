@@ -15,7 +15,7 @@
 
 /* cảnh khu nhà */
 /* Trong nhà: tường phía trên (giấy dán tường, nẹp chân tường), sàn phía dưới; bậc càng cao nhà càng sang */
-.pt-scene { position: relative; height: 250px; border-radius: 20px; overflow: hidden; border: 1px solid var(--line);
+.pt-scene { position: relative; aspect-ratio: 10 / 7; container-type: inline-size; border-radius: 20px; overflow: hidden; border: 1px solid var(--line);
   background: linear-gradient(#EADCF7 0 36%, #C9B5E6 36% 38%, transparent 38%), repeating-linear-gradient(90deg, #D8B58A 0 38px, #CFA97B 38px 40px); }
 .pt-scene.t2 { background: linear-gradient(#FFEBDD 0 36%, #E9C7A8 36% 38%, transparent 38%), repeating-linear-gradient(90deg, #D8B58A 0 38px, #CFA97B 38px 40px); }
 .pt-scene.t3 { background: linear-gradient(#E3F1FF 0 34%, #B9D5F0 34% 36%, transparent 36%), repeating-linear-gradient(90deg, #E0C29B 0 38px, #D6B68C 38px 40px); }
@@ -114,11 +114,18 @@
 /* Hình pixel art cả cơ thể (Abu): hiển thị nét sắc, chân ở khoảng 94% chiều cao khung, bóng do game vẽ dưới chân */
 .pt-spr { position: relative; display: inline-block; flex: none; }
 .pt-spr img { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; pointer-events: none; user-select: none; }
+/* ảnh nền phòng pixel art: phủ đúng khung 10:7, nét sắc; thú trong cảnh rộng 15,67% cảnh = khớp 1:1 lưới pixel của nền */
+.pt-scene.has-bg { background-color: #EADCF7; background-repeat: no-repeat; background-position: 0 0; background-size: 100% 100%; image-rendering: pixelated; }
+.pt-spr.sc { width: 15.67cqw; height: 15.67cqw; }
+/* công cụ thử: xem từng hoạt hình của từng giai đoạn trong phòng thật */
+.pt-pv .pt-spr.sc { position: absolute; left: 50%; transform: translateX(-50%); }
+.pt-pv-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pt-pv-bar .pt-mini[aria-pressed="true"] { background: #7C3AED; color: #fff; }
 .pt-spr::before { content: ''; position: absolute; left: 22%; right: 22%; bottom: 3%; height: 7%; border-radius: 50%; background: rgba(0, 0, 0, .18); }
 .pt-spr img { position: relative; }
 .pt-spr .pt-acc.c { left: 34%; bottom: 36%; transform: none; font-size: 15px; } .pt-spr .pt-acc.o { left: 50%; bottom: 20%; font-size: 17px; }
 .pt-pet.on .pt-spr::before { background: rgba(124, 58, 237, .55); box-shadow: 0 0 8px 2px rgba(124, 58, 237, .45); } /* đang chọn: bóng dưới chân sáng màu tím */
-.pt-pet.has-spr .pt-mood { top: 24%; right: 12%; }
+.pt-pet.has-spr .pt-mood { top: 6%; right: -16%; }
 
 /* Hoạt hình sprite: đứng yên thì không trôi qua lại; chỉ trôi khi đang đi dạo (walk) */
 .pt-pet.has-anim.still { animation-play-state: paused; }

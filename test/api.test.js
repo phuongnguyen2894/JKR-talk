@@ -1976,6 +1976,14 @@ test('Nuôi thú: hiện chỉ nhận nuôi được Abu; các bạn khác "Sắ
     const r = await call('POST', '/pets/adopt', { kind: 'uni', name: 'Bông Xù' }, u.token);
     assert.equal(r.status, 400); assert.match(r.data.error, /sắp ra mắt/);
     assert.equal((await call('POST', '/pets/adopt', { kind: 'abu', name: 'Xanh Lá' }, u.token)).status, 201);
+    // công cụ thử của Admin: xem được mọi hoạt hình của mọi giai đoạn Abu; người thường không xem được
+    const pv = (await call('GET', '/admin/pets/settings', null, adm.token)).data.preview;
+    assert.deepEqual(pv.map((k) => k.id), ['abu']);
+    assert.deepEqual(pv[0].stages.map((st) => st.n), [0, 1, 2, 3]);
+    const fs = await import('node:fs');
+    for (const st of pv[0].stages) { assert.equal(Object.keys(st.anim).length, 12); for (const a of Object.values(st.anim)) for (const url of a.urls) assert.ok(fs.existsSync(`public${url}`), url); }
+    assert.equal((await call('GET', '/admin/pets/settings', null, u.token)).status, 403);
+    assert.ok(fs.existsSync('public/pets/rooms/tier1.webp')); // nền Phòng nhỏ
   } finally { process.env.PETS_OPEN_KINDS = prev; await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
 });
 

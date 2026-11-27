@@ -19,14 +19,14 @@ const LV = { love: '😍', like: '😊', neutral: '😐', dislike: '🤢' };
 // hình tạm: ảnh nếu Admin đã tải, không thì chữ viết tắt trên nền màu kèm biểu tượng loài
 function face(p, size = 64, { scene = false } = {}) {
   if (p.sprite && p.anim) { // có hoạt hình: ảnh khởi đầu là khung 1 của idle; mountAnims() đổi khung theo trạng thái
-    const s = Math.round(size * (scene ? 1.6 : 1.15)), a = p.anim.idle.urls[0];
+    const s = Math.round(size * 1.15), a = p.anim.idle.urls[0];
     const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
-    return `<span class="pt-spr" data-pet="${p.id}" ${scene ? 'data-scene="1"' : ''} style="width:${s}px;height:${s}px"><img src="${esc(a)}" alt="" draggable="false" width="${s}" height="${s}">${acc}</span>`;
+    return `<span class="pt-spr${scene ? ' sc' : ''}" data-pet="${p.id}" ${scene ? 'data-scene="1"' : `style="width:${s}px;height:${s}px"`}><img src="${esc(a)}" alt="" draggable="false" width="384" height="384">${acc}</span>`;
   }
   if (p.sprite) { // hình pixel art đầy đủ cơ thể (đã vẽ sẵn kích thước theo giai đoạn): hiển thị bằng nét sắc, không cắt tròn
-    const s = Math.round(size * (scene ? 1.6 : 1.15));
+    const s = Math.round(size * 1.15);
     const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
-    return `<span class="pt-spr" style="width:${s}px;height:${s}px"><img src="${esc(p.sprite)}" alt="" draggable="false" width="${s}" height="${s}">${acc}</span>`;
+    return `<span class="pt-spr${scene ? ' sc' : ''}" ${scene ? '' : `style="width:${s}px;height:${s}px"`}><img src="${esc(p.sprite)}" alt="" draggable="false" width="384" height="384">${acc}</span>`;
   }
   const inner = p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="" draggable="false">` : `<b>${esc(p.initials)}</b>`;
   const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
@@ -65,12 +65,19 @@ async function refresh(root) {
 
 // chỗ đứng trong nhà: hai hàng trên sàn, xếp đều để các bạn không chồng lên nhau
 const slotTop = (i) => (i % 2 ? 66 : 38);
+// ảnh nền phòng đã vẽ (pixel art 2450x1715, tỉ lệ 10:7); bậc chưa có ảnh dùng nền màu tạm
+const ROOM_BG = { 1: '/pets/rooms/tier1.webp' };
+// thú có hình pixel art: khung 384 px = 15,67% chiều rộng cảnh (khớp 1:1 với lưới pixel của nền), chân (y 361/384 của khung)
+// đặt ở hàng sau 61% hoặc hàng trước 89% chiều cao cảnh. Khung cao 15,67% x 10/7 = 22,39% chiều cao cảnh, chân ở 94% khung
+const FEET = [61, 89], SPR_H = 15.67 * 10 / 7, FOOT = 361 / 384;
+const sprTop = (i) => +(FEET[i % 2] - SPR_H * FOOT).toFixed(2);
 const slotLeft = (i, n) => { const cols = Math.max(1, Math.ceil(n / 2)), col = Math.floor(i / 2); return n === 1 ? 50 : cols === 1 ? 32 + (i % 2) * 36 : 14 + col * (62 / (cols - 1)) + (i % 2 ? 6 : 0); };
 function sceneHtml(pets, { sel, home, readonly = false, habs = null } = {}) {
-  return `<div class="pt-scene t${home.tier}" aria-label="Trong nhà: ${esc(home.name)}">
-    <span class="pt-deco d1" aria-hidden="true">🖼️</span><span class="pt-deco d2" aria-hidden="true">🪟</span>
-    ${home.tier >= 2 ? '<span class="pt-deco d3" aria-hidden="true">🕰️</span>' : ''}${home.tier >= 3 ? '<span class="pt-deco d5" aria-hidden="true">🪴</span>' : ''}${home.tier >= 4 ? '<span class="pt-deco d6" aria-hidden="true">📚</span>' : ''}${home.tier >= 5 ? '<span class="pt-deco d4" aria-hidden="true">🪔</span>' : ''}
-    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${p.sprite ? ' has-spr' : ''}${p.anim ? ` has-anim${P.walk?.[p.id] ? ' walking' : (P.react?.petId === p.id || (P.ev && (P.ev.a === p.id || P.ev.b === p.id)) ? '' : ' still')}` : ''}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${slotLeft(i, pets.length)}%;top:${slotTop(i) - (p.sprite ? 12 : 0)}%;--s:${p.sprite ? 1 : SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-pid="${p.id}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
+  const bg = ROOM_BG[home.tier];
+  return `<div class="pt-scene t${home.tier}${bg ? ' has-bg' : ''}" ${bg ? `style="background-image:url('${bg}')"` : ''} aria-label="Trong nhà: ${esc(home.name)}">
+    ${bg ? '' : `<span class="pt-deco d1" aria-hidden="true">🖼️</span><span class="pt-deco d2" aria-hidden="true">🪟</span>
+    ${home.tier >= 2 ? '<span class="pt-deco d3" aria-hidden="true">🕰️</span>' : ''}${home.tier >= 3 ? '<span class="pt-deco d5" aria-hidden="true">🪴</span>' : ''}${home.tier >= 4 ? '<span class="pt-deco d6" aria-hidden="true">📚</span>' : ''}${home.tier >= 5 ? '<span class="pt-deco d4" aria-hidden="true">🪔</span>' : ''}`}
+    ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${p.sprite ? ' has-spr' : ''}${p.anim ? ` has-anim${P.walk?.[p.id] ? ' walking' : (P.react?.petId === p.id || (P.ev && (P.ev.a === p.id || P.ev.b === p.id)) ? '' : ' still')}` : ''}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${slotLeft(i, pets.length)}%;top:${p.sprite ? sprTop(i) : slotTop(i)}%;--s:${p.sprite ? 1 : SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-pid="${p.id}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
         <span class="pt-mood" aria-hidden="true">${P.react && P.react.petId === p.id ? LV[P.react.level] : P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? P.ev.emoji : MOOD[p.mood.key] || '🙂'}</span>${face(p, 58, { scene: true })}${p.stage >= 3 ? '<span class="pt-crown" aria-hidden="true">👑</span>' : ''}<small>${esc(p.name)}</small></button>`).join('')
       : '<p class="pt-empty">Khu nhà đang trống. Hãy nhận nuôi một bạn nhé!</p>'}
   </div>`;
@@ -287,10 +294,51 @@ async function loadAdmin(root) {
     <button type="button" class="pt-btn" data-pt="a-save">Lưu cài đặt</button>
     <div class="pt-sub">Công cụ thử (chỉ tác động tài khoản của bạn):</div>
     <div class="pt-fr"><button type="button" class="pt-btn" data-pt="a-skip" data-h="6">Tua +6 giờ</button><button type="button" class="pt-btn" data-pt="a-skip" data-h="24">Tua +24 giờ</button><button type="button" class="pt-btn" data-pt="a-social">Tạo tương tác ngay</button><button type="button" class="pt-btn" data-pt="a-coins">+1.000 xu thử</button><button type="button" class="pt-btn danger" data-pt="a-reset">Làm lại từ đầu</button></div>
+    <div id="pt-pv-box">${pvHtml()}</div>
     <div class="pt-sub">Ảnh các bạn thú (đang dùng hình tạm nếu chưa có ảnh):</div>
     <div class="pt-fr">${d.kinds.map((k) => `<div class="pt-kimg">${face({ ...k, color: k.color }, 48)}<b>${esc(k.name)}</b><button type="button" class="pt-mini" data-pt="a-img" data-id="${esc(k.id)}">${k.imageUrl ? 'Đổi' : 'Chọn'}</button>${k.imageUrl ? `<button type="button" class="pt-mini" data-pt="a-imgdel" data-id="${esc(k.id)}">Bỏ</button>` : ''}</div>`).join('')}</div>
     <input type="file" id="pt-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></div>`;
+  pvStart(root);
 }
+// ---- Admin: xem thử hoạt hình của mọi giai đoạn, trong Phòng nhỏ, đúng cỡ như trong game ------------------------------------------------
+const PV_GROUPS = [['Trạng thái', [['idle', 'Đứng yên (nháy mắt)'], ['walk', 'Đi dạo'], ['happy', 'Vui'], ['hungry', 'Đói'], ['bored', 'Chán'], ['dirty', 'Bẩn'], ['sleepy', 'Buồn ngủ'], ['sad', 'Buồn']]],
+  ['Hành động', [['eat', 'Ăn'], ['play', 'Chơi'], ['wash', 'Tắm'], ['sleep', 'Ngủ']]]];
+function pvCur() {
+  const list = P.tools?.preview || [];
+  if (!list.length) return null;
+  const pv = (P.pv ||= { k: 0, st: 0, a: 'idle', i: 0, play: true });
+  const kind = list[pv.k] || list[0], stage = kind.stages[pv.st] || kind.stages[0];
+  return { list, pv, kind, stage, anim: stage.anim[pv.a] || stage.anim.idle };
+}
+function pvHtml() {
+  const c = pvCur(); if (!c) return '';
+  const { list, pv, kind, stage, anim } = c;
+  return `<div class="pt-sub" style="margin-top:8px"><b>Xem thử hoạt hình</b> (trong Phòng nhỏ, đúng cỡ trong game):</div>
+    ${list.length > 1 ? `<div class="pt-pv-bar">${list.map((k, i) => `<button type="button" class="pt-mini" data-pt="pv-kind" data-i="${i}" aria-pressed="${k.id === kind.id}">${esc(k.name)}</button>`).join('')}</div>` : ''}
+    <div class="pt-pv-bar"><span class="pt-sub">Giai đoạn:</span>${kind.stages.map((st, i) => `<button type="button" class="pt-mini" data-pt="pv-stage" data-i="${i}" aria-pressed="${st.n === stage.n}">${esc(st.name)}</button>`).join('')}</div>
+    ${PV_GROUPS.map(([g, items]) => `<div class="pt-pv-bar"><span class="pt-sub">${g}:</span>${items.filter(([id]) => stage.anim[id]).map(([id, name]) => `<button type="button" class="pt-mini" data-pt="pv-anim" data-a="${id}" aria-pressed="${stage.anim[pv.a] ? id === pv.a : id === 'idle'}">${name}</button>`).join('')}</div>`).join('')}
+    <div class="pt-scene t1 has-bg pt-pv" style="background-image:url('${ROOM_BG[1]}')" aria-label="Xem thử ${esc(kind.name)}"><span class="pt-spr sc" id="pt-pv-spr" style="top:${sprTop(0)}%"><img src="${esc(anim.urls[0])}" alt="" draggable="false" width="384" height="384"></span></div>
+    <div class="pt-pv-bar"><button type="button" class="pt-mini" data-pt="pv-play">${pv.play ? '⏸ Dừng' : '▶ Chạy'}</button><button type="button" class="pt-mini" data-pt="pv-step" data-d="-1" ${pv.play ? 'disabled' : ''}>◀ Khung trước</button><button type="button" class="pt-mini" data-pt="pv-step" data-d="1" ${pv.play ? 'disabled' : ''}>Khung sau ▶</button><span class="pt-sub" id="pt-pv-lab"></span></div>`;
+}
+function pvStart(root) {
+  clearTimeout(P.pvT);
+  const el = $('#pt-pv-spr', root), c = pvCur();
+  if (!el || !c) return;
+  const { pv, anim } = c, img = el.querySelector('img'), lab = $('#pt-pv-lab', root), n = anim.urls.length;
+  for (const u of anim.urls) { const im = new Image(); im.src = u; } // tải sẵn để không nháy
+  const show = () => {
+    pv.i = ((pv.i % n) + n) % n; img.src = anim.urls[pv.i];
+    if (lab) lab.textContent = `Khung ${pv.i + 1}/${n} · ${anim.fps} khung/giây${anim.blink ? ' · trong game mở mắt 2,5 đến 6 giây rồi mới nháy' : ''}`;
+  };
+  show();
+  if (!pv.play) return;
+  const tick = () => {
+    const wait = anim.blink ? (pv.i === 0 ? 1200 : 150) : 1000 / anim.fps; // nháy mắt: ở đây mở mắt 1,2 giây cho dễ xem
+    P.pvT = setTimeout(() => { if (!el.isConnected) return; pv.i++; show(); tick(); }, wait);
+  };
+  tick();
+}
+function pvDraw(root) { const box = $('#pt-pv-box', root); if (box) { box.innerHTML = pvHtml(); pvStart(root); } }
 async function squareDataUrl(file) {
   if (!/^image\/(png|jpe?g|gif|webp)$/.test(file.type)) throw new Error('Chỉ nhận ảnh PNG, JPG, GIF hoặc WebP');
   const bmp = await createImageBitmap(file), side = Math.min(bmp.width, bmp.height);
@@ -367,6 +415,17 @@ async function onClick(e) {
     const r = await api('POST', `/pets/visit/${P.visit.owner.id}/pat`, { petId: P.vsel });
     P.visit.patted = true; toast(`Bạn đã vuốt ve ${r.petName}`, 2500); drawVisit(root);
   });
+  // Admin: xem thử hoạt hình
+  if (a.startsWith('pv-') && P.pv) {
+    const pv = P.pv;
+    if (a === 'pv-kind') { pv.k = Number(t.dataset.i); pv.st = 0; pv.a = 'idle'; }
+    if (a === 'pv-stage') pv.st = Number(t.dataset.i);
+    if (a === 'pv-anim') pv.a = t.dataset.a;
+    if (a === 'pv-play') pv.play = !pv.play;
+    if (a === 'pv-step') pv.i += Number(t.dataset.d);
+    if (['pv-kind', 'pv-stage', 'pv-anim'].includes(a)) pv.i = 0; // dừng/chạy thì giữ khung đang xem
+    return pvDraw(root);
+  }
   // Admin
   if (a === 'a-save') return run(async () => {
     const prices = $$('[data-price]', root).map((i) => Number(i.value));

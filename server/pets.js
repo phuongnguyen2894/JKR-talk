@@ -587,7 +587,9 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
   }));
 
   // ---- Admin: công tắc mở game, giá, ảnh, công cụ thử --------------------------------------------------------------
-  api.get('/admin/pets/settings', adminOnly, wrap((_req, res) => res.json({ mode: petsMode(), tiers: tiers(), kinds: KINDS.map((k) => ({ id: k.id, name: k.name, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: imgMap()[k.id] || null })) })));
+  // preview: mọi hoạt hình của mọi giai đoạn (bạn nào đã có hình), để Admin xem thử trong công cụ thử
+  const preview = () => KINDS.filter((k) => ANIM[k.id]).map((k) => ({ id: k.id, name: k.name, stages: STAGES.map((s) => ({ n: s.n, name: s.name, anim: animFor(k.id, s.n) })).filter((s) => s.anim) }));
+  api.get('/admin/pets/settings', adminOnly, wrap((_req, res) => res.json({ mode: petsMode(), tiers: tiers(), kinds: KINDS.map((k) => ({ id: k.id, name: k.name, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: imgMap()[k.id] || null })), preview: preview() })));
   api.put('/admin/pets/settings', adminOnly, wrap((req, res) => {
     const b = req.body || {};
     if (b.mode !== undefined) { if (!['admin', 'all'].includes(b.mode)) throw bad('Giá trị không hợp lệ'); setKv('pets_mode', b.mode); }
