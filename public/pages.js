@@ -279,6 +279,13 @@ export async function renderSettings(view) {
     if (pendingAvatar) body.avatarUrl = pendingAvatar;
     if (await save(body)) renderSettings(view);
   };
+  // đổi ngôn ngữ là áp dụng ngay, không cần bấm "Lưu hồ sơ"
+  $('#lang').onchange = async (e) => {
+    const code = e.target.value;
+    if (code === S.me.language) return;
+    if (await save({ language: code })) renderSettings(view);
+    else e.target.value = S.me.language;
+  };
   $('#pwf').onsubmit = async (e) => {
     e.preventDefault();
     if ($('#pw1').value !== $('#pw2').value) return toast('Mật khẩu xác nhận không khớp');
