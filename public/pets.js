@@ -17,16 +17,17 @@ const SCALE = [0.8, 0.92, 1.04, 1.18];
 const LV = { love: '😍', like: '😊', neutral: '😐', dislike: '🤢' };
 
 // hình tạm: ảnh nếu Admin đã tải, không thì chữ viết tắt trên nền màu kèm biểu tượng loài
-function face(p, size = 64, { scene = false } = {}) {
+function face(p, size = 64, { scene = false, cage = false } = {}) {
+  const sc = scene ? ' sc' : cage ? ' in' : '', fixed = !scene && !cage;
   if (p.sprite && p.anim) { // có hoạt hình: ảnh khởi đầu là khung 1 của idle; mountAnims() đổi khung theo trạng thái
     const s = Math.round(size * 1.15), a = p.anim.idle.urls[0];
     const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
-    return `<span class="pt-spr${scene ? ' sc' : ''}" data-pet="${p.id}" ${scene ? 'data-scene="1"' : `style="width:${s}px;height:${s}px"`}><img src="${esc(a)}" alt="" draggable="false" width="384" height="384">${acc}</span>`;
+    return `<span class="pt-spr${sc}" data-pet="${p.id}" ${scene ? 'data-scene="1"' : fixed ? `style="width:${s}px;height:${s}px"` : ''}><img src="${esc(a)}" alt="" draggable="false" width="384" height="384">${acc}</span>`;
   }
   if (p.sprite) { // hình pixel art đầy đủ cơ thể (đã vẽ sẵn kích thước theo giai đoạn): hiển thị bằng nét sắc, không cắt tròn
     const s = Math.round(size * 1.15);
     const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
-    return `<span class="pt-spr${scene ? ' sc' : ''}" ${scene ? '' : `style="width:${s}px;height:${s}px"`}><img src="${esc(p.sprite)}" alt="" draggable="false" width="384" height="384">${acc}</span>`;
+    return `<span class="pt-spr${sc}" ${fixed ? `style="width:${s}px;height:${s}px"` : ''}><img src="${esc(p.sprite)}" alt="" draggable="false" width="384" height="384">${acc}</span>`;
   }
   const inner = p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="" draggable="false">` : `<b>${esc(p.initials)}</b>`;
   const acc = `${p.collar ? `<i class="pt-acc c" title="${esc(p.collar.name)}" aria-hidden="true">${p.collar.emoji}</i>` : ''}${p.outfit ? `<i class="pt-acc o" title="${esc(p.outfit.name)}" aria-hidden="true">${p.outfit.emoji}</i>` : ''}`;
@@ -71,15 +72,28 @@ const ROOM_BG = { 1: '/pets/rooms/tier1.webp' };
 // đặt ở hàng sau 61% hoặc hàng trước 89% chiều cao cảnh. Khung cao 15,67% x 10/7 = 22,39% chiều cao cảnh, chân ở 94% khung
 const FEET = [61, 89], SPR_H = 15.67 * 10 / 7, FOOT = 361 / 384;
 const sprTop = (i) => +(FEET[i % 2] - SPR_H * FOOT).toFixed(2);
+// lồng vẹt trên kệ: khung 640 px (= 26,12% chiều rộng cảnh), đáy lồng (y 620) đặt lên mặt kệ y 560 của nền 2450x1715
+// nên mép trên khung ở -60 px = -3,5%; tâm x 1225 (giữa phòng). Hai lớp: lớp sau, thú (nếu đang ở trong), lớp trước.
+// Chưa có hình lồng mạ vàng và lồng cung điện: tạm dùng hình lồng tre.
+const CAGE_ART = { 1: 'cage1', 2: 'cage1', 3: 'cage1' };
+function cageHtml(tier, bird, readonly) {
+  const n = CAGE_ART[tier] || 'cage1', tag = readonly ? 'div' : 'button';
+  const label = bird ? `${esc(bird.name)} đang ở trong lồng${readonly ? '' : '. Chạm để cho ra'}` : `Lồng vẹt${readonly ? '' : '. Chạm để cho vẹt vào lồng'}`;
+  return `<${tag} ${readonly ? '' : 'type="button" data-pt="cage"'} class="pt-cage" aria-label="${label}">
+    <img class="l" src="/pets/cages/${n}_back.webp" alt="" draggable="false">${bird ? face(bird, 58, { cage: true }) : ''}<img class="l" src="/pets/cages/${n}_front.webp" alt="" draggable="false"></${tag}>`;
+}
 const slotLeft = (i, n) => { const cols = Math.max(1, Math.ceil(n / 2)), col = Math.floor(i / 2); return n === 1 ? 50 : cols === 1 ? 32 + (i % 2) * 36 : 14 + col * (62 / (cols - 1)) + (i % 2 ? 6 : 0); };
-function sceneHtml(pets, { sel, home, readonly = false, habs = null } = {}) {
-  const bg = ROOM_BG[home.tier];
+function sceneHtml(all, { sel, home, readonly = false, habs = null } = {}) {
+  const bg = ROOM_BG[home.tier], cageTier = habs?.cage?.tier || 0;
+  const bird = cageTier ? all.find((p) => p.homeType === 'cage' && p.inHome) : null; // vẹt đang ở trong lồng
+  const pets = bird ? all.filter((p) => p !== bird) : all; // các bạn dưới sàn nhà
   return `<div class="pt-scene t${home.tier}${bg ? ' has-bg' : ''}" ${bg ? `style="background-image:url('${bg}')"` : ''} aria-label="Trong nhà: ${esc(home.name)}">
     ${bg ? '' : `<span class="pt-deco d1" aria-hidden="true">🖼️</span><span class="pt-deco d2" aria-hidden="true">🪟</span>
     ${home.tier >= 2 ? '<span class="pt-deco d3" aria-hidden="true">🕰️</span>' : ''}${home.tier >= 3 ? '<span class="pt-deco d5" aria-hidden="true">🪴</span>' : ''}${home.tier >= 4 ? '<span class="pt-deco d6" aria-hidden="true">📚</span>' : ''}${home.tier >= 5 ? '<span class="pt-deco d4" aria-hidden="true">🪔</span>' : ''}`}
+    ${cageTier ? cageHtml(cageTier, bird, readonly) : ''}
     ${pets.length ? pets.map((p, i) => `<button type="button" class="pt-pet w${(p.id % 4) + 1}${p.sprite ? ' has-spr' : ''}${p.anim ? ` has-anim${P.walk?.[p.id] ? ' walking' : (P.react?.petId === p.id || (P.ev && (P.ev.a === p.id || P.ev.b === p.id)) ? '' : ' still')}` : ''}${sel === p.id ? ' on' : ''}${P.react && P.react.petId === p.id ? ` r-${P.react.level}` : ''}${P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? ` ev-${P.ev.type}` : ''}" style="left:${slotLeft(i, pets.length)}%;top:${p.sprite ? sprTop(i) : slotTop(i)}%;--s:${p.sprite ? 1 : SCALE[p.stage] || 1}" data-pt="${readonly ? 'v-pick' : 'pick'}" data-pid="${p.id}" data-id="${p.id}" aria-label="${esc(p.name)}, ${esc(p.mood.label)}" aria-pressed="${sel === p.id}">
         <span class="pt-mood" aria-hidden="true">${P.react && P.react.petId === p.id ? LV[P.react.level] : P.ev && (P.ev.a === p.id || P.ev.b === p.id) ? P.ev.emoji : MOOD[p.mood.key] || '🙂'}</span>${face(p, 58, { scene: true })}${p.stage >= 3 ? '<span class="pt-crown" aria-hidden="true">👑</span>' : ''}<small>${esc(p.name)}</small></button>`).join('')
-      : '<p class="pt-empty">Khu nhà đang trống. Hãy nhận nuôi một bạn nhé!</p>'}
+      : all.length ? '' : '<p class="pt-empty">Khu nhà đang trống. Hãy nhận nuôi một bạn nhé!</p>'}
   </div>`;
 }
 
@@ -109,7 +123,7 @@ function petPanel(p) {
 const effText = (f) => [f.food ? `No +${f.food}` : '', f.fun ? `Vui +${f.fun}` : '', f.health ? `Khỏe +${f.health}` : ''].filter(Boolean).join(' ');
 function habLine(p) {
   const h = P.s.habitat[p.homeType];
-  return h.tier > 0 ? `<p class="pt-sub" style="margin:0">${h.emoji} ${esc(h.name)}: tụt chỉ số chậm hơn ${h.slow}%, ngủ hồi thêm</p>`
+  return h.tier > 0 ? `<p class="pt-sub" style="margin:0">${h.emoji} ${esc(h.name)}: tụt chỉ số chậm hơn ${h.slow}%, ngủ hồi thêm${p.homeType === 'cage' ? `. Chạm vào lồng trong phòng để cho ${esc(p.name)} ${p.inHome ? 'ra ngoài' : 'vào lồng'}.` : ''}</p>`
     : `<p class="pt-sub" style="margin:0">Chưa có ${HAB_NAME[p.homeType].toLowerCase()} cho ${esc(p.name)}. <button type="button" class="pt-mini" data-pt="shop-open" data-cat="home" data-sp="${p.sp}">Mua ở cửa hàng</button></p>`;
 }
 function closetHtml(p) {
@@ -273,7 +287,7 @@ function walkTick(root) {
 function drawVisit(root) {
   const v = P.visit;
   root.innerHTML = `<header class="pt-top"><button type="button" class="pt-back" data-pt="v-back" aria-label="Quay lại">‹</button><h1>Nhà của ${esc(v.owner.displayName)}</h1><span></span></header>
-    ${sceneHtml(v.pets, { sel: P.vsel, home: v.home, readonly: true })}
+    ${sceneHtml(v.pets, { sel: P.vsel, home: v.home, readonly: true, habs: v.habitat })}
     <section class="pt-card"><p class="pt-sub" style="margin:0">${esc(v.home.name)} · ${v.pets.length} bạn. Chọn một bạn rồi vuốt ve để tặng chút Thân thiết (mỗi nhà một lần mỗi ngày).</p>
       ${P.vsel ? `<button type="button" class="pt-btn primary block" data-pt="pat" ${v.patted ? 'disabled' : ''}>${v.patted ? 'Hôm nay bạn đã vuốt ve rồi' : '🤲 Vuốt ve'}</button>` : ''}</section>`;
 }
@@ -364,6 +378,17 @@ async function onClick(e) {
     drawShop(root); toast('Đã mua!', 1800);
   });
   if (a === 'pick') { P.sel = id; P.food = false; return draw(root); }
+  if (a === 'cage') { // chạm lồng: vẹt từ sàn vào lồng, chạm lần nữa thì ra lại sàn nhà
+    const bird = P.s.pets.find((q) => q.homeType === 'cage' && q.inHome) || P.s.pets.find((q) => q.homeType === 'cage');
+    if (!bird) return toast('Lồng dành cho vẹt. Hãy nhận nuôi Abu nhé!', 2500);
+    return run(async () => {
+      P.s = await api('POST', `/pets/${bird.id}/home`, { in: !bird.inHome });
+      const b = P.s.pets.find((q) => q.id === bird.id);
+      (P.burst ||= {})[bird.id] = Date.now() + 1600; // vừa bay vào hoặc ra: vỗ cánh một lúc
+      P.sel = bird.id; draw(root);
+      toast(b.inHome ? `${b.name} đã bay vào lồng` : `${b.name} đã ra khỏi lồng`, 1800);
+    });
+  }
   if (a === 'v-pick') { P.vsel = id; return drawVisit(root); }
   if (a === 'closet') { P.closet = P.closet === id ? null : id; return draw(root); }
   if (a === 'wear') return run(async () => { P.s = await api('POST', `/pets/${id}/wear`, { slot: t.dataset.slot, item: t.dataset.item || null }); draw(root); toast(t.dataset.item ? 'Đã mặc cho bạn ấy!' : 'Đã bỏ ra', 1800); });

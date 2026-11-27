@@ -1984,6 +1984,18 @@ test('Nuôi thú: hiện chỉ nhận nuôi được Abu; các bạn khác "Sắ
     for (const st of pv[0].stages) { assert.equal(Object.keys(st.anim).length, 12); for (const a of Object.values(st.anim)) for (const url of a.urls) assert.ok(fs.existsSync(`public${url}`), url); }
     assert.equal((await call('GET', '/admin/pets/settings', null, u.token)).status, 403);
     assert.ok(fs.existsSync('public/pets/rooms/tier1.webp')); // nền Phòng nhỏ
+    // lồng vẹt: chưa có lồng thì không cho vào; mua lồng tre rồi chạm lồng để vào, chạm lần nữa để ra
+    const abu = (await call('GET', '/pets', null, u.token)).data.pets.find((q) => q.kind === 'abu');
+    assert.equal(abu.inHome, false);
+    assert.equal((await call('POST', `/pets/${abu.id}/home`, { in: true }, u.token)).status, 400);
+    const { db } = await import('../server/db.js');
+    db.prepare('UPDATE users SET coins = 1000, coins_spent = 0 WHERE id = ?').run(u.id);
+    assert.equal((await call('POST', '/pets/shop/buy', { item: 'cage:cage1' }, u.token)).status, 200);
+    const inside = (await call('POST', `/pets/${abu.id}/home`, { in: true }, u.token)).data;
+    assert.equal(inside.pets.find((q) => q.id === abu.id).inHome, true); assert.equal(inside.habitat.cage.tier, 1);
+    assert.equal((await call('POST', `/pets/${abu.id}/home`, { in: false }, u.token)).data.pets.find((q) => q.id === abu.id).inHome, false);
+    assert.equal((await call('POST', `/pets/${abu.id}/home`, { in: true }, adm.token)).status, 404); // không phải thú của mình
+    for (const l of ['back', 'front']) assert.ok(fs.existsSync(`public/pets/cages/cage1_${l}.webp`));
   } finally { process.env.PETS_OPEN_KINDS = prev; await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
 });
 

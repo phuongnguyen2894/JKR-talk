@@ -117,6 +117,16 @@
 /* ảnh nền phòng pixel art: phủ đúng khung 10:7, nét sắc; thú trong cảnh rộng 15,67% cảnh = khớp 1:1 lưới pixel của nền */
 .pt-scene.has-bg { background-color: #EADCF7; background-repeat: no-repeat; background-position: 0 0; background-size: 100% 100%; image-rendering: pixelated; }
 .pt-spr.sc { width: 15.67cqw; height: 15.67cqw; }
+/* lồng vẹt trên kệ (khung 640 px của nền 2450 = 26,12% chiều rộng cảnh); thú trong lồng: khung 384 = 60% khung lồng,
+   chân (y 361) đặt lên sàn lồng (y 595 của khung 640) */
+.pt-cage { position: absolute; left: 36.94%; top: -3.5%; width: 26.12cqw; height: 26.12cqw; border: 0; padding: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+div.pt-cage { cursor: default; }
+.pt-cage img.l { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; user-select: none; }
+.pt-cage .pt-spr.in { position: absolute; left: 20%; top: 36.56%; width: 60%; height: 60%; }
+.pt-cage .pt-spr.in::before { display: none; }
+.pt-cage:focus-visible { outline: 3px solid #7C3AED; border-radius: 12px; }
+/* phòng chưa có ảnh nền (chưa vẽ kệ): vẽ tạm một cái kệ dưới lồng */
+.pt-scene:not(.has-bg) .pt-cage::before { content: ''; position: absolute; left: 4%; right: 4%; top: 96.9%; height: 3.5%; background: #C08A55; border: 2px solid #6B4A3A; border-radius: 3px; }
 /* công cụ thử: xem từng hoạt hình của từng giai đoạn trong phòng thật */
 .pt-pv .pt-spr.sc { position: absolute; left: 50%; transform: translateX(-50%); }
 .pt-pv-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

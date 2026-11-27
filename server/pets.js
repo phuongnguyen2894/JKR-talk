@@ -171,7 +171,8 @@ CREATE TABLE IF NOT EXISTS pet_inventory (user_id INTEGER NOT NULL, item TEXT NO
 CREATE TABLE IF NOT EXISTS pet_visits (visitor_id INTEGER NOT NULL, owner_id INTEGER NOT NULL, day TEXT NOT NULL, PRIMARY KEY (visitor_id, owner_id, day));
 `);
 for (const k of KINDS) db.prepare('INSERT OR IGNORE INTO pet_kinds (id) VALUES (?)').run(k.id);
-for (const sql of ['ALTER TABLE pets ADD COLUMN outfit TEXT', 'ALTER TABLE pets ADD COLUMN collar TEXT', 'ALTER TABLE pet_home ADD COLUMN social_at INTEGER NOT NULL DEFAULT 0']) { try { db.exec(sql); } catch { /* đã có cột */ } }
+// in_home: bạn thú đang ở trong chỗ ở của mình (vẹt trong lồng trên kệ); 0 = đang ở dưới sàn nhà
+for (const sql of ['ALTER TABLE pets ADD COLUMN outfit TEXT', 'ALTER TABLE pets ADD COLUMN collar TEXT', 'ALTER TABLE pets ADD COLUMN in_home INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE pet_home ADD COLUMN social_at INTEGER NOT NULL DEFAULT 0']) { try { db.exec(sql); } catch { /* đã có cột */ } }
 db.exec(`CREATE TABLE IF NOT EXISTS pet_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, at INTEGER NOT NULL, type TEXT NOT NULL, a_id INTEGER NOT NULL, b_id INTEGER NOT NULL, text TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_pet_events_user ON pet_events(user_id, id);`);
 
@@ -246,7 +247,7 @@ export function petView(p, t, crowd, kinds = imgMap()) {
   const stage = stageOf(intimacy), next = STAGES.find((s) => s.from > intimacy);
   return {
     id: p.id, kind: p.kind, kindName: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, trait: k.trait,
-    sprite: spriteUrl(p.kind, stage.n), anim: animFor(p.kind, stage.n), outfit: wearInfo('outfit', p.outfit), collar: wearInfo('collar', p.collar), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
+    sprite: spriteUrl(p.kind, stage.n), anim: animFor(p.kind, stage.n), outfit: wearInfo('outfit', p.outfit), collar: wearInfo('collar', p.collar), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], inHome: !!p.in_home, intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
     stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st),
     cooldowns: Object.fromEntries(Object.entries(ACTIONS).map(([a, c]) => [a, Math.max(0, (cd[a] || 0) + c.cd - t)])),
     gainLeft: Math.max(0, DAILY_GAIN_CAP - (p.day === dayKey(t) ? p.day_gain : 0)),
@@ -465,6 +466,16 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
       res.json({ ...r, balance: balanceOf(getUser(me(req))) });
     }));
   }
+  // cho bạn thú vào hoặc ra chỗ ở của mình (chạm vào lồng trong phòng): chỉ khi đã có chỗ ở đúng loại
+  api.post('/pets/:id/home', wrap((req, res) => {
+    rateLimit(`pcare:${me(req)}`, 120, 60_000);
+    const uid = me(req), p = db.prepare('SELECT id, kind FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), uid);
+    if (!p) throw notFound('Không tìm thấy bạn thú này');
+    const type = HOME_OF[p.kind], inside = !!req.body?.in;
+    if (inside && !(habTiers(uid)[type] > 0)) throw bad(`Bạn chưa có ${HAB_TYPES[type].toLowerCase()} cho bạn ấy`);
+    db.prepare('UPDATE pets SET in_home = ? WHERE id = ?').run(inside ? 1 : 0, p.id);
+    res.json(state(uid));
+  }));
   api.patch('/pets/:id', wrap((req, res) => {
     const cur = db.prepare('SELECT name FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), me(req));
     if (!cur) throw notFound('Không tìm thấy bạn thú này');
@@ -565,7 +576,8 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     if (ownerId !== viewer && (!areFriends(viewer, ownerId) || isBlockedEither(viewer, ownerId))) throw forbidden('Chỉ thăm được nhà của bạn bè');
     const h = homeOf(ownerId), list = myPets(ownerId), t = now(), fx = factorFn(ownerId, list.length), cur = tiers().find((x) => x.tier === h.tier);
     return { owner: { id: o.id, displayName: o.display_name }, home: { tier: cur.tier, name: cur.name, capacity: cur.capacity },
-      pets: list.map((p) => { const v = petView(p, t, fx(p)); return { id: v.id, sprite: v.sprite, outfit: v.outfit, collar: v.collar, kind: v.kind, emoji: v.emoji, initials: v.initials, color: v.color, imageUrl: v.imageUrl, name: v.name, stageName: v.stageName, stage: v.stage, mood: v.mood }; }),
+      pets: list.map((p) => { const v = petView(p, t, fx(p)); return { id: v.id, sprite: v.sprite, anim: v.anim, homeType: v.homeType, inHome: v.inHome, outfit: v.outfit, collar: v.collar, kind: v.kind, emoji: v.emoji, initials: v.initials, color: v.color, imageUrl: v.imageUrl, name: v.name, stageName: v.stageName, stage: v.stage, mood: v.mood }; }),
+      habitat: Object.fromEntries(Object.entries(habTiers(ownerId)).map(([k, n]) => [k, { tier: n }])),
       patted: !!db.prepare('SELECT 1 FROM pet_visits WHERE visitor_id = ? AND owner_id = ? AND day = ?').get(viewer, ownerId, dayKey()) };
   };
   api.get('/pets/visit/:userId', wrap((req, res) => res.json(visitView(me(req), Number(req.params.userId)))));
