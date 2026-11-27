@@ -1,6 +1,7 @@
 // Thách đấu 1v1 Muay Thai: màn tạo lời thách, chờ trả lời, nhận lời, hộp thư. Trận đấu và kết quả dùng chung màn với đấu máy (muaythai.js).
 // Máy chủ giữ xu, bốc thăm và chốt kết quả; cả hai máy phát cùng kịch bản từ cùng một giờ bắt đầu.
 import { $, S, api } from './core.js';
+import { t as tr } from './i18n.js';
 
 export const LIM = { min: 10, max: 500 };
 const HEX = ['#6D28D9', '#C2410C', '#0F766E', '#B45309', '#1D4ED8', '#BE185D']; // màu đậm theo chỉ số avatarColor (0-5)
@@ -24,103 +25,103 @@ export async function pvpBadge(M) {
 // ---- HTML từng màn --------------------------------------------------------------------------------------------------
 const pill = (t) => `<span class="mt-pill2">${t}</span>`;
 function vsCard(H, a, b, labelA, labelB) {
-  return `<div class="mt-vscard"><div class="s">${H.fighterHtml(a, { w: 96 })}<b>${H.esc(labelA)}</b><span class="c red">Góc đỏ</span></div>
-    <div class="m"><span class="vs">VS</span></div><div class="s">${H.fighterHtml(b, { w: 96 })}<b>${H.esc(labelB)}</b><span class="c blue">Góc xanh</span></div></div>`;
+  return `<div class="mt-vscard"><div class="s">${H.fighterHtml(a, { w: 96 })}<b>${H.esc(labelA)}</b><span class="c red">${tr('mt.red')}</span></div>
+    <div class="m"><span class="vs">VS</span></div><div class="s">${H.fighterHtml(b, { w: 96 })}<b>${H.esc(labelB)}</b><span class="c blue">${tr('mt.blue')}</span></div></div>`;
 }
 function userRows(M, H) {
   const p = M.pv, searching = p.q.trim().length >= 2;
   const list = searching ? p.users : p.friends || [];
-  if (searching && p.loadingUsers) return '<p class="mt-hint">Đang tìm…</p>';
-  if (!list.length) return `<p class="mt-hint">${searching ? 'Không tìm thấy ai.' : 'Bạn chưa có bạn bè nào trong danh sách. Gõ tên để tìm người khác.'}</p>`;
+  if (searching && p.loadingUsers) return `<p class="mt-hint">${tr('mt.searching')}</p>`;
+  if (!list.length) return `<p class="mt-hint">${searching ? tr('mt.noOne') : tr('pv.noFriends')}</p>`;
   return list.map((u) => `<button type="button" class="mt-urow${p.target?.id === u.id ? ' on' : ''}" data-mt="pv-pick" data-id="${H.esc(u.id)}" aria-pressed="${p.target?.id === u.id}" ${u.canChallenge ? '' : 'disabled'}>
     ${H.headChip(u, 44)}<span class="t"><b>${H.esc(u.name)}</b><small>${H.esc(u.province || '')}</small></span>
-    ${u.canChallenge ? (u.relation === 'friend' ? '<em class="rel">Bạn bè</em>' : u.relation === 'group' ? '<em class="rel">Cùng nhóm</em>' : '') : `<em class="rel off">${u.self ? 'Bạn' : 'Không nhận lời mời'}</em>`}</button>`).join('');
+    ${u.canChallenge ? (u.relation === 'friend' ? `<em class="rel">${tr('nav.friends')}</em>` : u.relation === 'group' ? `<em class="rel">${tr('mt.sameGroup')}</em>` : '') : `<em class="rel off">${u.self ? tr('wl.you') : tr('pv.noInvites')}</em>`}</button>`).join('');
 }
 function sendState(M) {
   const p = M.pv;
-  if (p.busy) return { label: 'Đang gửi…', off: true };
-  if (!p.target) return { label: 'Chọn người để thách đấu', off: true };
-  if (p.stake < LIM.min) return { label: `Tối thiểu ${LIM.min} xu`, off: true };
-  if (M.balance < p.stake) return { label: 'Không đủ xu tím', off: true };
-  return { label: 'Gửi lời thách đấu', off: false };
+  if (p.busy) return { label: tr('pv.sending'), off: true };
+  if (!p.target) return { label: tr('pv.pickWho'), off: true };
+  if (p.stake < LIM.min) return { label: tr('mt.min', { n: LIM.min }), off: true };
+  if (M.balance < p.stake) return { label: tr('mt.noCoins'), off: true };
+  return { label: tr('pv.send'), off: false };
 }
-const sumHtml = (stake) => `<div class="mt-sum"><div>Thắng nhận <b class="gold">${payoutOf(stake)} xu</b> <small>(lãi ${payoutOf(stake) - stake})</small></div><i></i><div>Thua <b>−${stake} xu</b></div></div>`;
+const sumHtml = (stake) => `<div class="mt-sum"><div>${tr('pv.winGet')} <b class="gold">${tr('mt.coins', { n: payoutOf(stake) })}</b> <small>(${tr('pv.profit', { n: payoutOf(stake) - stake })})</small></div><i></i><div>${tr('mt.lose')} <b>−${tr('mt.coins', { n: stake })}</b></div></div>`;
 
 function createHtml(M, H) {
   const p = M.pv, st = sendState(M), t = p.target;
   const me = meCard();
   const red = p.fromRed ? asFighter(me, 'red') : asFighter(t || { name: '?', initials: '?', color: '#4B3F7A' }, 'red');
   const blue = p.fromRed ? asFighter(t || { name: '?', initials: '?', color: '#4B3F7A' }, 'blue') : asFighter(me, 'blue');
-  const nameA = p.fromRed ? 'Bạn' : t?.name || 'Đối thủ', nameB = p.fromRed ? t?.name || 'Đối thủ' : 'Bạn';
+  const nameA = p.fromRed ? tr('wl.you') : t?.name || tr('pv.opponent'), nameB = p.fromRed ? t?.name || tr('pv.opponent') : tr('wl.you');
   return `${H.header('Muay Thai')}${H.tabsHtml()}
-    <button type="button" class="mt-btn ghost" data-mt="pv-box">${H.icon('bell', 18)}Hộp thư thách đấu<span class="mt-badge" id="mt-pvbadge" ${p.incoming ? '' : 'hidden'}>${p.incoming || ''}</span></button>
-    <div class="mt-lbl">Chọn người để thách đấu</div>
-    <label class="sr-only" for="pv-q">Tìm người dùng</label>
-    <div class="mt-search">${H.icon('search', 18)}<input id="pv-q" type="search" placeholder="Tìm theo tên hiển thị" value="${H.esc(p.q)}" autocomplete="off"></div>
+    <button type="button" class="mt-btn ghost" data-mt="pv-box">${H.icon('bell', 18)}${tr('pv.inbox')}<span class="mt-badge" id="mt-pvbadge" ${p.incoming ? '' : 'hidden'}>${p.incoming || ''}</span></button>
+    <div class="mt-lbl">${tr('pv.pickWho')}</div>
+    <label class="sr-only" for="pv-q">${tr('c.pickAny')}</label>
+    <div class="mt-search">${H.icon('search', 18)}<input id="pv-q" type="search" placeholder="${tr('mt.searchPh')}" value="${H.esc(p.q)}" autocomplete="off"></div>
     <div id="pv-users" class="mt-users">${userRows(M, H)}</div>
-    ${t ? vsCard(H, red, blue, nameA, nameB) + `<button type="button" class="mt-btn ghost sm" data-mt="pv-corner">${H.icon('shuffle', 16)}Đổi góc (bạn đang ở ${p.fromRed ? 'góc đỏ' : 'góc xanh'})</button>` : ''}
-    <div class="mt-chips" role="group" aria-label="Chọn nhanh số xu">${[10, 50, 100].map((v) => `<button data-mt="pv-stake" data-v="${v}" aria-pressed="${p.stake === v}">${v}</button>`).join('')}<button class="wide" data-mt="pv-stake" data-v="all" aria-pressed="false">Tất cả</button></div>
-    <div class="mt-step"><button aria-label="Giảm 10 xu" data-mt="pv-dec">−</button>
-      <label class="mt-amt">${H.coinIcon(18)}<input id="pv-stake" type="number" inputmode="numeric" min="${LIM.min}" max="${LIM.max}" value="${p.stake}" aria-label="Số xu cược mỗi bên"><small>mỗi bên</small></label>
-      <button aria-label="Tăng 10 xu" data-mt="pv-inc">+</button></div>
+    ${t ? vsCard(H, red, blue, nameA, nameB) + `<button type="button" class="mt-btn ghost sm" data-mt="pv-corner">${H.icon('shuffle', 16)}${tr('pv.swap', { c: p.fromRed ? tr('mt.red') : tr('mt.blue') })}</button>` : ''}
+    <div class="mt-chips" role="group" aria-label="${tr('mt.quick')}">${[10, 50, 100].map((v) => `<button data-mt="pv-stake" data-v="${v}" aria-pressed="${p.stake === v}">${v}</button>`).join('')}<button class="wide" data-mt="pv-stake" data-v="all" aria-pressed="false">${tr('em.all')}</button></div>
+    <div class="mt-step"><button aria-label="${tr('mt.dec')}" data-mt="pv-dec">−</button>
+      <label class="mt-amt">${H.coinIcon(18)}<input id="pv-stake" type="number" inputmode="numeric" min="${LIM.min}" max="${LIM.max}" value="${p.stake}" aria-label="${tr('pv.stakeEach')}"><small>${tr('pv.each')}</small></label>
+      <button aria-label="${tr('mt.inc')}" data-mt="pv-inc">+</button></div>
     <div id="pv-sum">${sumHtml(p.stake)}</div>
-    <div class="mt-escrow">${H.icon('lock', 18)}<span>${p.stake} xu của bạn được giữ lại ngay. ${t ? H.esc(t.name) : 'Đối thủ'} có 30 phút để trả lời; từ chối, hủy hoặc hết hạn thì hoàn lại đủ. Phí 5% chỉ tính khi có trận.</span></div>
+    <div class="mt-escrow">${H.icon('lock', 18)}<span>${tr('pv.escrow', { n: p.stake, o: t ? H.esc(t.name) : tr('pv.opponent') })}</span></div>
     <button type="button" class="mt-btn primary" id="pv-send" data-mt="pv-send" ${st.off ? 'disabled' : ''}>${st.label}</button>`;
 }
 
 function waitHtml(M, H) {
   const c = M.pv.ch, o = c.opponent;
   const [a, b] = c.fighters;
-  return `${H.header('Lời thách đấu')}
-    <div class="mt-status"><span class="ic">${H.icon('bell', 22)}</span><div><b>Đang chờ ${H.esc(o.name)} trả lời</b><small>Còn <b id="pv-count">${clock(c.expiresAt - (Date.now() + M.pv.off))}</b> trước khi hết hạn</small></div></div>
+  return `${H.header(tr('pv.challenge'))}
+    <div class="mt-status"><span class="ic">${H.icon('bell', 22)}</span><div><b>${tr('pv.waitingFor', { n: H.esc(o.name) })}</b><small>${tr('pv.timeLeft', { t: `<b id="pv-count">${clock(c.expiresAt - (Date.now() + M.pv.off))}</b>` })}</small></div></div>
     <div class="mt-arena wait">${H.arenaBack()}<div class="mt-fighters"><div class="mt-fslot A">${H.fighterHtml(a, { w: 150 })}</div><div class="mt-fslot B dim">${H.fighterHtml(b, { w: 150 })}</div></div>
       <span class="mt-vs" aria-hidden="true">VS</span>${H.crowdSvg()}</div>
-    <div class="mt-escrow big">${H.icon('lock', 22)}<span><b>${c.stake} xu đang được giữ lại</b><br>Thắng nhận ${c.payout} xu, thua mất ${c.stake} xu.</span></div>
-    <ul class="mt-steps"><li class="done">Đã gửi lời thách và thông báo cho ${H.esc(o.name)}</li><li class="now">${H.esc(o.name)} chấp nhận thì màn này tự vào trận, cả hai xem cùng lúc</li><li>Bạn đang offline thì nhận thông báo, bấm vào xem lại</li></ul>
-    ${o.isFriend ? `<button type="button" class="mt-btn ghost" data-mt="pv-dm" data-id="${o.id}">Nhắn cho ${H.esc(o.name)}</button>` : ''}
-    <button type="button" class="mt-btn danger" data-mt="pv-cancel">Hủy lời thách (hoàn ${c.stake} xu)</button>`;
+    <div class="mt-escrow big">${H.icon('lock', 22)}<span><b>${tr('pv.held', { n: c.stake })}</b><br>${tr('pv.winLose', { w: c.payout, l: c.stake })}</span></div>
+    <ul class="mt-steps"><li class="done">${tr('pv.step1', { n: H.esc(o.name) })}</li><li class="now">${tr('pv.step2', { n: H.esc(o.name) })}</li><li>${tr('pv.step3')}</li></ul>
+    ${o.isFriend ? `<button type="button" class="mt-btn ghost" data-mt="pv-dm" data-id="${o.id}">${tr('mt.msgTo', { n: H.esc(o.name) })}</button>` : ''}
+    <button type="button" class="mt-btn danger" data-mt="pv-cancel">${tr('pv.cancel', { n: c.stake })}</button>`;
 }
 
 function inHtml(M, H) {
   const c = M.pv.ch, o = c.opponent;
   const [a, b] = c.fighters;
   const low = M.balance < c.stake;
-  const mineSide = c.mySide === 'A' ? 'đỏ' : 'xanh';
-  return `${H.header('Lời thách đấu')}
-    <div class="mt-status">${H.headChip({ ...o, headUrl: o.headUrl }, 44)}<div><b>${H.esc(o.name)} thách bạn đấu</b><small>${H.esc(o.province || '')} · còn <b id="pv-count">${clock(c.expiresAt - (Date.now() + M.pv.off))}</b> để trả lời</small></div></div>
+  const mineSide = c.mySide === 'A' ? tr('mt.red') : tr('mt.blue');
+  return `${H.header(tr('pv.challenge'))}
+    <div class="mt-status">${H.headChip({ ...o, headUrl: o.headUrl }, 44)}<div><b>${tr('pv.challengesYou', { n: H.esc(o.name) })}</b><small>${H.esc(o.province || '')} · ${tr('pv.toAnswer', { t: `<b id="pv-count">${clock(c.expiresAt - (Date.now() + M.pv.off))}</b>` })}</small></div></div>
     <div class="mt-arena wait">${H.arenaBack()}<div class="mt-fighters"><div class="mt-fslot A">${H.fighterHtml(a, { w: 150 })}</div><div class="mt-fslot B">${H.fighterHtml(b, { w: 150 })}</div></div>
-      <span class="mt-vs" aria-hidden="true">VS</span><div class="mt-names"><div class="mt-fname A">${H.esc(a.name)}<small>Góc đỏ${c.mySide === 'A' ? ' · Bạn' : ''}</small></div><div class="mt-fname B">${H.esc(b.name)}<small>Góc xanh${c.mySide === 'B' ? ' · Bạn' : ''}</small></div></div>${H.crowdSvg()}</div>
-    <div class="mt-rows"><div><span>Mỗi bên cược</span><b>${c.stake} xu</b></div><div><span>Thắng nhận</span><b class="gold">${c.payout} xu <small>(lãi ${c.payout - c.stake}, phí 5%)</small></b></div><div><span>Số dư của bạn</span><b>${H.fmt(M.balance)} → ${H.fmt(Math.max(0, M.balance - c.stake))}</b></div></div>
-    <button type="button" class="mt-btn primary" data-mt="pv-accept" data-id="${c.id}" ${low ? 'disabled' : ''}>${low ? 'Không đủ xu tím' : 'Chấp nhận và đấu ngay'}</button>
-    <div class="mt-pair"><button type="button" class="mt-btn ghost" data-mt="pv-decline" data-id="${c.id}">Từ chối</button></div>
-    <p class="mt-hint" style="text-align:center">Bạn ở góc ${mineSide}.</p>`;
+      <span class="mt-vs" aria-hidden="true">VS</span><div class="mt-names"><div class="mt-fname A">${H.esc(a.name)}<small>${tr('mt.red')}${c.mySide === 'A' ? ` · ${tr('wl.you')}` : ''}</small></div><div class="mt-fname B">${H.esc(b.name)}<small>${tr('mt.blue')}${c.mySide === 'B' ? ` · ${tr('wl.you')}` : ''}</small></div></div>${H.crowdSvg()}</div>
+    <div class="mt-rows"><div><span>${tr('pv.betEach')}</span><b>${tr('mt.coins', { n: c.stake })}</b></div><div><span>${tr('pv.winGet')}</span><b class="gold">${tr('mt.coins', { n: c.payout })} <small>(${tr('pv.profitFee', { n: c.payout - c.stake })})</small></b></div><div><span>${tr('pv.yourBal')}</span><b>${H.fmt(M.balance)} → ${H.fmt(Math.max(0, M.balance - c.stake))}</b></div></div>
+    <button type="button" class="mt-btn primary" data-mt="pv-accept" data-id="${c.id}" ${low ? 'disabled' : ''}>${low ? tr('mt.noCoins') : tr('pv.acceptNow')}</button>
+    <div class="mt-pair"><button type="button" class="mt-btn ghost" data-mt="pv-decline" data-id="${c.id}">${tr('ch.reject')}</button></div>
+    <p class="mt-hint" style="text-align:center">${tr('pv.yourCorner', { c: mineSide })}</p>`;
 }
 
 function endHtml(M, H) {
   const c = M.pv.ch;
-  const msg = { declined: 'Lời thách đấu đã bị từ chối.', cancelled: 'Lời thách đấu đã được hủy.', expired: 'Lời thách đấu đã hết hạn.' }[c.status] || 'Lời thách đấu không còn hiệu lực.';
-  return `${H.header('Lời thách đấu')}<div class="mt-load">${msg}<br>${c.role === 'from' ? `Đã hoàn ${c.stake} xu cho bạn.` : ''}</div>
-    <button type="button" class="mt-btn primary" data-mt="pv-back">Thách đấu người khác</button><button type="button" class="mt-btn ghost" data-mt="pv-box">Hộp thư thách đấu</button>`;
+  const msg = { declined: tr('pv.declined'), cancelled: tr('pv.cancelled'), expired: tr('pv.expired') }[c.status] || tr('pv.invalid');
+  return `${H.header(tr('pv.challenge'))}<div class="mt-load">${msg}<br>${c.role === 'from' ? tr('pv.refunded', { n: c.stake }) : ''}</div>
+    <button type="button" class="mt-btn primary" data-mt="pv-back">${tr('pv.other')}</button><button type="button" class="mt-btn ghost" data-mt="pv-box">${tr('pv.inbox')}</button>`;
 }
 
-const ago = (t) => { const d = Date.now() - t, m = Math.floor(d / 60000); return m < 1 ? 'vừa xong' : m < 60 ? `${m} phút trước` : m < 1440 ? `${Math.floor(m / 60)} giờ trước` : `${Math.floor(m / 1440)} ngày trước`; };
+const ago = (t) => { const d = Date.now() - t, m = Math.floor(d / 60000); return m < 1 ? tr('ago.now') : m < 60 ? tr('ago.min', { n: m }) : m < 1440 ? tr('ago.hour', { n: Math.floor(m / 60) }) : tr('ago.day', { n: Math.floor(m / 1440) }); };
 function boxHtml(M, H) {
   const p = M.pv, s = p.stats;
   const row = (it) => {
     const o = it.opponent, f = asFighter(o, 'red');
     const head = `${H.headChip(f, 40)}`;
-    if (p.box === 'in') return `<div class="mt-inrow">${head}<div class="t"><b>${H.esc(o.name)} thách bạn</b><small>${it.stake} xu mỗi bên · còn ${clock(it.expiresAt - (Date.now() + p.off))}</small></div>
-      <button class="mt-mini primary" data-mt="pv-accept" data-id="${it.id}" ${M.balance < it.stake ? 'disabled' : ''}>Nhận</button><button class="mt-mini" data-mt="pv-decline" data-id="${it.id}">Từ chối</button></div>`;
-    if (p.box === 'out') return `<div class="mt-inrow">${head}<div class="t"><b>Thách ${H.esc(o.name)}</b><small>${it.stake} xu mỗi bên · còn ${clock(it.expiresAt - (Date.now() + p.off))}</small></div>
-      <button class="mt-mini" data-mt="pv-open" data-id="${it.id}">Xem</button><button class="mt-mini" data-mt="pv-cancel" data-id="${it.id}">Hủy</button></div>`;
-    const chip = it.status === 'settled' ? (it.won ? '<span class="chip win">Thắng</span>' : '<span class="chip lose">Thua</span>') : `<span class="chip">${{ declined: 'Từ chối, đã hoàn', cancelled: 'Đã hủy, đã hoàn', expired: 'Hết hạn, đã hoàn' }[it.status] || it.status}</span>`;
+    if (p.box === 'in') return `<div class="mt-inrow">${head}<div class="t"><b>${tr('pv.challengesYouShort', { n: H.esc(o.name) })}</b><small>${tr('pv.eachLeft', { n: it.stake, t: clock(it.expiresAt - (Date.now() + p.off)) })}</small></div>
+      <button class="mt-mini primary" data-mt="pv-accept" data-id="${it.id}" ${M.balance < it.stake ? 'disabled' : ''}>${tr('pv.take')}</button><button class="mt-mini" data-mt="pv-decline" data-id="${it.id}">${tr('ch.reject')}</button></div>`;
+    if (p.box === 'out') return `<div class="mt-inrow">${head}<div class="t"><b>${tr('pv.youChallenge', { n: H.esc(o.name) })}</b><small>${tr('pv.eachLeft', { n: it.stake, t: clock(it.expiresAt - (Date.now() + p.off)) })}</small></div>
+      <button class="mt-mini" data-mt="pv-open" data-id="${it.id}">${tr('pv.view')}</button><button class="mt-mini" data-mt="pv-cancel" data-id="${it.id}">${tr('c.cancel')}</button></div>`;
+    const chip = it.status === 'settled' ? (it.won ? `<span class="chip win">${tr('pv.won')}</span>` : `<span class="chip lose">${tr('pv.lost')}</span>`) : `<span class="chip">${{ declined: tr('pv.hDeclined'), cancelled: tr('pv.hCancelled'), expired: tr('pv.hExpired') }[it.status] || it.status}</span>`;
     const amt = it.status === 'settled' ? `<b class="${it.won ? 'gold' : ''}">${it.delta > 0 ? '+' : '−'}${Math.abs(it.delta)}</b>` : '<b class="muted">0</b>';
-    return `<div class="mt-inrow hist" ${it.status === 'settled' ? `data-mt="pv-open" data-id="${it.id}" role="button" tabindex="0"` : ''}>${head}<div class="t"><b>${H.esc(o.name)}</b><small>${ago(it.at)} · ${it.stake} xu mỗi bên</small></div>${amt}${chip}</div>`;
+    return `<div class="mt-inrow hist" ${it.status === 'settled' ? `data-mt="pv-open" data-id="${it.id}" role="button" tabindex="0"` : ''}>${head}<div class="t"><b>${H.esc(o.name)}</b><small>${ago(it.at)} · ${tr('pv.eachN', { n: it.stake })}</small></div>${amt}${chip}</div>`;
   };
-  const empty = { in: 'Chưa có lời thách nào gửi cho bạn.', out: 'Bạn chưa có lời thách nào đang chờ.', history: 'Chưa có trận thách đấu nào.' }[p.box];
-  return `${H.header('Thách đấu', `<button class="mt-back" data-mt="pv-back" aria-label="Quay lại">${H.icon('back', 22)}</button>`)}
-    <div class="mt-stats"><div><b>${s.wins}</b><span>Thắng</span></div><i></i><div><b>${s.losses}</b><span>Thua</span></div><i></i><div><b class="gold">${s.net > 0 ? '+' : s.net < 0 ? '−' : ''}${Math.abs(s.net)}</b><span>Xu ròng</span></div></div>
-    <div class="mt-tabs" role="tablist" aria-label="Hộp thư">${[['in', 'Nhận'], ['out', 'Đã gửi'], ['history', 'Lịch sử']].map(([k, n]) => `<button role="tab" aria-selected="${p.box === k}" data-mt="pv-box-tab" data-v="${k}">${n}${k === 'in' && p.incoming ? `<span class="mt-badge">${p.incoming}</span>` : ''}</button>`).join('')}</div>
+  const empty = { in: tr('pv.emptyIn'), out: tr('pv.emptyOut'), history: tr('pv.emptyHist') }[p.box];
+  return `${H.header(tr('mt.pvp'), `<button class="mt-back" data-mt="pv-back" aria-label="${tr('ch.back')}">${H.icon('back', 22)}</button>`)}
+    <div class="mt-stats"><div><b>${s.wins}</b><span>${tr('pv.won')}</span></div><i></i><div><b>${s.losses}</b><span>${tr('pv.lost')}</span></div><i></i><div><b class="gold">${s.net > 0 ? '+' : s.net < 0 ? '−' : ''}${Math.abs(s.net)}</b><span>${tr('pv.net')}</span></div></div>
+    <div class="mt-tabs" role="tablist" aria-label="${tr('mt.inbox')}">${[['in', tr('pv.tIn')], ['out', tr('pv.tOut')], ['history', tr('pv.tHist')]].map(([k, n]) => `<button role="tab" aria-selected="${p.box === k}" data-mt="pv-box-tab" data-v="${k}">${n}${k === 'in' && p.incoming ? `<span class="mt-badge">${p.incoming}</span>` : ''}</button>`).join('')}</div>
     <div class="mt-users">${p.items.map(row).join('') || `<p class="mt-hint">${empty}</p>`}</div>`;
 }
 
@@ -222,7 +223,7 @@ export async function pvpAction(act, t, M, H) {
   if (act === 'pv-cancel') {
     const id = t.dataset.id || p.ch?.id;
     const c = await api('POST', `/mt/pvp/${id}/cancel`); await refreshBal();
-    H.toast(`Đã hủy, hoàn ${c.stake} xu`);
+    H.toast(tr('pv.cancelledToast', { n: c.stake }));
     return p.ch && p.ch.id === id ? openCreate(M, H) : refreshBox(M, H);
   }
   if (act === 'pv-accept') {
@@ -232,7 +233,7 @@ export async function pvpAction(act, t, M, H) {
   }
   if (act === 'pv-decline') {
     await api('POST', `/mt/pvp/${t.dataset.id}/decline`);
-    H.toast('Đã từ chối');
+    H.toast(tr('ch.rejected'));
     return M.screen === 'box' ? refreshBox(M, H) : openBox(M, H);
   }
   if (act === 'pv-box') return openBox(M, H);

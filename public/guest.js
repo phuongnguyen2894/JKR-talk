@@ -34,7 +34,7 @@ function buildGuestShell(root) {
 
 function renderGuestSide(r) {
   const activeId = r.name === 'g' ? Number(r.arg) : 0;
-  const item = (g) => `<a class="nav-item${g.highlighted ? ' hl-topic' : ''}" href="#/g/${g.id}" ${g.id === activeId ? 'aria-current="page"' : ''}>${icon(g.highlighted ? 'star' : GROUP_ICON[g.type] || 'chat')}<span class="name">${esc(g.name)}${g.highlighted ? '<span class="sr-only"> (nổi bật)</span>' : ''}</span></a>`;
+  const item = (g) => `<a class="nav-item${g.highlighted ? ' hl-topic' : ''}" href="#/g/${g.id}" ${g.id === activeId ? 'aria-current="page"' : ''}>${icon(g.highlighted ? 'star' : GROUP_ICON[g.type] || 'chat')}<span class="name">${esc(g.name)}${g.highlighted ? `<span class="sr-only"> ${t('nav.featured')}</span>` : ''}</span></a>`;
   const sec = (title, type) => {
     const list = G.groups.filter((g) => g.type === type);
     return list.length ? `<div class="sec">${title}</div>${list.map(item).join('')}` : '';
@@ -60,15 +60,15 @@ function renderGuestSide(r) {
 }
 
 function msgHtml(m) {
-  const quote = m.reply ? `<div class="quote">↪ ${esc(m.reply.displayName)}: ${m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</div>` : '';
-  const fwd = m.fwd ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
+  const quote = m.reply ? `<div class="quote">↪ ${esc(m.reply.displayName)}: ${m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? t('a.photoTag') : ''}</div>` : '';
+  const fwd = m.fwd ? `<div class="tiny muted fwd">↪ ${t('ch.fwdFrom', { n: esc(m.fwd.name) })}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
   const rr = roleOf(m.user, m.modRole);
   return `<div class="msg" data-mid="${m.id}">${avatarR(m.user, rr)}
     <div class="body">
       <div class="meta"><span class="who${roleClass(rr)}">${esc(m.user.displayName)}${roleSr(rr)}</span><span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
       ${fwd}${quote}${m.body ? `<div class="text">${linkify(m.body)}</div>` : ''}${(m.imageUrls?.length || m.imageUrl) ? `<div class="bmedia">${newsGallery(m.imageUrls?.length ? m.imageUrls : [m.imageUrl], 'guest-zoom')}</div>` : ''}
       ${previewHtml(m.preview)}
-      <div class="row" style="gap:4px;margin-top:2px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
+      <div class="row" style="gap:4px;margin-top:2px"><button type="button" class="heart" data-act="guest-cta" aria-label="${t('news.heartGuest', { n: m.hearts })}">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
       ${(m.reactions || []).length ? `<div class="reacts">${m.reactions.map((r) => `<span class="rchip">${emojiHtml(r.emoji, r.custom)}<span>${r.count}</span></span>`).join('')}</div>` : ''}
     </div></div>`;
 }
@@ -86,15 +86,15 @@ async function renderGuestGroup(view, gid) {
   const sub = g.type === 'trend' ? t('guest.subTrend') : g.type === 'topic' ? t('nav.topics') : t('nav.guestGroups');
   view.innerHTML = `
   <div class="chat-head">
-    <a class="icon-btn back" href="#/explore" aria-label="Quay lại danh sách">${icon('back', 22)}</a>
+    <a class="icon-btn back" href="#/explore" aria-label="${t('ch.backList')}">${icon('back', 22)}</a>
     ${groupAvatar(g)}
-    <div class="grow"><h1>${esc(g.name)}</h1><div class="small muted sub">${sub} · chế độ khách (chỉ đọc)</div></div>
-    ${g.type === 'topic' ? `<button class="icon-btn" data-act="share-topic" data-id="${g.id}" data-name="${esc(g.name)}" aria-label="Chia sẻ chủ đề" title="Chia sẻ chủ đề">${icon('share', 20)}</button>` : ''}
+    <div class="grow"><h1>${esc(g.name)}</h1><div class="small muted sub">${sub} · ${t('gu.readOnly')}</div></div>
+    ${g.type === 'topic' ? `<button class="icon-btn" data-act="share-topic" data-id="${g.id}" data-name="${esc(g.name)}" aria-label="${t('ch.shareTopic')}" title="${t('ch.shareTopic')}">${icon('share', 20)}</button>` : ''}
   </div>
   <div class="chat-body"><div class="chat-col">
     <div class="msgs" id="msgs">
       ${messages.length >= limit ? `<div class="notice small" style="margin:8px">${t('guest.limit', { n: limit })} <a href="#/register" style="color:var(--accent);font-weight:600">${t('guest.signup')}</a> ${t('guest.limitCta')}</div>` : ''}
-      ${list || '<div class="gate muted">Chưa có tin nhắn nào.</div>'}
+      ${list || `<div class="gate muted">${t('gu.noMsgs')}</div>`}
     </div>
     <div class="composer">${cta(g.type === 'trend' ? t('guest.ctaTrend') : t('guest.ctaGroup'))}</div>
   </div></div>`;
@@ -109,35 +109,35 @@ async function renderGuestHot(view, tab = gtab) {
   gtab = tab;
   const [{ items, pinned = [] }, board, boardNew] = await Promise.all([api('GET', '/public/hot'), tab === 'all' ? api('GET', '/public/topic-board?tab=hot') : tab === 'hot' || tab === 'new' ? api('GET', '/public/topic-board?tab=' + tab) : Promise.resolve(null), tab === 'all' ? api('GET', '/public/topic-board?tab=new') : Promise.resolve(null)]);
   const adminCard = (m) => `<div class="card col" style="gap:6px">
-      <div class="row wrap"><span class="pill warn">Từ quản trị</span><span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div>
+      <div class="row wrap"><span class="pill warn">${t('hot.fromAdmin')}</span><span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div>
       <div class="row">${avatarR(m.user, roleOf(m.user))}<div class="grow"><b class="${roleClass(roleOf(m.user)).trim()}">${esc(m.user.displayName)}${roleSr(roleOf(m.user))}</b></div></div>
       ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body, [])}</div>` : ''}
-      ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong bài đăng" style="max-width:100%;border-radius:10px" loading="lazy" decoding="async">` : ''}
+      ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="${t('hot.postPhoto')}" style="max-width:100%;border-radius:10px" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}
-      <div class="row" style="gap:4px"><button type="button" class="heart" data-act="guest-cta" aria-label="Thả tim (cần đăng ký), hiện có ${m.hearts} tim">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
+      <div class="row" style="gap:4px"><button type="button" class="heart" data-act="guest-cta" aria-label="${t('news.heartGuest', { n: m.hearts })}">${icon('heart', 15)}<span class="hc">${m.hearts || ''}</span></button></div>
     </div>`;
   const heartCard = (m, i) => `<div class="card col" style="gap:6px">
-      <div class="row wrap"><span class="pill">#${i + 1}</span><span class="pill warn">${m.interactions} tương tác</span><a class="pill warn" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
+      <div class="row wrap"><span class="pill">#${i + 1}</span><span class="pill warn">${t('hot.interactions', { n: m.interactions })}</span><a class="pill warn" href="#/g/${m.groupId}">${esc(m.groupName)} →</a>
         <span class="row" style="gap:4px;margin-left:auto;color:var(--heart);font-weight:700">${icon('heart', 16, 'fill="currentColor"')}${m.hearts}</span></div>
       <div class="row">${avatar(m.user)}<div class="grow"><b>${esc(m.user.displayName)}</b> <span class="tiny muted">${fmtDateTime(m.createdAt)}</span></div></div>
       ${m.body ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${linkify(m.body)}</div>` : ''}
-      ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="Ảnh trong tin nhắn" style="max-width:240px;border-radius:10px" loading="lazy" decoding="async">` : ''}
+      ${m.imageUrl ? `<img src="${esc(m.imageUrl)}" alt="${t('hot.msgPhoto')}" style="max-width:240px;border-radius:10px" loading="lazy" decoding="async">` : ''}
       ${previewHtml(m.preview)}
     </div>`;
   let body;
   if (tab === 'all') {
-    body = `${pinned.length ? `${sectionHead('Đáng chú ý', 'admin')}<div class="list">${pinned.slice(0, ALL_N).map(adminCard).join('')}</div>` : ''}
-      ${board.topics.length ? `${sectionHead('Chủ đề nổi bật', 'hot')}<div class="list">${board.topics.slice(0, ALL_N).map((t) => boardCard(t, 'hot', true)).join('')}</div>` : ''}
-      ${items.length ? `${sectionHead('Tin nhiều tương tác', 'hearts')}<div class="list">${items.slice(0, ALL_N).map(heartCard).join('')}</div>` : ''}
-      ${boardNew.topics.length ? `${sectionHead('Chủ đề mới được duyệt', 'new')}<div class="list">${boardNew.topics.slice(0, ALL_N).map((t) => boardCard(t, 'new', true)).join('')}</div>` : ''}
-      ${!board.topics.length && !pinned.length && !items.length && !boardNew.topics.length ? '<p class="muted">Chưa có gì nổi bật.</p>' : ''}`;
-  } else if (tab === 'admin') body = `<div class="list">${pinned.map(adminCard).join('') || '<p class="muted">Chưa có bài đáng chú ý.</p>'}</div>`;
-  else if (board) body = `<div class="list">${board.topics.map((t) => boardCard(t, tab, true)).join('') || '<p class="muted">Chưa có chủ đề nào.</p>'}</div>`;
-  else body = `<p class="small muted">Chỉ hiện những tin nhắn đạt ít nhất 38 tương tác (tim, bình luận, trả lời) ở các nhóm công khai trong 24 giờ qua.</p><div class="list">${items.map(heartCard).join('') || '<p class="muted">Chưa có chủ đề nóng nào.</p>'}</div>`;
+    body = `${pinned.length ? `${sectionHead(t('hot.tAdmin'), 'admin')}<div class="list">${pinned.slice(0, ALL_N).map(adminCard).join('')}</div>` : ''}
+      ${board.topics.length ? `${sectionHead(t('hot.featuredTopics'), 'hot')}<div class="list">${board.topics.slice(0, ALL_N).map((t) => boardCard(t, 'hot', true)).join('')}</div>` : ''}
+      ${items.length ? `${sectionHead(t('hot.tHearts'), 'hearts')}<div class="list">${items.slice(0, ALL_N).map(heartCard).join('')}</div>` : ''}
+      ${boardNew.topics.length ? `${sectionHead(t('hot.newTopics'), 'new')}<div class="list">${boardNew.topics.slice(0, ALL_N).map((t) => boardCard(t, 'new', true)).join('')}</div>` : ''}
+      ${!board.topics.length && !pinned.length && !items.length && !boardNew.topics.length ? `<p class="muted">${t('gu.nothing')}</p>` : ''}`;
+  } else if (tab === 'admin') body = `<div class="list">${pinned.map(adminCard).join('') || `<p class="muted">${t('hot.noAdmin')}</p>`}</div>`;
+  else if (board) body = `<div class="list">${board.topics.map((t) => boardCard(t, tab, true)).join('') || `<p class="muted">${t('hot.noTopics')}</p>`}</div>`;
+  else body = `<p class="small muted">${t('gu.heartsNote')}</p><div class="list">${items.map(heartCard).join('') || `<p class="muted">${t('gu.noHot')}</p>`}</div>`;
   view.innerHTML = `<div class="page"><div class="page-inner">
-    <h1>Chủ đề nóng</h1>
+    <h1>${t('nav.hot')}</h1>
     ${cta()}
-    <div class="pillnav" role="group" aria-label="Chọn mục">${HOT_TABS.map(([k, n]) => `<button data-htab="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
+    <div class="pillnav" role="group" aria-label="${t('sh.section')}">${HOT_TABS.map(([k, n]) => `<button data-htab="${k}" aria-pressed="${tab === k}">${t(n)}</button>`).join('')}</div>
     ${body}
   </div></div>`;
   view.querySelectorAll('[data-htab]').forEach((b) => (b.onclick = () => renderGuestHot(view, b.dataset.htab).catch(() => {})));
@@ -174,13 +174,13 @@ export async function routeGuest(root, r) {
   try {
     if (r.name === 'explore') {
       if (wide() && G.groups.length) return go(`#/g/${G.groups.find((g) => g.type === 'country')?.id || G.groups[0].id}`), true;
-      view.innerHTML = '<div class="gate muted">Chọn một nhóm để xem.</div>';
+      view.innerHTML = `<div class="gate muted">${t('gu.pickGroup')}</div>`;
     } else if (r.name === 'g') await renderGuestGroup(view, Number(r.arg));
     else if (r.name === 'hot') await renderGuestHot(view);
     else if (r.name === 'news') await renderGuestNews(view);
     else if (r.name === 'tools') renderTools(view);
   } catch (e) {
-    view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/explore">Về danh sách nhóm</a></div>`;
+    view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/explore">${t('gu.backGroups')}</a></div>`;
   }
   return true;
 }

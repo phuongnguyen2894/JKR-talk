@@ -1,13 +1,16 @@
 // Mini game Muay Thai: cược xu tím vào 1 trong 2 võ sĩ. Kết quả do máy chủ quyết định, trang này chỉ hiển thị và phát lại kịch bản.
 // Luồng: PICK (chọn cặp + cược) → FIGHT (phát hoạt hình) → RESULT. Tải lại trang: #/muaythai/<mã trận> đưa về đúng màn.
 import { $, $$, esc, S, api, icon, toast, coinIcon } from './core.js';
+import { t as tr, fmtNum } from './i18n.js';
+const cornerName = (c) => tr(c === 'red' ? 'mt.red' : 'mt.blue');
 import { fighterHtml, mountSprites, loadSprites, CORNER } from './sprite.js';
 import { pvpInit, pvpStop, pvpBadge, pvpScreenHtml, pvpAction, pvpInput, openCreate, openBox, pvpOpen, routeChallenge } from './pvp.js';
 
-const fmt = (n) => Number(n || 0).toLocaleString('vi-VN');
+const fmt = (n) => fmtNum(n || 0);
 const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
-const VERB = { punch: 'tung cú đấm', kick: 'tung cú đá', knee: 'tung cú gối', elbow: 'tung cú chỏ' };
-const BURST = { punch: 'BỐP!', kick: 'ĐÙNG!', knee: 'BỊCH!', elbow: 'CHÁT!' };
+// đòn và tiếng động theo ngôn ngữ đang dùng
+const VERB = (m) => tr(`mt.v.${m}`);
+const BURST = (m) => tr(`mt.b.${m}`);
 
 let M = null;
 let cssLoaded = false;
@@ -34,15 +37,15 @@ function crowdSvg() {
   return `<svg class="mt-crowd" viewBox="0 0 358 46" preserveAspectRatio="xMidYMax slice" aria-hidden="true">${s}</svg>`;
 }
 const arenaBack = () => '<div class="mt-glow"></div><i class="mt-rope r1"></i><i class="mt-rope r2"></i><i class="mt-rope r3"></i><i class="mt-post l"></i><i class="mt-post r"></i><div class="mt-floor"></div>';
-const coinPill = (n) => `<span class="mt-pill" id="mt-bal" aria-label="Số dư ${fmt(n)} xu tím">${coinIcon(18)}${fmt(n)}</span>`;
-const header = (title, back) => `<div class="mt-head">${back || '<a class="mt-back" href="#/games" aria-label="Về danh sách game">' + icon('back', 22) + '</a>'}<h1>${title}</h1>${coinPill(M.balance)}</div>`;
+const coinPill = (n) => `<span class="mt-pill" id="mt-bal" aria-label="${tr('mt.balance', { n: fmt(n) })}">${coinIcon(18)}${fmt(n)}</span>`;
+const header = (title, back) => `<div class="mt-head">${back || `<a class="mt-back" href="#/games" aria-label="${tr('mt.backGames')}">` + icon('back', 22) + '</a>'}<h1>${title}</h1>${coinPill(M.balance)}</div>`;
 const setBalance = (n) => { M.balance = n; if (S.me) S.me = { ...S.me, balance: n }; const el = $('#mt-bal'); if (el) el.innerHTML = `${coinIcon(18)}${fmt(n)}`; };
 
 // ---- vào game ---------------------------------------------------------------------------------------------
 export async function renderMuayThai(view, arg) {
   M?.stop?.();
   M = { screen: 'load', mode: null, pvMatch: null, startLocal: 0, tab: 'random', sub: 'char', slots: { A: null, B: null }, active: 'A', q: '', users: [], chars: [], match: null, pick: null, stake: 50, balance: S.me?.balance || 0, stop: null, busy: false, last: null, res: null };
-  view.innerHTML = '<div class="mt-wrap"><div class="mt" id="mt"><div class="mt-load">Đang tải…</div></div></div>';
+  view.innerHTML = `<div class="mt-wrap"><div class="mt" id="mt"><div class="mt-load">${tr('cmt.loading')}</div></div></div>`;
   await Promise.all([loadCss(), loadSprites()]);
   pvpInit(M);
   const root = $('#mt', view);
@@ -68,7 +71,7 @@ export async function renderMuayThai(view, arg) {
       } catch { /* hết hạn hoặc không có: mở trận mới */ }
     }
     await newMatch('random');
-  } catch (e) { root.innerHTML = `<div class="mt-load">${esc(e.message)}<br><a class="mt-btn ghost" href="#/chat">Quay lại</a></div>`; }
+  } catch (e) { root.innerHTML = `<div class="mt-load">${esc(e.message)}<br><a class="mt-btn ghost" href="#/chat">${tr('ch.back')}</a></div>`; }
 }
 
 async function newMatch(mode, pair) {
@@ -93,41 +96,41 @@ function draw(screen) {
 }
 
 // ---- PICK ----------------------------------------------------------------------------------------------------
-const tabsHtml = () => `<div class="mt-tabs" role="tablist" aria-label="Chế độ chọn cặp">
-  <button role="tab" aria-selected="${M.tab === 'random'}" data-mt="tab-random">Cặp ngẫu nhiên</button>
-  <button role="tab" aria-selected="${M.tab === 'custom'}" data-mt="tab-custom">Tự chọn cặp</button>
-  <button role="tab" aria-selected="${M.tab === 'pvp'}" data-mt="pv-tab">Thách đấu${M.pv?.incoming ? `<span class="mt-badge">${M.pv.incoming}</span>` : ''}</button></div>`;
+const tabsHtml = () => `<div class="mt-tabs" role="tablist" aria-label="${tr('mt.pairMode')}">
+  <button role="tab" aria-selected="${M.tab === 'random'}" data-mt="tab-random">${tr('mt.random')}</button>
+  <button role="tab" aria-selected="${M.tab === 'custom'}" data-mt="tab-custom">${tr('mt.custom')}</button>
+  <button role="tab" aria-selected="${M.tab === 'pvp'}" data-mt="pv-tab">${tr('mt.pvp')}${M.pv?.incoming ? `<span class="mt-badge">${M.pv.incoming}</span>` : ''}</button></div>`;
 
 function stakeLine() {
   const win = Math.floor(M.stake * M.match.payoutMultiplier);
-  return `<div class="mt-sum"><div>Thắng <b class="gold">+${fmt(win)} xu</b></div><i></i><div>Thua <b>−${fmt(M.stake)} xu</b></div></div>`;
+  return `<div class="mt-sum"><div>${tr('mt.win')} <b class="gold">+${tr('mt.coins', { n: fmt(win) })}</b></div><i></i><div>${tr('mt.lose')} <b>−${tr('mt.coins', { n: fmt(M.stake) })}</b></div></div>`;
 }
 function startState() {
-  if (M.busy) return { label: 'Đang vào võ đài…', off: true };
-  if (!M.pick) return { label: 'Chạm vào võ sĩ để chọn', off: true };
-  if (M.balance < M.match.stake.min) return { label: 'Không đủ xu tím', off: true };
-  if (M.balance < M.stake) return { label: 'Không đủ xu tím', off: true };
-  return { label: 'Bắt đầu', off: false };
+  if (M.busy) return { label: tr('mt.entering'), off: true };
+  if (!M.pick) return { label: tr('mt.tapFighter'), off: true };
+  if (M.balance < M.match.stake.min) return { label: tr('mt.noCoins'), off: true };
+  if (M.balance < M.stake) return { label: tr('mt.noCoins'), off: true };
+  return { label: tr('mt.start'), off: false };
 }
 function pickHtml() {
   const [a, b] = M.match.fighters;
   const st = startState();
-  const slot = (f, side) => `<button type="button" class="mt-fslot ${side}${M.pick === side ? ' on' : M.pick ? ' dim' : ''}" data-mt="pick-${side}" aria-pressed="${M.pick === side}" aria-label="Cược cho ${esc(f.name)}, ${CORNER[f.corner].name}, thưởng x${f.odds}">
-      ${M.pick === side ? '<span class="mt-you">Bạn chọn</span>' : ''}<span class="mt-shadow"></span>${fighterHtml(f, { w: 170 })}</button>`;
+  const slot = (f, side) => `<button type="button" class="mt-fslot ${side}${M.pick === side ? ' on' : M.pick ? ' dim' : ''}" data-mt="pick-${side}" aria-pressed="${M.pick === side}" aria-label="${tr('mt.betFor', { n: esc(f.name), c: cornerName(f.corner), x: f.odds })}">
+      ${M.pick === side ? `<span class="mt-you">${tr('mt.yourPick')}</span>` : ''}<span class="mt-shadow"></span>${fighterHtml(f, { w: 170 })}</button>`;
   const name = (f, side) => `<div class="mt-fname ${side}${M.pick && M.pick !== side ? ' dim' : ''}">${esc(f.name)} <span class="x">x${f.odds}</span><small>${CORNER[f.corner].name}</small></div>`;
   const lowCoins = M.balance < M.match.stake.min;
   return `${header('Muay Thai')}${tabsHtml()}
     <div class="mt-arena pick">${arenaBack()}
       <div class="mt-fighters">${slot(a, 'A')}${slot(b, 'B')}</div><span class="mt-vs" aria-hidden="true">VS</span>
       <div class="mt-names">${name(a, 'A')}${name(b, 'B')}</div>${crowdSvg()}</div>
-    <button type="button" class="mt-btn ghost" data-mt="change-pair">${icon('shuffle', 18)}${M.tab === 'random' ? 'Đổi cặp khác' : 'Chọn cặp khác'}</button>
-    <div class="mt-lbl">Số xu cược (${M.match.stake.min}–${M.match.stake.max})</div>
-    <div class="mt-chips" role="group" aria-label="Chọn nhanh số xu">${[10, 50, 100].map((v) => `<button data-mt="stake" data-v="${v}" aria-pressed="${M.stake === v}">${v}</button>`).join('')}<button class="wide" data-mt="stake" data-v="all" aria-pressed="${M.stake === Math.min(M.match.stake.max, M.balance) && M.balance >= M.match.stake.min && ![10, 50, 100].includes(M.stake)}">Tất cả</button></div>
-    <div class="mt-step"><button aria-label="Giảm 10 xu" data-mt="dec">−</button>
-      <label class="mt-amt">${coinIcon(18)}<input id="mt-stake" type="number" inputmode="numeric" min="${M.match.stake.min}" max="${M.match.stake.max}" step="1" value="${M.stake}" aria-label="Số xu cược"></label>
-      <button aria-label="Tăng 10 xu" data-mt="inc">+</button></div>
+    <button type="button" class="mt-btn ghost" data-mt="change-pair">${icon('shuffle', 18)}${M.tab === 'random' ? tr('mt.newPair') : tr('mt.otherPair')}</button>
+    <div class="mt-lbl">${tr('mt.stakeLbl')} (${M.match.stake.min}–${M.match.stake.max})</div>
+    <div class="mt-chips" role="group" aria-label="${tr('mt.quick')}">${[10, 50, 100].map((v) => `<button data-mt="stake" data-v="${v}" aria-pressed="${M.stake === v}">${v}</button>`).join('')}<button class="wide" data-mt="stake" data-v="all" aria-pressed="${M.stake === Math.min(M.match.stake.max, M.balance) && M.balance >= M.match.stake.min && ![10, 50, 100].includes(M.stake)}">${tr('em.all')}</button></div>
+    <div class="mt-step"><button aria-label="${tr('mt.dec')}" data-mt="dec">−</button>
+      <label class="mt-amt">${coinIcon(18)}<input id="mt-stake" type="number" inputmode="numeric" min="${M.match.stake.min}" max="${M.match.stake.max}" step="1" value="${M.stake}" aria-label="${tr('mt.stakeLbl')}"></label>
+      <button aria-label="${tr('mt.inc')}" data-mt="inc">+</button></div>
     <div id="mt-sum">${stakeLine()}</div>
-    ${lowCoins ? '<p class="mt-note">Bạn chưa đủ xu tím để cược. Xu tím kiếm được khi nhắn tin, nhận thưởng hằng ngày và tương tác trong app.</p>' : ''}
+    ${lowCoins ? `<p class="mt-note">${tr('mt.lowNote')}</p>` : ''}
     <button type="button" class="mt-btn primary" id="mt-start" data-mt="start" ${st.off ? 'disabled' : ''}>${st.label}</button>`;
 }
 
@@ -136,8 +139,8 @@ const headChip = (f, size = 48, ring = '') => `<span class="mt-head-c" style="wi
 function customHtml() {
   const slotBox = (side) => {
     const f = M.slots[side], corner = side === 'A' ? 'red' : 'blue';
-    return `<button type="button" class="mt-slot ${corner}${M.active === side ? ' active' : ''}" data-mt="slot-${side}" aria-pressed="${M.active === side}" aria-label="${CORNER[corner].name}: ${f ? esc(f.name) : 'chưa chọn'}">
-      ${f ? headChip(f) : '<span class="mt-head-c empty"><b>?</b></span>'}<span class="t"><b>${f ? esc(f.name) : 'Chưa chọn'}</b><small>${CORNER[corner].name}</small></span></button>`;
+    return `<button type="button" class="mt-slot ${corner}${M.active === side ? ' active' : ''}" data-mt="slot-${side}" aria-pressed="${M.active === side}" aria-label="${cornerName(corner)}: ${f ? esc(f.name) : tr('mt.notChosen')}">
+      ${f ? headChip(f) : '<span class="mt-head-c empty"><b>?</b></span>'}<span class="t"><b>${f ? esc(f.name) : tr('mt.notChosenCap')}</b><small>${cornerName(corner)}</small></span></button>`;
   };
   const taken = (f) => (M.slots.A?.type === f.type && M.slots.A?.id === f.id ? 'A' : M.slots.B?.type === f.type && M.slots.B?.id === f.id ? 'B' : null);
   let list;
@@ -145,32 +148,32 @@ function customHtml() {
     list = `<div class="mt-grid">${M.chars.map((c) => {
       const f = { type: 'character', id: c.id, name: c.name, initials: c.initials, color: c.color, headUrl: c.headUrl };
       const t = taken(f);
-      return `<button type="button" class="mt-char${t ? ' on ' + (t === 'A' ? 'red' : 'blue') : ''}" data-mt="char" data-id="${esc(c.id)}" aria-pressed="${!!t}">${headChip(f, 50, t ? `border-color:${t === 'A' ? '#D93A40' : '#3B6FE0'};border-width:3px` : '')}<span>${esc(c.name)}</span>${t ? `<em class="${t === 'A' ? 'red' : 'blue'}">${t === 'A' ? 'Góc đỏ' : 'Góc xanh'}</em>` : '<em></em>'}</button>`;
-    }).join('')}</div><p class="mt-hint">Đầu nhân vật là ảnh do admin cấu hình, thân dùng chung. Chạm lại để bỏ chọn.</p>`;
+      return `<button type="button" class="mt-char${t ? ' on ' + (t === 'A' ? 'red' : 'blue') : ''}" data-mt="char" data-id="${esc(c.id)}" aria-pressed="${!!t}">${headChip(f, 50, t ? `border-color:${t === 'A' ? '#D93A40' : '#3B6FE0'};border-width:3px` : '')}<span>${esc(c.name)}</span>${t ? `<em class="${t === 'A' ? 'red' : 'blue'}">${t === 'A' ? tr('mt.red') : tr('mt.blue')}</em>` : '<em></em>'}</button>`;
+    }).join('')}</div><p class="mt-hint">${tr('mt.charHint')}</p>`;
   } else {
-    list = `<label class="sr-only" for="mt-q">Tìm người dùng</label>
-      <div class="mt-search">${icon('search', 18)}<input id="mt-q" type="search" placeholder="Tìm theo tên hiển thị" value="${esc(M.q)}" autocomplete="off"></div>
+    list = `<label class="sr-only" for="mt-q">${tr('c.pickAny')}</label>
+      <div class="mt-search">${icon('search', 18)}<input id="mt-q" type="search" placeholder="${tr('mt.searchPh')}" value="${esc(M.q)}" autocomplete="off"></div>
       <div id="mt-users" class="mt-users">${usersHtml(taken)}</div>
-      <p class="mt-hint">Ai cũng chọn được làm võ sĩ, kể cả bạn. Chỉ hiện tên, tỉnh/thành và ảnh đại diện công khai.</p>`;
+      <p class="mt-hint">${tr('mt.userHint')}</p>`;
   }
   const both = M.slots.A && M.slots.B;
-  return `${header('Tự chọn cặp', `<button class="mt-back" data-mt="to-pick" aria-label="Quay lại">${icon('back', 22)}</button>`)}${tabsHtml()}
+  return `${header(tr('mt.custom'), `<button class="mt-back" data-mt="to-pick" aria-label="${tr('ch.back')}">${icon('back', 22)}</button>`)}${tabsHtml()}
     <div class="mt-slots">${slotBox('A')}<span class="mt-vs2">VS</span>${slotBox('B')}</div>
-    <div class="mt-tabs pill" role="tablist" aria-label="Loại võ sĩ"><button role="tab" aria-selected="${M.sub === 'char'}" data-mt="sub-char">Nhân vật</button><button role="tab" aria-selected="${M.sub === 'user'}" data-mt="sub-user">Người dùng</button></div>
+    <div class="mt-tabs pill" role="tablist" aria-label="${tr('mt.fighterType')}"><button role="tab" aria-selected="${M.sub === 'char'}" data-mt="sub-char">${tr('mt.chars')}</button><button role="tab" aria-selected="${M.sub === 'user'}" data-mt="sub-user">${tr('mt.users')}</button></div>
     ${list}
-    <button type="button" class="mt-btn ghost" data-mt="fill-random">${icon('shuffle', 18)}Ngẫu nhiên cho góc còn trống</button>
-    <button type="button" class="mt-btn primary" data-mt="confirm" ${both ? '' : 'disabled'}>${both ? 'Xác nhận cặp đấu' : 'Chọn đủ hai võ sĩ'}</button>`;
+    <button type="button" class="mt-btn ghost" data-mt="fill-random">${icon('shuffle', 18)}${tr('mt.fillRandom')}</button>
+    <button type="button" class="mt-btn primary" data-mt="confirm" ${both ? '' : 'disabled'}>${both ? tr('mt.confirmPair') : tr('mt.pickTwo')}</button>`;
 }
 function usersHtml(taken) {
-  if (M.q.trim().length < 2) return '<p class="mt-hint">Gõ ít nhất 2 ký tự để tìm.</p>';
-  if (M.loadingUsers) return '<p class="mt-hint">Đang tìm…</p>';
-  if (!M.users.length) return '<p class="mt-hint">Không tìm thấy ai.</p>';
+  if (M.q.trim().length < 2) return `<p class="mt-hint">${tr('mt.type2')}</p>`;
+  if (M.loadingUsers) return `<p class="mt-hint">${tr('mt.searching')}</p>`;
+  if (!M.users.length) return `<p class="mt-hint">${tr('mt.noOne')}</p>`;
   return M.users.map((u) => {
     const f = { type: 'user', id: u.id, name: u.name, initials: u.initials, color: u.color, headUrl: u.headUrl };
     const t = taken(f);
     return `<button type="button" class="mt-urow${t ? ' on' : ''}" data-mt="user" data-id="${esc(u.id)}" aria-pressed="${!!t}">${headChip(f, 44)}
-      <span class="t"><b>${esc(u.name)}${u.self ? ' <small>(bạn)</small>' : ''}</b><small>${esc(u.province || '')}</small></span>
-      ${t ? `<em class="${t === 'A' ? 'red' : 'blue'}">${t === 'A' ? 'Góc đỏ' : 'Góc xanh'}</em>` : u.relation === 'friend' ? '<em class="rel">Bạn bè</em>' : u.relation === 'group' ? '<em class="rel">Cùng nhóm</em>' : ''}</button>`;
+      <span class="t"><b>${esc(u.name)}${u.self ? ` <small>(${tr('ch.you')})</small>` : ''}</b><small>${esc(u.province || '')}</small></span>
+      ${t ? `<em class="${t === 'A' ? 'red' : 'blue'}">${t === 'A' ? tr('mt.red') : tr('mt.blue')}</em>` : u.relation === 'friend' ? `<em class="rel">${tr('nav.friends')}</em>` : u.relation === 'group' ? `<em class="rel">${tr('mt.sameGroup')}</em>` : ''}</button>`;
   }).join('');
 }
 let searchTimer = 0, searchSeq = 0;
@@ -205,17 +208,17 @@ function fightHtml() {
   const [a, b] = cur().fighters;
   const pf = cur().fighters.find((f) => f.side === M.pick);
   const pvp = M.mode === 'pvp', opp = pvp ? cur().fighters.find((f) => f.side !== M.pick) : null;
-  return `${header('Trận đấu')}<div id="mt-fight">
+  return `${header(tr('mt.match'))}<div id="mt-fight">
     <div class="mt-hud"><div class="hp"><div class="n">${esc(a.name)}</div><div class="bar l"><i id="hp-A" class="red" style="width:100%"></i></div></div>
-      <span class="mt-clock" id="mt-clock" role="timer" aria-label="Thời gian đã đấu">0:00</span>
+      <span class="mt-clock" id="mt-clock" role="timer" aria-label="${tr('mt.elapsed')}">0:00</span>
       <div class="hp"><div class="n r">${esc(b.name)}</div><div class="bar r"><i id="hp-B" class="blue" style="width:100%"></i></div></div></div>
     <div class="mt-arena fight" id="mt-ring">${arenaBack()}
       <div class="mt-fighters"><div class="mt-fslot A" id="f-A" role="presentation">${fighterHtml(a, { pose: 'walk', w: 200 })}</div><div class="mt-fslot B" id="f-B" role="presentation">${fighterHtml(b, { pose: 'walk', w: 200 })}</div></div>
-      <div class="mt-burst" id="mt-burst" aria-hidden="true"><svg viewBox="0 0 120 120"><polygon points="60,2 72,34 104,18 88,48 118,60 88,72 104,102 72,86 60,118 48,86 16,102 32,72 2,60 32,48 16,18 48,34" fill="#FFC83D" stroke="#B7791F" stroke-width="3" stroke-linejoin="round"/><text id="mt-burst-t" x="60" y="68" text-anchor="middle" transform="rotate(-8 60 60)" font-family="Be Vietnam Pro,system-ui,sans-serif" font-size="22" font-weight="900" fill="#2A1B00">BỐP!</text></svg></div>
+      <div class="mt-burst" id="mt-burst" aria-hidden="true"><svg viewBox="0 0 120 120"><polygon points="60,2 72,34 104,18 88,48 118,60 88,72 104,102 72,86 60,118 48,86 16,102 32,72 2,60 32,48 16,18 48,34" fill="#FFC83D" stroke="#B7791F" stroke-width="3" stroke-linejoin="round"/><text id="mt-burst-t" x="60" y="68" text-anchor="middle" transform="rotate(-8 60 60)" font-family="Be Vietnam Pro,system-ui,sans-serif" font-size="22" font-weight="900" fill="#2A1B00">${BURST('punch')}</text></svg></div>
       ${crowdSvg()}</div>
-    <div class="mt-count" id="mt-count" hidden aria-live="assertive"></div><div class="mt-log" id="mt-log" role="status" aria-live="polite">Hai võ sĩ vào vị trí…</div>
-    <div class="mt-bet">${pvp ? `Bạn và <b>${esc(opp?.name || '')}</b> đang xem cùng lúc · mỗi bên cược <b>${fmt(M.stake)} xu</b>` : `Bạn cược <b>${fmt(M.stake)} xu</b> cho <b>${esc(pf?.name || '')}</b>`}</div>
-    <button type="button" class="mt-btn ghost" data-mt="skip">Bỏ qua</button></div>`;
+    <div class="mt-count" id="mt-count" hidden aria-live="assertive"></div><div class="mt-log" id="mt-log" role="status" aria-live="polite">${tr('mt.ready')}</div>
+    <div class="mt-bet">${pvp ? tr('mt.watchingPvp', { o: `<b>${esc(opp?.name || '')}</b>`, n: `<b>${tr('mt.coins', { n: fmt(M.stake) })}</b>` }) : tr('mt.youBet', { n: `<b>${tr('mt.coins', { n: fmt(M.stake) })}</b>`, f: `<b>${esc(pf?.name || '')}</b>` })}</div>
+    <button type="button" class="mt-btn ghost" data-mt="skip">${tr('mt.skip')}</button></div>`;
 }
 function startFight() {
   const data = M.res, [fa, fb] = cur().fighters, F = { A: fa, B: fb };
@@ -248,16 +251,16 @@ function startFight() {
       setPose(e.by, e.move === 'kick' ? 'kick' : 'punch');
       setPose(t, 'stagger');
       $(`#f-${e.by}`)?.classList.add('lunge'); $(`#f-${t}`)?.classList.add('hurt');
-      const burst = $('#mt-burst'); if (burst) { $('#mt-burst-t').textContent = BURST[e.move] || 'BỐP!'; burst.classList.remove('show'); void burst.offsetWidth; burst.classList.add('show'); }
+      const burst = $('#mt-burst'); if (burst) { $('#mt-burst-t').textContent = BURST(e.move); burst.classList.remove('show'); void burst.offsetWidth; burst.classList.add('show'); }
       const ring = $('#mt-ring'); if (ring && !reduced() && e.damage >= 14) { ring.classList.remove('shake'); void ring.offsetWidth; ring.classList.add('shake'); }
       for (const s of ['A', 'B']) { const bar = $(`#hp-${s}`); if (bar) bar.style.width = `${e.hp[s]}%`; }
-      const log = $('#mt-log'); if (log) log.textContent = `${F[e.by].name} ${VERB[e.move] || 'ra đòn'} trúng ${F[t].name}${e.ko ? ' và hạ gục đối thủ!' : ''}`;
+      const log = $('#mt-log'); if (log) log.textContent = tr(e.ko ? 'mt.hitKo' : 'mt.hit', { a: F[e.by].name, v: VERB(e.move), b: F[t].name });
     });
     if (!(e.ko && i === ev.length - 1)) at(e.tMs + 420, () => { for (const s of ['A', 'B']) { setPose(s, 'guard'); $(`#f-${s}`)?.classList.remove('lunge', 'hurt'); } });
   });
   const last = ev[ev.length - 1];
   const loser = data.script.winner === 'A' ? 'B' : 'A';
-  at(last.tMs + 420, () => { setPose(data.script.winner, 'guard'); $(`#f-${data.script.winner}`)?.classList.remove('lunge'); setPose(loser, 'ko'); const log = $('#mt-log'); if (log) log.textContent = `${F[loser].name} hết máu và nằm sàn, trọng tài đếm…`; });
+  at(last.tMs + 420, () => { setPose(data.script.winner, 'guard'); $(`#f-${data.script.winner}`)?.classList.remove('lunge'); setPose(loser, 'ko'); const log = $('#mt-log'); if (log) log.textContent = tr('mt.down', { n: F[loser].name }); });
   at(last.tMs + 1900, finish);
 }
 
@@ -270,17 +273,17 @@ function resultHtml() {
   const ko = r.method === 'KO';
   const conf = won ? Array.from({ length: 12 }, (_, i) => `<i class="cf c${i % 5}" style="left:${(i * 83) % 96 + 2}%;top:${(i * 37) % 40 + 4}%;animation-delay:${(i % 6) * 0.15}s"></i>`).join('') : '';
   const loserHtml = ko ? `<div class="mt-loser ko">${fighterHtml(L, { pose: 'ko', w: 140 })}</div>` : `<div class="mt-loser sit">${fighterHtml(L, { pose: 'defeat', w: 150 })}</div>`;
-  return `${header('Kết quả')}
-    <div class="mt-banner ${won ? 'win' : 'lose'}">${pvp ? (won ? `BẠN THẮNG ${esc(opp.name).toUpperCase()}` : `${esc(W.name).toUpperCase()} THẮNG BẠN`) : esc(W.name).toUpperCase() + ' THẮNG'} ${ko ? 'BẰNG KO' : 'THEO ĐIỂM'}</div>
+  return `${header(tr('mt.result'))}
+    <div class="mt-banner ${won ? 'win' : 'lose'}">${(pvp ? (won ? tr('mt.youBeat', { n: esc(opp.name) }) : tr('mt.beatYou', { n: esc(W.name) })) : tr('mt.wins', { n: esc(W.name) })).toUpperCase()} ${ko ? tr('mt.byKo') : tr('mt.byPoints')}</div>
     <div class="mt-arena result">${arenaBack()}${conf}<div class="mt-winner">${fighterHtml(W, { pose: 'win', crown: true, w: 200 })}</div>${loserHtml}${crowdSvg()}</div>
-    <div class="mt-card ${won ? 'win' : 'lose'}" role="status"><div class="a">${pvp ? (won ? 'Bạn thắng!' : 'Tiếc quá, bạn thua trận này') : won ? 'Bạn đoán đúng!' : 'Tiếc quá, bạn đoán chưa trúng'}</div>
+    <div class="mt-card ${won ? 'win' : 'lose'}" role="status"><div class="a">${pvp ? (won ? tr('mt.youWon') : tr('mt.youLost')) : won ? tr('mt.rightPick') : tr('mt.wrongPick')}</div>
       <div class="b">${won ? '+' + fmt(r.payout) : '−' + fmt(r.stake)} xu</div>
-      <div class="c">${won ? (pvp ? `Mỗi bên cược ${fmt(r.stake)} xu · phí 5% · lãi ròng ${fmt(r.payout - r.stake)} xu` : `Cược ${fmt(r.stake)} xu · thưởng x${cur().payoutMultiplier}`) : `Mất ${fmt(r.stake)} xu cược`}</div></div>
-    <div class="mt-bal"><span>Số dư mới</span><b>${coinIcon(18)}${fmt(M.res.balanceFinal)}</b></div>
-    ${pvp ? `<button type="button" class="mt-btn primary" data-mt="pv-again" id="mt-again">Đòi lại (thách đấu ${fmt(r.stake)} xu)</button>
-    <div class="mt-pair">${M.pv.ch?.opponent?.isFriend ? `<button type="button" class="mt-btn ghost" data-mt="pv-dm" data-id="${M.pv.ch.opponent.id}">Nhắn cho ${esc(opp.name)}</button>` : `<button type="button" class="mt-btn ghost" data-mt="pv-box">Hộp thư</button>`}<a class="mt-btn ghost" href="#/games">Thoát</a></div>`
-    : `<button type="button" class="mt-btn primary" data-mt="again" id="mt-again">Chơi tiếp</button>
-    <a class="mt-btn ghost" href="#/games">Thoát</a>`}`;
+      <div class="c">${won ? (pvp ? tr('mt.pvpWinLine', { s: fmt(r.stake), n: fmt(r.payout - r.stake) }) : tr('mt.winLine', { s: fmt(r.stake), x: cur().payoutMultiplier })) : tr('mt.loseLine', { s: fmt(r.stake) })}</div></div>
+    <div class="mt-bal"><span>${tr('mt.newBal')}</span><b>${coinIcon(18)}${fmt(M.res.balanceFinal)}</b></div>
+    ${pvp ? `<button type="button" class="mt-btn primary" data-mt="pv-again" id="mt-again">${tr('mt.rematch', { n: fmt(r.stake) })}</button>
+    <div class="mt-pair">${M.pv.ch?.opponent?.isFriend ? `<button type="button" class="mt-btn ghost" data-mt="pv-dm" data-id="${M.pv.ch.opponent.id}">${tr('mt.msgTo', { n: esc(opp.name) })}</button>` : `<button type="button" class="mt-btn ghost" data-mt="pv-box">${tr('mt.inbox')}</button>`}<a class="mt-btn ghost" href="#/games">${tr('mt.exit')}</a></div>`
+    : `<button type="button" class="mt-btn primary" data-mt="again" id="mt-again">${tr('mt.again')}</button>
+    <a class="mt-btn ghost" href="#/games">${tr('mt.exit')}</a>`}`;
 }
 
 // ---- sự kiện -------------------------------------------------------------------------------------------------------
@@ -298,7 +301,7 @@ async function doBet() {
     if (e.status === 409) { // đã cược (bấm hai lần hoặc nhiều tab): lấy kết quả đã chốt
       try { const m = await api('GET', `/mt/matches/${M.match.matchId}`); if (m.status === 'settled') { M.res = m; M.pick = m.result.pick; M.stake = m.result.stake; return draw('result'); } } catch { /* rơi xuống thông báo */ }
     }
-    if (e.status === 410) { toast('Trận đã hết hạn, đã tạo trận mới'); try { return await newMatch(M.tab === 'random' ? 'random' : 'custom', M.last); } catch { /* xuống dưới */ } }
+    if (e.status === 410) { toast(tr('mt.expiredNew')); try { return await newMatch(M.tab === 'random' ? 'random' : 'custom', M.last); } catch { /* xuống dưới */ } }
     toast(e.message); draw('pick');
   }
 }
@@ -307,7 +310,7 @@ function onInput(e) {
   if (e.target.id?.startsWith('pv-')) return pvpInput(e, M, H);
   if (e.target.id === 'mt-stake') {
     const v = Math.floor(Number(e.target.value));
-    if (Number.isFinite(v) && v > 0) { M.stake = Math.min(v, M.match.stake.max); const s = $('#mt-sum'); if (s) s.innerHTML = stakeLine(); const b = $('#mt-start'); if (b) { const st = startState(); b.disabled = st.off || v < M.match.stake.min; b.textContent = v < M.match.stake.min ? `Tối thiểu ${M.match.stake.min} xu` : st.label; } }
+    if (Number.isFinite(v) && v > 0) { M.stake = Math.min(v, M.match.stake.max); const s = $('#mt-sum'); if (s) s.innerHTML = stakeLine(); const b = $('#mt-start'); if (b) { const st = startState(); b.disabled = st.off || v < M.match.stake.min; b.textContent = v < M.match.stake.min ? tr('mt.min', { n: M.match.stake.min }) : st.label; } }
   } else if (e.target.id === 'mt-q') { M.q = e.target.value; searchUsers(); }
 }
 async function onClick(e) {

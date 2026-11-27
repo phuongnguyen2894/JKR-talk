@@ -1,5 +1,5 @@
 import { frameSvg } from './frames.js';
-import { LOCALE, getLang, t } from './i18n.js';
+import { LOCALE, getLang, t, tOr } from './i18n.js';
 // Trạng thái dùng chung, API client, modal, toast, tiện ích.
 export const $ = (s, el = document) => el.querySelector(s);
 export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -31,21 +31,21 @@ function checkVersion(v) {
   if (v === seenVersion || document.getElementById('updbar')) return;
   const bar = document.createElement('div');
   bar.id = 'updbar'; bar.setAttribute('role', 'status');
-  bar.innerHTML = '<span>Có bản mới của JKR talks.</span><button type="button" class="btn sm primary" id="updbtn">Tải lại</button>';
+  bar.innerHTML = `<span>${t('c.newVersion')}</span><button type="button" class="btn sm primary" id="updbtn">${t('c.reload')}</button>`;
   document.body.appendChild(bar);
   document.getElementById('updbtn').onclick = () => location.reload();
 }
 export async function api(method, url, body) {
   const res = await fetch('/api' + url, {
     method,
-    headers: { 'content-type': 'application/json', ...(S.token ? { authorization: `Bearer ${S.token}` } : {}) },
+    headers: { 'content-type': 'application/json', 'x-lang': getLang(), ...(S.token ? { authorization: `Bearer ${S.token}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   checkVersion(res.headers.get('x-app-version'));
   if (!res.ok) {
     if (res.status === 401 && S.token) S.hooks.logout?.(true);
-    const err = new Error(data.error || 'Có lỗi xảy ra');
+    const err = new Error(data.error || t('c.error'));
     err.status = res.status;
     throw err;
   }
@@ -128,7 +128,7 @@ export function toast(text, ms = 4500) {
   $('#toasts').appendChild(el);
   setTimeout(() => el.remove(), ms);
 }
-export const fail = (e) => toast(e?.message || 'Có lỗi xảy ra');
+export const fail = (e) => toast(e?.message || t('c.error'));
 
 // ---- modal ---------------------------------------------------------------------
 let modalOpener = null;
@@ -156,7 +156,7 @@ export function closeModal() {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
 // Hộp thoại nhập liệu: trả về object giá trị hoặc null nếu hủy
-export function ask({ title, text = '', fields = [], ok = 'Xác nhận', danger = false }) {
+export function ask({ title, text = '', fields = [], ok = t('c.confirm'), danger = false }) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
@@ -172,7 +172,7 @@ export function ask({ title, text = '', fields = [], ok = 'Xác nhận', danger 
     }).join('');
     const m = openModal(
       `<form id="askform" class="col"><h2>${esc(title)}</h2>${text ? `<p class="muted small">${esc(text)}</p>` : ''}${f}
-       <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn ${danger ? 'danger' : 'primary'}">${esc(ok)}</button></div></form>`,
+       <div class="btns"><button type="button" class="btn" data-close>${t('c.cancel')}</button><button class="btn ${danger ? 'danger' : 'primary'}">${esc(ok)}</button></div></form>`,
       { onClose: () => finish(null) }
     );
     $('[data-close]', m).onclick = () => closeModal();
@@ -188,11 +188,11 @@ export function ask({ title, text = '', fields = [], ok = 'Xác nhận', danger 
     };
   });
 }
-export const confirmBox = (title, text, ok = 'Đồng ý', danger = false) =>
+export const confirmBox = (title, text, ok = t('c.agree'), danger = false) =>
   ask({ title, text, ok, danger }).then((v) => !!v);
 
 export function lightbox(src) {
-  openModal(`<div class="lightbox"><img src="${esc(src)}" alt="Ảnh phóng to"></div><div class="btns"><button class="btn" data-close>Đóng</button></div>`);
+  openModal(`<div class="lightbox"><img src="${esc(src)}" alt="${t('c.zoomed')}"></div><div class="btns"><button class="btn" data-close>${t('lang.close')}</button></div>`);
   $('#modal [data-close]').onclick = closeModal;
 }
 
@@ -222,11 +222,11 @@ export const actions = {};
 export function memberPickerHtml(friends) {
   const isAdmin = S.me?.role === 'admin' || (S.me?.level || 0) >= 5; // Admin và cấp Tím Thủy Tổ thêm được bất kỳ ai
   return `<div class="col pick" style="gap:6px">
-    ${isAdmin ? `<label class="label" for="pick-q">Tìm người dùng bất kỳ (${S.me.role === 'admin' ? 'Admin' : 'Tím Thủy Tổ'})</label>
-      <input class="input" id="pick-q" type="search" placeholder="${S.me.role === 'admin' ? 'Tên hoặc email' : 'Tên người dùng'}" autocomplete="off">
+    ${isAdmin ? `<label class="label" for="pick-q">${t('c.pickAny')} (${S.me.role === 'admin' ? 'Admin' : levelName(5)})</label>
+      <input class="input" id="pick-q" type="search" placeholder="${S.me.role === 'admin' ? t('c.nameOrEmail') : t('c.userName')}" autocomplete="off">
       <div id="pick-res" class="col" style="gap:2px"></div>` : ''}
-    <div class="label" style="margin-top:4px">${isAdmin ? 'Đã chọn / bạn bè' : 'Bạn bè'}</div>
-    <div id="pick-list" class="col" style="gap:2px">${friends.map((f) => `<label class="check"><input type="checkbox" value="${f.id}"> ${esc(f.displayName)}</label>`).join('') || `<p class="small muted" id="pick-empty">${isAdmin ? 'Chưa chọn ai. Tìm ở ô phía trên.' : 'Bạn chưa có bạn bè để mời. Có thể mời sau.'}</p>`}</div></div>`;
+    <div class="label" style="margin-top:4px">${isAdmin ? t('c.pickedFriends') : t('nav.friends')}</div>
+    <div id="pick-list" class="col" style="gap:2px">${friends.map((f) => `<label class="check"><input type="checkbox" value="${f.id}"> ${esc(f.displayName)}</label>`).join('') || `<p class="small muted" id="pick-empty">${isAdmin ? t('c.pickNone') : t('c.noFriends')}</p>`}</div></div>`;
 }
 export function wireMemberPicker(exclude = new Set()) {
   const q = $('#pick-q');
@@ -241,7 +241,7 @@ export function wireMemberPicker(exclude = new Set()) {
       try {
         const { users } = await api('GET', S.me.role === 'admin' ? `/admin/users?q=${encodeURIComponent(term)}` : `/people/search?q=${encodeURIComponent(term)}`);
         const list = users.filter((u) => u.id !== S.me.id && u.status === 'active' && !exclude.has(u.id) && !inList(u.id)).slice(0, 8);
-        $('#pick-res').innerHTML = list.map((u) => `<label class="check"><input type="checkbox" value="${u.id}" data-name="${esc(u.displayName)}"> ${esc(u.displayName)}${u.email ? ` <span class="tiny muted">${esc(u.email)}</span>` : ''}</label>`).join('') || '<p class="small muted">Không tìm thấy (hoặc đã ở trong nhóm).</p>';
+        $('#pick-res').innerHTML = list.map((u) => `<label class="check"><input type="checkbox" value="${u.id}" data-name="${esc(u.displayName)}"> ${esc(u.displayName)}${u.email ? ` <span class="tiny muted">${esc(u.email)}</span>` : ''}</label>`).join('') || `<p class="small muted">${t('c.pickNotFound')}</p>`;
       } catch (e) { fail(e); }
     }, 250);
   };
@@ -261,8 +261,8 @@ export async function shareLink(url, title) {
   if (navigator.share && matchMedia('(pointer: coarse)').matches) {
     try { await navigator.share({ title, url }); return; } catch (e) { if (e?.name === 'AbortError') return; }
   }
-  try { await navigator.clipboard.writeText(url); toast('Đã sao chép liên kết chủ đề'); }
-  catch { window.prompt('Sao chép liên kết này:', url); }
+  try { await navigator.clipboard.writeText(url); toast(t('c.topicCopied')); }
+  catch { window.prompt(t('c.copyThis'), url); }
 }
 export const topicLink = (id) => `${location.origin}/t/${id}`;
 actions['share-topic'] = (el) => shareLink(topicLink(el.dataset.id), el.dataset.name || 'JKR talks');
@@ -271,10 +271,10 @@ actions['share-topic'] = (el) => shareLink(topicLink(el.dataset.id), el.dataset.
 export async function imageToDataUrl(file, maxSide = 1600) {
   const raw = () => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
   if (file.type === 'image/gif') {
-    if (file.size > 2 * 1024 * 1024) throw new Error('Ảnh GIF quá lớn (tối đa 2MB)');
+    if (file.size > 2 * 1024 * 1024) throw new Error(t('c.gifBig'));
     return raw();
   }
-  if (file.size > 25 * 1024 * 1024) throw new Error('Ảnh quá lớn');
+  if (file.size > 25 * 1024 * 1024) throw new Error(t('c.imgBig'));
   try {
     const url = URL.createObjectURL(file);
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
@@ -288,7 +288,7 @@ export async function imageToDataUrl(file, maxSide = 1600) {
     if (out.length * 0.75 > 2 * 1024 * 1024) return c.toDataURL('image/jpeg', 0.6);
     return out;
   } catch {
-    if (file.size > 2 * 1024 * 1024) throw new Error('Ảnh quá lớn (tối đa 2MB)');
+    if (file.size > 2 * 1024 * 1024) throw new Error(t('c.imgBig2'));
     return raw();
   }
 }
@@ -310,8 +310,11 @@ function plainHtml(seg, mentions) {
     return '<span class="mention' + (u && (u.all || S.me?.id === u.id) ? ' me' : '') + '">' + t + '</span>';
   }).replace(/(<span class="mention[^>]*>.*?<\/span>)|([^<]+)/g, (all, tag, txt) => (tag ? tag : withEmoji(txt)));
 }
+// tin chào mừng tự động của máy chủ (lưu tiếng Việt) → câu theo ngôn ngữ người xem
+const AUTO_WELCOME = /^🎉 Chào mừng (.+) đến với (?:JKR talks|nhóm (.+))! Mọi người cùng chào đón thành viên mới của chúng ta nhé 💜$/;
+export const sysText = (s) => { const m = String(s ?? '').match(AUTO_WELCOME); return m ? (m[2] ? t('sys.welcomeGroup', { n: m[1], g: m[2] }) : t('sys.welcomeApp', { n: m[1] })) : s; };
 export function linkify(text, mentions) {
-  const t = String(text ?? '');
+  const t = String(sysText(text) ?? '');
   const re = /https?:\/\/[^\s<>"]+/gi;
   const out = [];
   let last = 0, m;
@@ -341,18 +344,23 @@ const ROLE_SVG = {
   admin: '<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z"/></svg>',
   mod: '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>',
 };
-const ROLE_TEXT = { super: 'Admin hệ thống', admin: 'Admin', mod: 'Mod' };
+const ROLE_TEXT = { super: () => t('c.superAdmin'), admin: () => 'Admin', mod: () => 'Mod' };
 // ảnh đại diện kèm biểu tượng vai trò (không có vai trò: như avatar thường)
 export function avatarR(u, role, cls = '') {
   const av = avatar(u, cls);
   return role ? `<span class="av-wrap">${av}<span class="role-badge rb-${role === 'mod' ? 'mod' : 'admin'}">${ROLE_SVG[role]}</span></span>` : av;
 }
 export const roleClass = (role) => (role ? ` role-${role === 'mod' ? 'mod' : 'admin'}` : '');
-export const roleSr = (role) => (role ? `<span class="sr-only"> (${ROLE_TEXT[role]})</span>` : '');
+export const roleSr = (role) => (role ? `<span class="sr-only"> (${ROLE_TEXT[role]()})</span>` : '');
 
 
 // ---- Cấp bậc (Tím Mầm Non → Tím Thủy Tổ) và Xu tím ----------------------------------------
-export const LEVEL_NAMES = ['', 'Tím Mầm Non', 'Tím Sương Sương', 'Tím Mộng Mơ', 'Tím Thủy Chung', 'Tím Thủy Tổ'];
+// tên đồ trong cửa hàng / phần thưởng danh hiệu, danh hiệu, điều kiện: dịch theo id/khoá, thiếu thì giữ chữ của máy chủ
+export const itemName = (kind, id, fb) => tOr(`it.${kind}.${id}`, fb);
+export const titleName = (key, fb) => tOr(`ti.${key}`, fb || key);
+export const condLabel = (c) => tOr(`lc.${c.key}`, c.label, { n: c.need });
+// tên cấp theo ngôn ngữ đang dùng (lv.1 … lv.5)
+export const levelName = (n) => (n >= 1 && n <= 5 ? t(`lv.${n}`) : '');
 const LV_SVG = {
   1: '<path d="M20 4C9 4 4 9 4 15c0 2 1 4 3 5 0-5 3-9 9-11-4 3-6 6-6.5 11C15 20 20 15 20 4z"/>',
   2: '<path d="M12 12L12.00 1.50M12.00 4.80L9.21 2.85M12.00 4.80L14.79 2.85M12.00 7.60L10.03 6.22M12.00 7.60L13.97 6.22M12 12L2.91 6.75M5.76 8.40L2.68 9.84M5.76 8.40L5.47 5.01M8.19 9.80L6.01 10.81M8.19 9.80L7.98 7.41M12 12L2.91 17.25M5.76 15.60L5.47 18.99M5.76 15.60L2.68 14.16M8.19 14.20L7.98 16.59M8.19 14.20L6.01 13.19M12 12L12.00 22.50M12.00 19.20L14.79 21.15M12.00 19.20L9.21 21.15M12.00 16.40L13.97 17.78M12.00 16.40L10.03 17.78M12 12L21.09 17.25M18.24 15.60L21.32 14.16M18.24 15.60L18.53 18.99M15.81 14.20L17.99 13.19M15.81 14.20L16.02 16.59M12 12L21.09 6.75M18.24 8.40L18.53 5.01M18.24 8.40L21.32 9.84M15.81 9.80L16.02 7.41M15.81 9.80L17.99 10.81" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -362,7 +370,7 @@ const LV_SVG = {
 };
 // huy hiệu cấp: chỉ hiện biểu tượng tô màu cạnh tên (cấp 0 hoặc đang ẩn: không hiện gì)
 export const lvBadge = (n, size = 18) => (n >= 1 && n <= 5
-  ? `<span class="lvb l${n}" style="width:${size}px;height:${size}px" role="img" aria-label="${LEVEL_NAMES[n]}" title="${LEVEL_NAMES[n]}"><svg viewBox="0 0 24 24" aria-hidden="true">${LV_SVG[n]}</svg></span>` : '');
+  ? `<span class="lvb l${n}" style="width:${size}px;height:${size}px" role="img" aria-label="${levelName(n)}" title="${levelName(n)}"><svg viewBox="0 0 24 24" aria-hidden="true">${LV_SVG[n]}</svg></span>` : '');
 // đồng Xu tím (chữ LO ở giữa); gradient dùng chung khai báo trong index.html
 export const coinIcon = (size = 18) => `<svg class="coin" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><circle cx="12" cy="12" r="11.4" fill="url(#cgR)"/><circle cx="12" cy="12" r="10" fill="none" stroke="#F1EAFF" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="1.1 1.1"/><circle cx="12" cy="12" r="8" fill="url(#cgF)" stroke="#E4D9FF" stroke-width=".9"/><path d="M5.9 9.3A6.7 6.7 0 0 1 11 5.4" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1.1" stroke-linecap="round"/><text x="12" y="15.4" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.4" font-weight="800" letter-spacing="-.2" fill="#2B0F6B" fill-opacity=".55">LO</text><text x="12" y="14.8" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="8.4" font-weight="800" letter-spacing="-.2" fill="#fff">LO</text></svg>`;
 

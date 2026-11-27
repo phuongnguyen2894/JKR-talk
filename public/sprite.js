@@ -1,11 +1,12 @@
 // Võ sĩ dạng sprite (bộ ảnh cắt từ bản thiết kế, /mt/<góc>/<hành động>/NN.png + /mt/sprites.json).
 // Đầu là avatar thật của người dùng (hoặc chữ viết tắt) vẽ chồng lên đúng vị trí đầu trong từng khung hình, không dùng đầu "UD/UN" có sẵn trong ảnh.
 // Tọa độ đầu từng khung (cx, cy, r) được tính sẵn khi xử lý ảnh. Góc xanh được lật ngang để quay mặt sang trái.
+import { t } from './i18n.js';
 import { esc } from './core.js';
 
 export const CORNER = {
-  red: { name: 'Góc đỏ' },
-  blue: { name: 'Góc xanh' },
+  red: { get name() { return t('mt.red'); } },
+  blue: { get name() { return t('mt.blue'); } },
 };
 // tên tư thế trong game → hành động trong bộ sprite
 export const ACTION = { guard: 'idle', walk: 'walk', punch: 'punch', kick: 'kick', block: 'block', stagger: 'hit', ko: 'knockdown', win: 'victory', defeat: 'defeat' };

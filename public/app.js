@@ -87,7 +87,7 @@ function renderSide() {
   document.title = total ? `(${total}) JKR talks` : 'JKR talks';
 }
 S.hooks.renderSide = renderSide;
-S.hooks.toastMsg = (g, m) => toast(`${g.type === 'dm' ? '' : g.name + ' · '}${m.user.displayName}: ${m.body || '[Ảnh]'}`.slice(0, 120));
+S.hooks.toastMsg = (g, m) => toast(`${g.type === 'dm' ? '' : g.name + ' · '}${m.user.displayName}: ${m.body || t('a.photoTag')}`.slice(0, 120));
 
 // ---- router ----------------------------------------------------------------------
 function parseHash() {
@@ -121,7 +121,7 @@ async function route() {
       case 'chat':
         if (!r.arg) {
           if (wide() && S.groups.length) return go(`#/chat/${S.groups[0].id}`);
-          view.innerHTML = '<div class="gate muted">Chọn một nhóm để bắt đầu trò chuyện.</div>';
+          view.innerHTML = `<div class="gate muted">${t('a.pickGroup')}</div>`;
           return;
         }
         return await renderChat(view, Number(r.arg));
@@ -148,7 +148,7 @@ async function route() {
       default: return go('#/chat');
     }
   } catch (e) {
-    if (seq === routeSeq) view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">Về trang chính</a></div>`;
+    if (seq === routeSeq) view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">${t('a.home')}</a></div>`;
   }
 }
 window.addEventListener('hashchange', route);
@@ -173,14 +173,14 @@ function connectWs() {
       if (ev.notification.type === 'title') api('GET', '/me').then((r) => { S.me = r.user; renderSide(); if (['titles', 'shop'].includes(parseHash().name)) route(); }).catch(() => {});
       if (ev.notification.type === 'level') api('GET', '/me').then(async (r) => { S.me = r.user; renderSide(); if (parseHash().name === 'level') await route(); showLevelUp(r.levelUp); }).catch(() => {});
       if (ev.notification.type === 'friend_accept' && parseHash().name === 'friends') route();
-    } else if (ev.type === 'news') { S.unreadNews++; renderSide(); toast(`Bản tin mới: ${ev.news.title}`, 7000); }
+    } else if (ev.type === 'news') { S.unreadNews++; renderSide(); toast(`${t('a.newNews')}: ${ev.news.title}`, 7000); }
     else if (ev.type === 'trend_sub') window.dispatchEvent(new CustomEvent('trend-sub'));
     else if (ev.type === 'trend_caps') window.dispatchEvent(new CustomEvent('trend-caps'));
     else if (ev.type === 'mt_pvp') window.dispatchEvent(new CustomEvent('mt-pvp', { detail: ev }));
     else if (ev.type === 'news_silent') { S.unreadNews++; renderSide(); }
     else if (ev.type === 'hot_new') { if (parseHash().name === 'hot') api('POST', '/hot/seen').catch(() => {}); else { S.unreadHot++; renderSide(); } }
-    else if (ev.type === 'bug_new') { toast('Có báo lỗi mới'); if (parseHash().name === 'bugs') route(); }
-    else if (ev.type === 'report_new') { toast('Có báo cáo mới cần xử lý'); if (parseHash().name === 'admin') route(); }
+    else if (ev.type === 'bug_new') { toast(t('a.newBug')); if (parseHash().name === 'bugs') route(); }
+    else if (ev.type === 'report_new') { toast(t('a.newReport')); if (parseHash().name === 'admin') route(); }
     else if (ev.type === 'locked') logout(true);
   };
   ws.onclose = (e) => {
@@ -228,7 +228,7 @@ async function logout(silent) {
   clearTimeout(wsTimer); ws?.close(); ws = null;
   root.innerHTML = '';
   document.title = 'JKR talks';
-  if (silent) toast('Phiên đăng nhập đã kết thúc');
+  if (silent) toast(t('a.sessionEnded'));
   location.hash = '#/login';
   route();
 }
@@ -239,8 +239,8 @@ S.hooks.logout = logout;
 actions.notifs = async () => {
   try {
     const { notifications } = await api('GET', '/notifications');
-    openModal(`<div class="row" style="justify-content:space-between"><h2>Thông báo</h2><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('x', 20)}</button></div><div class="list notif-list">${notifications.map((n) => `<div class="card col" ${n.url ? `role="link" tabindex="0" data-nurl="${esc(n.url)}" data-nmsg="${n.msgId || ''}"` : ''} style="gap:2px;${n.url ? 'cursor:pointer;' : ''}${n.read ? '' : 'border-color:var(--accent)'}"><div class="small">${esc(n.text)}</div><div class="tiny muted">${fmtDateTime(n.createdAt)}</div></div>`).join('') || '<p class="muted small">Chưa có thông báo nào.</p>'}</div>
-      <div class="btns"><button class="btn primary" data-close>Đóng</button></div>`);
+    openModal(`<div class="row" style="justify-content:space-between"><h2>${t('nav.notifs')}</h2><button type="button" class="icon-btn" data-close aria-label="${t('lang.close')}">${icon('x', 20)}</button></div><div class="list notif-list">${notifications.map((n) => `<div class="card col" ${n.url ? `role="link" tabindex="0" data-nurl="${esc(n.url)}" data-nmsg="${n.msgId || ''}"` : ''} style="gap:2px;${n.url ? 'cursor:pointer;' : ''}${n.read ? '' : 'border-color:var(--accent)'}"><div class="small">${esc(n.text)}</div><div class="tiny muted">${fmtDateTime(n.createdAt)}</div></div>`).join('') || `<p class="muted small">${t('a.noNotifs')}</p>`}</div>
+      <div class="btns"><button class="btn primary" data-close>${t('lang.close')}</button></div>`);
     for (const b of document.querySelectorAll('#modal [data-close]')) b.onclick = closeModal;
     const openNotif = (e) => {
       if (e.type === 'keydown' && e.key !== 'Enter') return;

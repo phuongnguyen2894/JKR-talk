@@ -1,4 +1,5 @@
 import express from 'express';
+import { langOf, trErr, nt } from './i18n.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -106,7 +107,7 @@ function welcomeUser(uid, g) {
     if (!bot || bot.id === uid) return;
     if (db.prepare('SELECT 1 FROM welcomes WHERE group_id = ? AND user_id = ? AND author_id = ?').get(g.id, uid, bot.id)) return;
     db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(g.id, uid, bot.id, autoWelcomeText(g, getUser(uid).display_name), now());
-    if (g.type === 'country') notify(uid, 'welcome', `Chào mừng bạn đến với JKR talks! Xem lời chào của mọi người ở mục Chào mừng của "${g.name}"`, { url: `/#/welcome/${g.id}`, tag: `welcome-${g.id}` });
+    if (g.type === 'country') notify(uid, 'welcome', ['welcome', { g: g.name }], { url: `/#/welcome/${g.id}`, tag: `welcome-${g.id}` });
   } catch (e) { console.error('[welcome]', e.message); }
 }
 // Chuyển các tin chào mừng tự động cũ ra khỏi khung chat chung (một lần)
@@ -235,7 +236,7 @@ api.get('/public/groups/:id', guestLimit, wrap((req, res) => {
   const g = getGroup(int(req.params.id));
   if (!g || !GUEST_TYPES.includes(g.type) || groupHidden(g, null)) throw notFound('Không tìm thấy nhóm công khai');
   const rows = db.prepare('SELECT * FROM messages WHERE group_id = ? AND deleted = 0 ORDER BY id DESC LIMIT ?').all(g.id, GUEST_MSG_LIMIT);
-  res.json({ group: { id: g.id, type: g.type, name: g.name }, messages: rows.reverse().map((m) => guestMsg(m)), limit: GUEST_MSG_LIMIT });
+  res.json({ group: { id: g.id, type: g.type, name: groupNameFor(g, langOf(req)) }, messages: rows.reverse().map((m) => guestMsg(m)), limit: GUEST_MSG_LIMIT });
 }));
 api.get('/public/hot', guestLimit, wrap(async (_req, res) => {
   const rows = await hotRows(null, null, false); // khách không kích hoạt tải xem trước từ trang ngoài
@@ -336,7 +337,7 @@ function submitTrend(req, res, g, body, imageUrls) {
   const row = db.prepare('SELECT * FROM trend_submissions WHERE id = ?').get(r.lastInsertRowid);
   for (const a of adminIds()) {
     if (a === uid) continue;
-    notify(a, 'mod', `${req.user.display_name} gửi bài vào Đẩy trend, đang chờ duyệt`, { url: `/#/chat/${g.id}`, tag: 'trend-sub' });
+    notify(a, 'mod', ['trendSub', { u: req.user.display_name }], { url: `/#/chat/${g.id}`, tag: 'trend-sub' });
     hub.send(a, { type: 'trend_sub' });
   }
   res.status(202).json({ pending: true, submission: subDto(row) });
@@ -379,19 +380,19 @@ function decideSub(req, res, approve) {
   if (approve) {
     if (duplicateTrendLink(s.body)) {
       finish('rejected', 'Link này đã có trong Đẩy trend');
-      notify(s.user_id, 'moderation', 'Bài bạn gửi vào Đẩy trend chưa được đăng vì link đã có trong Đẩy trend', { url: `/#/chat/${g.id}` });
-      return res.status(409).json({ error: 'Link này đã có trong Đẩy trend nên bài bị từ chối', code: 'DUPLICATE' });
+      notify(s.user_id, 'moderation', ['trendDup'], { url: `/#/chat/${g.id}` });
+      return res.status(409).json({ error: trErr('Link này đã có trong Đẩy trend nên bài bị từ chối', langOf(req)), code: 'DUPLICATE' });
     }
     const dto = publishTrend(author, g, s.body, imageUrls);
     finish('approved', null, dto.id);
     log(req.user.id, 'trend_approve', { target: s.user_id, message: dto.id });
-    notify(s.user_id, 'moderation', 'Bài của bạn đã được duyệt và hiện trong Đẩy trend', { url: `/#/chat/${g.id}`, msgId: dto.id });
+    notify(s.user_id, 'moderation', ['trendOk'], { url: `/#/chat/${g.id}`, msgId: dto.id });
     return res.json({ ok: true, messageId: dto.id });
   }
   const reason = String(req.body?.reason || '').trim().slice(0, 200);
   finish('rejected', reason);
   log(req.user.id, 'trend_reject', { target: s.user_id, reason });
-  notify(s.user_id, 'moderation', `Bài bạn gửi vào Đẩy trend chưa được duyệt${reason ? `: ${reason}` : ''}`, { url: `/#/chat/${g.id}` });
+  notify(s.user_id, 'moderation', ['trendNo', { reason }], { url: `/#/chat/${g.id}` });
   res.json({ ok: true });
 }
 api.post('/trend/submissions/:id/approve', wrap((req, res) => decideSub(req, res, true)));
@@ -752,7 +753,7 @@ api.get(
       .map((k) => db.prepare('SELECT * FROM groups WHERE key = ?').get(k))
       .filter((g) => g && !getMember(g.id, req.user.id));
     res.json({
-      groups: rows.map((g) => ({ id: g.id, type: g.type, name: g.name, lang: g.lang, reason: 'Cùng khu vực với bạn' })),
+      groups: rows.map((g) => ({ id: g.id, type: g.type, name: groupNameFor(g, langOf(req)), lang: g.lang, reason: nt('sameArea', langOf(req)) })),
     });
   })
 );
@@ -868,7 +869,7 @@ api.post('/topics/pending/:id/approve', adminOnly, wrap((req, res) => {
   log(req.user.id, 'approve_topic', { group: g.id, name: g.name });
   if (g.created_by) award(g.created_by, 'topic', 30, { ref: String(g.id) });
   tellHotNew(g.created_by);
-  if (g.created_by) notify(g.created_by, 'moderation', `Chủ đề "${g.name}" của bạn đã được duyệt và hiện ở mục Chủ đề nóng`, { url: `/#/chat/${g.id}`, tag: `topic-ok-${g.id}` });
+  if (g.created_by) notify(g.created_by, 'moderation', ['topicOk', { g: g.name }], { url: `/#/chat/${g.id}`, tag: `topic-ok-${g.id}` });
   res.json({ ok: true });
 }));
 api.post('/topics/pending/:id/reject', adminOnly, wrap((req, res) => {
@@ -877,7 +878,7 @@ api.post('/topics/pending/:id/reject', adminOnly, wrap((req, res) => {
   const reason = str(req.body.reason, 300);
   db.prepare('DELETE FROM groups WHERE id = ?').run(g.id);
   log(req.user.id, 'reject_topic', { group: g.id, name: g.name, reason });
-  if (g.created_by) notify(g.created_by, 'moderation', `Chủ đề "${g.name}" chưa được duyệt${reason ? `: ${reason}` : ''}`, { tag: `topic-no-${g.id}` });
+  if (g.created_by) notify(g.created_by, 'moderation', ['topicNo', { g: g.name, reason }], { tag: `topic-no-${g.id}` });
   res.json({ ok: true });
 }));
 // Người tạo rút lại chủ đề đang chờ duyệt
@@ -912,7 +913,7 @@ api.post('/topics', wrap((req, res) => {
     const gid = Number(r.lastInsertRowid);
     log(req.user.id, 'submit_topic', { group: gid, name });
     for (const a of db.prepare("SELECT id FROM users WHERE role = 'admin' AND status = 'active'").all()) {
-      notify(a.id, 'mod', `${req.user.display_name} đề xuất chủ đề "${name}" — đang chờ duyệt`, { url: '/#/admin', tag: 'topic-pending' });
+      notify(a.id, 'mod', ['topicPending', { u: req.user.display_name, g: name }], { url: '/#/admin', tag: 'topic-pending' });
     }
     return res.status(202).json({ pending: true, topic: pendingDto(getGroup(gid)) });
   }
@@ -953,7 +954,7 @@ api.delete('/topics/:id', wrap((req, res) => {
     db.prepare('DELETE FROM groups WHERE id = ?').run(g.id);
   });
   log(req.user.id, 'delete_topic', { group: g.id, name: g.name });
-  for (const id of ids) if (id !== req.user.id) notify(id, 'group_dissolved', `Chủ đề "${g.name}" đã được đóng`);
+  for (const id of ids) if (id !== req.user.id) notify(id, 'group_dissolved', ['topicClosed', { g: g.name }]);
   res.json({ ok: true });
 }));
 
@@ -1022,7 +1023,7 @@ api.post('/comments/:kind/:id', wrap((req, res) => {
   const body = str(req.body.body, 1000);
   if (!body) throw bad('Bình luận trống');
   const r = db.prepare('INSERT INTO comments (kind, target_id, user_id, body, created_at) VALUES (?,?,?,?,?)').run(kind, id, req.user.id, body, now());
-  if (ownerId && ownerId !== req.user.id) notify(ownerId, 'reply', `${req.user.display_name} đã bình luận tin của bạn ở Chủ đề nóng`, { url: '/#/hot', tag: `cmt-${id}` });
+  if (ownerId && ownerId !== req.user.id) notify(ownerId, 'reply', ['hotComment', { u: req.user.display_name }], { url: '/#/hot', tag: `cmt-${id}` });
   res.status(201).json({ comment: commentDto(db.prepare('SELECT * FROM comments WHERE id = ?').get(r.lastInsertRowid), req.user.id) });
 }));
 api.delete('/comments/:cid', wrap((req, res) => {
@@ -1076,8 +1077,7 @@ function validMentions(gid, authorId, body, ids) {
   return out;
 }
 function notifyMentions(g, author, ids, msgId) {
-  const where = g.type === 'dm' ? 'tin nhắn riêng' : `"${g.name}"`;
-  for (const id of ids) notify(id, 'mention', `${author.display_name} đã nhắc đến bạn trong ${where}`, { url: `/#/chat/${g.id}`, tag: `mention-${g.id}`, msgId });
+  for (const id of ids) notify(id, 'mention', ['mention', { u: author.display_name, ...(g.type === 'dm' ? { where: 'dm' } : { g: `"${g.name}"` }) }], { url: `/#/chat/${g.id}`, tag: `mention-${g.id}`, msgId });
 }
 api.get('/groups/:id/mention-search', wrap((req, res) => {
   const tg = getGroup(int(req.params.id));
@@ -1107,7 +1107,7 @@ api.get('/groups/:id/welcome', wrap((req, res) => {
       };
     })
     .sort((a, b) => Number(b.isMe) - Number(a.isMe));
-  res.json({ group: { id: g.id, name: g.name, type: g.type }, newcomers, days: 7, perAuthor: WELCOME_PER_AUTHOR });
+  res.json({ group: { id: g.id, name: groupNameFor(g, langOf(req)), type: g.type }, newcomers, days: 7, perAuthor: WELCOME_PER_AUTHOR });
 }));
 api.post('/groups/:id/welcome/:uid', wrap((req, res) => {
   rateLimit(`welcome:${req.user.id}`, 20, 60_000);
@@ -1125,7 +1125,7 @@ api.post('/groups/:id/welcome/:uid', wrap((req, res) => {
   const mine = db.prepare('SELECT COUNT(*) c FROM welcomes WHERE group_id = ? AND user_id = ? AND author_id = ?').get(gid, target, req.user.id).c;
   if (mine >= WELCOME_PER_AUTHOR) throw bad(`Bạn đã gửi đủ ${WELCOME_PER_AUTHOR} lời chào cho thành viên này`);
   const r = db.prepare('INSERT INTO welcomes (group_id, user_id, author_id, body, created_at) VALUES (?,?,?,?,?)').run(gid, target, req.user.id, body, now());
-  if (mine === 0) notify(target, 'welcome', `${req.user.display_name} đã gửi lời chào mừng bạn trong "${g.name}"`, { url: `/#/welcome/${gid}`, tag: `welcome-${gid}` });
+  if (mine === 0) notify(target, 'welcome', ['welcomeFrom', { u: req.user.display_name, g: g.name }], { url: `/#/welcome/${gid}`, tag: `welcome-${gid}` });
   res.status(201).json({ welcome: { id: Number(r.lastInsertRowid), author: publicUser(getUser(req.user.id)), body, createdAt: now(), mine: true } });
 }));
 
@@ -1217,14 +1217,14 @@ api.post(
     onMessage(req.user, g, dto, replyTo ? db.prepare('SELECT user_id FROM messages WHERE id = ?').get(replyTo)?.user_id : null);
     notifyMentions(g, req.user, mentionIds, dto.id);
     if (mentionAll) {
-      const text = `${req.user.display_name} đã nhắc đến mọi người trong "${g.name}"`;
-      const previewBody = body.replace(/(^|\s)@everyone(?![\p{L}\p{N}_])/giu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Có thông báo mới';
+      const text = ['mentionAll', { u: req.user.display_name, g: g.name }];
+      const previewBody = body.replace(/(^|\s)@everyone(?![\p{L}\p{N}_])/giu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
       tx(() => {
         for (const uid of memberIds(gid)) {
           if (uid === req.user.id || mentionIds.includes(uid)) continue;
           const mm = getMember(gid, uid);
           if (!mm || isMuted(mm) || isBlockedEither(req.user.id, uid)) continue;
-          notify(uid, 'mention', text, { url: `/#/chat/${gid}`, tag: `mention-${gid}`, msgId: dto.id, force: true, pushBody: `📣 ${req.user.display_name} @everyone · ${g.name}: ${previewBody}` });
+          notify(uid, 'mention', text, { url: `/#/chat/${gid}`, tag: `mention-${gid}`, msgId: dto.id, force: true, pushBody: previewBody ? ['everyonePush', { u: req.user.display_name, g: g.name, b: previewBody }] : ['newNotice'] });
         }
       });
     }
@@ -1232,7 +1232,7 @@ api.post(
     if (replyTo && g.type !== 'dm') {
       const orig = db.prepare('SELECT user_id FROM messages WHERE id = ?').get(replyTo);
       if (orig && orig.user_id !== req.user.id && !mentionIds.includes(orig.user_id) && getMember(gid, orig.user_id) && !isBlockedEither(req.user.id, orig.user_id)) {
-        notify(orig.user_id, 'reply', `${req.user.display_name} đã trả lời tin của bạn trong "${g.name}"`, { url: `/#/chat/${gid}`, tag: `reply-${gid}`, msgId: dto.id });
+        notify(orig.user_id, 'reply', ['reply', { u: req.user.display_name, g: g.name }], { url: `/#/chat/${gid}`, tag: `reply-${gid}`, msgId: dto.id });
       }
     }
     // tin nhắn riêng: chỉ đẩy thông báo ngoài app (không thêm vào danh sách thông báo)
@@ -1317,7 +1317,7 @@ function reactTo(req, res, key) {
   }
   if (!had) onHeart(req.user.id, root.user_id, root.id, key);
   if (!had && [1, 5, 10, 25, 50, 100].includes(hearts)) {
-    notify(root.user_id, 'heart', hearts === 1 ? `${req.user.display_name} đã react tin nhắn của bạn` : `Tin nhắn của bạn đã nhận được ${hearts} react`, { url: `/#/chat/${root.group_id}`, msgId: root.id, tag: `heart-${root.id}` });
+    notify(root.user_id, 'heart', hearts === 1 ? ['react1', { u: req.user.display_name }] : ['reactN', { n: hearts }], { url: `/#/chat/${root.group_id}`, msgId: root.id, tag: `heart-${root.id}` });
   }
   const mine = new Set(db.prepare('SELECT emoji FROM reactions WHERE message_id = ? AND user_id = ?').all(root.id, req.user.id).map((r) => r.emoji));
   res.json({ hearts, hearted: mine.has('heart'), reactions: summary.map((r) => ({ ...r, mine: mine.has(r.emoji) })) });
@@ -1516,7 +1516,7 @@ api.delete(
     if (!own) {
       const reason = str(req.body?.reason, 300) || 'Vi phạm quy tắc cộng đồng';
       log(req.user.id, 'delete_message', { target: msg.user_id, group: g.id, message: msg.id, reason });
-      notify(msg.user_id, 'moderation', `Tin nhắn của bạn trong "${g.name}" đã bị xóa. Lý do: ${reason}`);
+      notify(msg.user_id, 'moderation', ['msgDeleted', { g: g.name, r: reason }]);
     }
     hub.sendMany(memberIds(g.id), { type: 'message_deleted', groupId: g.id, messageId: msg.id });
     res.json({ ok: true });
@@ -1534,7 +1534,7 @@ api.post(
     const reason = str(req.body.reason, 300) || 'Vi phạm quy tắc cộng đồng';
     db.prepare('UPDATE members SET mod_muted_until = ? WHERE group_id = ? AND user_id = ?').run(now() + minutes * 60_000, g.id, uid);
     log(req.user.id, 'mute', { target: uid, group: g.id, reason });
-    notify(uid, 'moderation', `Bạn bị tắt tiếng ${minutes} phút trong "${g.name}". Lý do: ${reason}`);
+    notify(uid, 'moderation', ['muted', { n: minutes, g: g.name, r: reason }]);
     res.json({ ok: true });
   })
 );
@@ -1551,7 +1551,7 @@ api.post(
     removeMember(g.id, uid);
     if (g.type !== 'private') db.prepare('INSERT OR IGNORE INTO bans (group_id, user_id) VALUES (?,?)').run(g.id, uid);
     log(req.user.id, 'kick', { target: uid, group: g.id, reason });
-    notify(uid, 'moderation', `Bạn đã bị xóa khỏi "${g.name}". Lý do: ${reason}`);
+    notify(uid, 'moderation', ['kicked', { g: g.name, r: reason }]);
     res.json({ ok: true });
   })
 );
@@ -1607,7 +1607,7 @@ api.post(
     const dup = db.prepare("SELECT 1 FROM friend_requests WHERE status='pending' AND ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?))").get(me, to, to, me);
     if (dup) throw bad('Đã có lời mời đang chờ');
     db.prepare('INSERT INTO friend_requests (from_id, to_id, created_at) VALUES (?,?,?)').run(me, to, now());
-    notify(to, 'friend_request', `${req.user.display_name} muốn kết bạn với bạn`);
+    notify(to, 'friend_request', ['friendReq', { u: req.user.display_name }]);
     res.status(201).json({ ok: true });
   })
 );
@@ -1621,7 +1621,7 @@ function answerRequest(accept) {
       if (isBlockedEither(r.from_id, r.to_id)) throw forbidden();
       const [a, b] = pair(r.from_id, r.to_id);
       db.prepare('INSERT OR IGNORE INTO friends (a, b, created_at) VALUES (?,?,?)').run(a, b, now());
-      notify(r.from_id, 'friend_accept', `${req.user.display_name} đã chấp nhận lời mời kết bạn`);
+      notify(r.from_id, 'friend_accept', ['friendOk', { u: req.user.display_name }]);
     }
     res.json({ ok: true });
   });
@@ -1721,7 +1721,7 @@ api.post('/private', wrap((req, res) => {
     db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ?').run(gid);
     return gid;
   });
-  for (const id of ids) notify(id, 'group_invite', `${req.user.display_name} đã thêm bạn vào nhóm "${name}"`);
+  for (const id of ids) notify(id, 'group_invite', ['addedTo', { u: req.user.display_name, g: name }]);
   res.status(201).json({ group: groupDto(getGroup(gid), req.user.id, getMember(gid, req.user.id)) });
 }));
 
@@ -1751,7 +1751,7 @@ api.post('/private/:id/invite', wrap((req, res) => {
   for (const id of ids) {
     addMember(g.id, id);
     db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(g.id, id);
-    notify(id, 'group_invite', `${req.user.display_name} đã thêm bạn vào nhóm "${g.name}"`);
+    notify(id, 'group_invite', ['addedTo', { u: req.user.display_name, g: g.name }]);
   }
   res.json({ added: ids.length });
 }));
@@ -1793,7 +1793,7 @@ api.post('/invite/:code/join', wrap((req, res) => {
   if (db.prepare("SELECT 1 FROM join_requests WHERE group_id = ? AND user_id = ? AND status = 'pending'").get(g.id, req.user.id)) throw bad('Yêu cầu của bạn đang chờ duyệt');
   db.prepare('INSERT INTO join_requests (group_id, user_id, created_at) VALUES (?,?,?)').run(g.id, req.user.id, now());
   for (const r of db.prepare("SELECT user_id FROM members WHERE group_id = ? AND role = 'admin'").all(g.id))
-    notify(r.user_id, 'join_request', `${req.user.display_name} xin vào nhóm "${g.name}"`);
+    notify(r.user_id, 'join_request', ['joinReq', { u: req.user.display_name, g: g.name }]);
   res.status(201).json({ pending: true });
 }));
 
@@ -1813,7 +1813,7 @@ function answerJoin(approve) {
       assertRoom(g, 1);
       addMember(g.id, r.user_id);
       db.prepare('UPDATE members SET rules_ack = 1 WHERE group_id = ? AND user_id = ?').run(g.id, r.user_id);
-      notify(r.user_id, 'join_approved', `Bạn đã được duyệt vào nhóm "${g.name}"`);
+      notify(r.user_id, 'join_approved', ['joinOk', { g: g.name }]);
     }
     db.prepare('UPDATE join_requests SET status = ? WHERE id = ?').run(approve ? 'approved' : 'rejected', r.id);
     res.json({ ok: true });
@@ -1849,7 +1849,7 @@ api.delete('/private/:id', wrap((req, res) => {
   const g = requirePrivAdmin(int(req.params.id), req.user.id);
   const ids = memberIds(g.id);
   db.prepare('DELETE FROM groups WHERE id = ?').run(g.id); // giải tán
-  for (const id of ids) if (id !== req.user.id) notify(id, 'group_dissolved', `Nhóm "${g.name}" đã được giải tán`);
+  for (const id of ids) if (id !== req.user.id) notify(id, 'group_dissolved', ['groupDissolved', { g: g.name }]);
   res.json({ ok: true });
 }));
 
@@ -1945,27 +1945,27 @@ api.post(
         db.prepare('UPDATE messages SET deleted = 1 WHERE id = ?').run(r.message_id);
         hub.sendMany(memberIds(r.group_id), { type: 'message_deleted', groupId: r.group_id, messageId: r.message_id });
         log(req.user.id, 'delete_message', { target, group: r.group_id, message: r.message_id, reason: note });
-        notify(target, 'moderation', `Tin nhắn của bạn đã bị xóa. Lý do: ${note}`);
+        notify(target, 'moderation', ['msgDeletedNoG', { r: note }]);
       }
       if (action === 'mute' && g && getMember(g.id, target)) {
         db.prepare('UPDATE members SET mod_muted_until = ? WHERE group_id = ? AND user_id = ?').run(now() + 24 * 3600_000, g.id, target);
         log(req.user.id, 'mute', { target, group: g.id, reason: note });
-        notify(target, 'moderation', `Bạn bị tắt tiếng 24 giờ trong "${g.name}". Lý do: ${note}`);
+        notify(target, 'moderation', ['muted24', { g: g.name, r: note }]);
       }
       if (action === 'kick' && g && getMember(g.id, target)) {
         removeMember(g.id, target);
         if (g.type !== 'private') db.prepare('INSERT OR IGNORE INTO bans (group_id, user_id) VALUES (?,?)').run(g.id, target);
         log(req.user.id, 'kick', { target, group: g.id, reason: note });
-        notify(target, 'moderation', `Bạn đã bị xóa khỏi "${g.name}". Lý do: ${note}`);
+        notify(target, 'moderation', ['kicked', { g: g.name, r: note }]);
       }
       if (action === 'warn') {
         log(req.user.id, 'warn', { target, reason: note });
-        notify(target, 'moderation', `Cảnh cáo từ quản trị viên: ${note}`);
+        notify(target, 'moderation', ['warn', { r: note }]);
       }
       if (action === 'lock_temp' || action === 'lock_perm') lockUser(req.user.id, target, action === 'lock_temp' ? Math.min(int(req.body.days) || 7, 365) : null, note);
       db.prepare("UPDATE reports SET status='resolved', resolution=?, note=?, handled_by=?, handled_at=? WHERE id=?").run(action, note, req.user.id, now(), r.id);
     });
-    notify(r.reporter_id, 'report_done', 'Báo cáo của bạn đã được xử lý. Cảm ơn bạn đã giúp giữ cộng đồng lành mạnh.');
+    notify(r.reporter_id, 'report_done', ['reportDone']);
     res.json({ ok: true });
   })
 );
@@ -2179,14 +2179,14 @@ api.post('/admin/mods', adminOnly, wrap((req, res) => {
   if (!getMember(g.id, uid)) addMember(g.id, uid);
   db.prepare("UPDATE members SET role='mod' WHERE group_id=? AND user_id=?").run(g.id, uid);
   log(req.user.id, 'grant_mod', { target: uid, group: g.id });
-  notify(uid, 'mod', `Bạn được trao quyền mod của nhóm "${g.name}"`);
+  notify(uid, 'mod', ['modOn', { g: g.name }]);
   res.json({ ok: true });
 }));
 api.delete('/admin/mods/:groupId/:userId', adminOnly, wrap((req, res) => {
   const gid = int(req.params.groupId), uid = int(req.params.userId);
   db.prepare("UPDATE members SET role='member' WHERE group_id=? AND user_id=? AND role='mod'").run(gid, uid);
   log(req.user.id, 'revoke_mod', { target: uid, group: gid });
-  notify(uid, 'mod', 'Quyền mod của bạn đã được thu hồi');
+  notify(uid, 'mod', ['modOff']);
   res.json({ ok: true });
 }));
 
@@ -2203,7 +2203,7 @@ api.post('/admin/admins', superOnly, wrap((req, res) => {
   db.prepare("UPDATE users SET role = 'admin', is_super = 0 WHERE id = ?").run(uid);
   addMember(trendGroupId(), uid);
   log(req.user.id, 'grant_admin', { target: uid });
-  notify(uid, 'mod', 'Bạn được trao quyền Admin');
+  notify(uid, 'mod', ['adminOn']);
   res.json({ ok: true });
 }));
 api.delete('/admin/admins/:userId', superOnly, wrap((req, res) => {
@@ -2213,7 +2213,7 @@ api.delete('/admin/admins/:userId', superOnly, wrap((req, res) => {
   if (t.is_super) throw bad('Không thể thu hồi Admin hệ thống');
   db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(uid);
   log(req.user.id, 'revoke_admin', { target: uid });
-  notify(uid, 'mod', 'Quyền Admin của bạn đã được thu hồi');
+  notify(uid, 'mod', ['adminOff']);
   res.json({ ok: true });
 }));
 
@@ -2342,12 +2342,13 @@ mountPets(api, wrap, adminOnly, checkUploadUrl);
 
 // ---- lỗi ---------------------------------------------------------------------
 api.use((_req, _res, next) => next(new HttpError(404, 'Không tìm thấy')));
-api.use((err, _req, res, _next) => {
-  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
-  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Dữ liệu quá lớn' });
-  if (err instanceof SyntaxError) return res.status(400).json({ error: 'Dữ liệu không hợp lệ' });
+api.use((err, req, res, _next) => {
+  const L = langOf(req); // câu lỗi theo ngôn ngữ người dùng (header x-lang)
+  if (err instanceof HttpError) return res.status(err.status).json({ error: trErr(err.message, L), ...(err.code ? { code: err.code } : {}) });
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: trErr('Dữ liệu quá lớn', L) });
+  if (err instanceof SyntaxError) return res.status(400).json({ error: trErr('Dữ liệu không hợp lệ', L) });
   console.error(err);
-  res.status(500).json({ error: 'Lỗi máy chủ' });
+  res.status(500).json({ error: trErr('Lỗi máy chủ', L) });
 });
 
 export { isOnline };

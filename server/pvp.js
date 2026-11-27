@@ -49,7 +49,7 @@ export function expireDue() {
   for (const { id } of rows) {
     const c = closePending(id, 'expired');
     if (c) {
-      notify(c.from_id, 'mt_invite', `Lời thách đấu tới ${nameOf(c.to_id)} đã hết hạn, đã hoàn ${c.stake} xu`, { url: '/#/muaythai/box', tag: `mtch-${id}` });
+      notify(c.from_id, 'mt_invite', ['mtExpired', { u: nameOf(c.to_id), n: c.stake }], { url: '/#/muaythai/box', tag: `mtch-${id}` });
       hub.send(c.from_id, { type: 'mt_pvp', id });
       hub.send(c.to_id, { type: 'mt_pvp', id });
     }
@@ -133,7 +133,7 @@ export function mountPvp(api, wrap) {
       db.prepare('INSERT INTO mt_challenges (id, from_id, to_id, stake, from_red, created_at, expires_at) VALUES (?,?,?,?,?,?,?)').run(id, uid, toId, stake, fromRed, now(), now() + PVP.TTL_MS);
       addNet(uid, -stake, 'pvp_escrow', id);
     });
-    notify(toId, 'mt_invite', `${req.user.display_name} thách bạn đấu Muay Thai, cược ${stake} xu. Trả lời trong 30 phút`, { url: `/#/muaythai/pvp/${id}`, tag: `mtch-${id}` });
+    notify(toId, 'mt_invite', ['mtChallenge', { u: req.user.display_name, n: stake }], { url: `/#/muaythai/pvp/${id}`, tag: `mtch-${id}` });
     hub.send(toId, { type: 'mt_pvp', id });
     res.status(201).json(dto(chRow(id), uid));
   }));
@@ -177,7 +177,7 @@ export function mountPvp(api, wrap) {
         .run(winnerFrom ? 'from' : 'to', JSON.stringify(script), now() + PVP.START_DELAY_MS, now(), payout, c.id);
       addNet(winnerFrom ? c.from_id : c.to_id, payout, 'pvp_payout', c.id);
     });
-    notify(c0.from_id, 'mt_invite', `${req.user.display_name} đã chấp nhận, trận đang bắt đầu`, { url: `/#/muaythai/pvp/${c0.id}`, tag: `mtch-${c0.id}` });
+    notify(c0.from_id, 'mt_invite', ['mtAccepted', { u: req.user.display_name }], { url: `/#/muaythai/pvp/${c0.id}`, tag: `mtch-${c0.id}` });
     hub.send(c0.from_id, { type: 'mt_pvp', id: c0.id });
     res.json(dto(chRow(c0.id), uid));
   }));
@@ -187,7 +187,7 @@ export function mountPvp(api, wrap) {
     if (c0.to_id !== me(req)) throw forbidden('Chỉ người được mời mới từ chối được');
     if (c0.status !== 'pending') throw err(409, 'CHALLENGE_CLOSED', 'Lời thách đấu này không còn hiệu lực');
     closePending(c0.id, 'declined');
-    notify(c0.from_id, 'mt_invite', `${req.user.display_name} đã từ chối lời thách đấu, đã hoàn ${c0.stake} xu`, { url: '/#/muaythai/box', tag: `mtch-${c0.id}` });
+    notify(c0.from_id, 'mt_invite', ['mtDeclined', { u: req.user.display_name, n: c0.stake }], { url: '/#/muaythai/box', tag: `mtch-${c0.id}` });
     hub.send(c0.from_id, { type: 'mt_pvp', id: c0.id });
     res.json(dto(chRow(c0.id), me(req)));
   }));

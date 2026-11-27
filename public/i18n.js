@@ -11,6 +11,7 @@ export const LANGS = [
 const IDX = { vi: 0, en: 1, th: 2, zh: 3, es: 4, pt: 5 };
 export const LOCALE = { vi: 'vi-VN', en: 'en-US', th: 'th-TH', zh: 'zh-CN', es: 'es-419', pt: 'pt-BR' };
 import { ES_PT } from './i18n-es-pt.js';
+import { UI } from './i18n-ui.js';
 
 const D = {
   // ---- ngôn ngữ ----
@@ -179,10 +180,16 @@ const D = {
 };
 
 for (const [k, v] of Object.entries(ES_PT)) if (D[k]) { D[k][4] = v[0]; D[k][5] = v[1]; }
+// các màn chuyển sau (chat, cấp bậc, cửa hàng...): mỗi khoá đủ 6 ngôn ngữ [vi, en, th, zh, es, pt]
+Object.assign(D, UI);
 
 let cur = 'vi';
 export const getLang = () => cur;
 export const isLang = (c) => c in IDX;
+// có bản dịch cho khoá thì dùng, không thì giữ chữ gốc từ máy chủ (fb)
+export const tOr = (key, fb, vars) => (D[key] ? t(key, vars) : fb);
+// số theo ngôn ngữ đang dùng (1.000 / 1,000)
+export const fmtNum = (n) => Number(n).toLocaleString(LOCALE[cur] || 'vi-VN');
 
 export function t(key, vars) {
   const e = D[key];

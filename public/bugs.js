@@ -1,4 +1,5 @@
 import { $, $$, esc, S, api, toast, fail, openModal, closeModal, fmtDateTime, actions, imageToDataUrl } from './core.js';
+import { t as tr } from './i18n.js';
 
 const STATUS = {
   new: ['Mới', 'warn'],
@@ -12,12 +13,12 @@ const readFile = (f) => new Promise((res) => { const r = new FileReader(); r.onl
 // Người dùng: báo lỗi
 // ===========================================================================
 actions['report-bug'] = () => {
-  const m = openModal(`<form id="bugf" class="col"><h2>Báo lỗi</h2>
-    <p class="small muted">Mô tả lỗi bạn gặp. Chúng tôi tự đính kèm trang bạn đang mở và loại thiết bị để dễ tìm lỗi.</p>
-    <div class="field"><label for="bt">Tiêu đề</label><input class="input" id="bt" required minlength="3" maxlength="120" placeholder="Ví dụ: Không gửi được ảnh"></div>
-    <div class="field"><label for="bd">Chuyện gì đã xảy ra?</label><textarea class="input" id="bd" required minlength="10" maxlength="4000" placeholder="Bạn đã làm gì, mong đợi gì, và thực tế ra sao?"></textarea></div>
-    <div class="field"><label for="bs">Ảnh chụp màn hình (không bắt buộc, tối đa 2MB)</label><input id="bs" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
-    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary" id="bsend">Gửi báo lỗi</button></div></form>`);
+  const m = openModal(`<form id="bugf" class="col"><h2>${tr('nav.reportBug')}</h2>
+    <p class="small muted">${tr('bg.intro')}</p>
+    <div class="field"><label for="bt">${tr('pg.title')}</label><input class="input" id="bt" required minlength="3" maxlength="120" placeholder="${tr('bg.titlePh')}"></div>
+    <div class="field"><label for="bd">${tr('bg.what')}</label><textarea class="input" id="bd" required minlength="10" maxlength="4000" placeholder="${tr('bg.whatPh')}"></textarea></div>
+    <div class="field"><label for="bs">${tr('bg.shot')}</label><input id="bs" type="file" accept="image/png,image/jpeg,image/gif,image/webp"></div>
+    <div class="btns"><button type="button" class="btn" data-close>${tr('c.cancel')}</button><button class="btn primary" id="bsend">${tr('bg.send')}</button></div></form>`);
   $('[data-close]', m).onclick = closeModal;
   $('#bugf').onsubmit = async (e) => {
     e.preventDefault();
@@ -31,7 +32,7 @@ actions['report-bug'] = () => {
       }
       await api('POST', '/bugs', { title: $('#bt').value, description: $('#bd').value, screenshotUrl, page: `${location.hash || '#/'} (${innerWidth}x${innerHeight})` });
       closeModal();
-      toast('Đã gửi báo lỗi. Cảm ơn bạn!');
+      toast(tr('bg.sent'));
     } catch (er) { btn.disabled = false; fail(er); }
   };
 };

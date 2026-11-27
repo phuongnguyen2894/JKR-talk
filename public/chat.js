@@ -2,17 +2,11 @@ import { $, $$, esc, S, api, go, icon, locText, avatar, groupAvatar, fmtTime, fm
 import { maybeAskPush } from './push.js';
 import { rememberRx, reactsHtml, composerPanelHtml, wireEmojiSuggest, reactIcon } from './emoji.js';
 import { nameCls } from './frames.js';
+import { t as tr } from './i18n.js';
 
 const PUBLIC = ['country', 'region', 'province', 'topic'];
 const EMOJI = ['😀','😂','🥹','😍','🥰','😭','😘','🤣','👍','🙏','👏','🔥','💜','💚','💙','💖','✨','🎉','😎','🤗','😅','🥺','😢','😡','🤔','🙌','💪','🌸','⭐','🎬','📺','🍿'];
-const RULES = [
-  'Ở các group chung chỉ nói về LingOrm và JKR.',
-  'Tôn trọng mọi thành viên, không công kích hay phân biệt đối xử.',
-  'Không spam, quảng cáo hay đăng liên kết lạ.',
-  'Không đăng nội dung nhạy cảm hoặc vi phạm pháp luật.',
-  'Gặp vi phạm hãy dùng nút Báo cáo thay vì tranh cãi.',
-  'Tin nhắn chỉ được lưu trong 38 ngày gần nhất; tin cũ hơn sẽ tự động bị xóa (kèm ảnh).',
-];
+const RULES = ['ch.rule1', 'ch.rule2', 'ch.rule3', 'ch.rule4', 'ch.rule5', 'ch.rule6']; // khoá dịch
 
 let C = null; // trạng thái cuộc trò chuyện đang mở
 export const activeChat = () => C;
@@ -24,12 +18,12 @@ export const canModerate = (g) =>
 // ===========================================================================
 export async function renderChat(view, gid) {
   C = null;
-  view.innerHTML = '<div class="gate muted">Đang tải…</div>';
+  view.innerHTML = `<div class="gate muted">${tr('cmt.loading')}</div>`;
   let group;
   try {
     group = (await api('GET', `/groups/${gid}`)).group;
   } catch (e) {
-    view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">Quay lại</a></div>`;
+    view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">${tr('ch.back')}</a></div>`;
     return;
   }
   // Nhóm công khai chưa tham gia: vẫn xem được tin (chỉ đọc), muốn chat/thả tim thì bấm Tham gia
@@ -37,7 +31,7 @@ export async function renderChat(view, gid) {
   // Chủ đề thảo luận: chat / thả tim ngay, không cần bấm Tham gia (máy chủ tự thêm khi tương tác lần đầu)
   C = { gid: group.id, group, joined, open: group.type === 'topic', seen: new Set(), first: null, last: null, hasMore: false, replyTo: null, images: [], emoji: false };
   let first;
-  try { first = await api('GET', `/groups/${gid}/messages?limit=40`); } catch (e) { C = null; view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">Quay lại</a></div>`; return; }
+  try { first = await api('GET', `/groups/${gid}/messages?limit=40`); } catch (e) { C = null; view.innerHTML = `<div class="gate"><p>${esc(e.message)}</p><a class="btn" href="#/chat">${tr('ch.back')}</a></div>`; return; }
   C.hasMore = first.hasMore;
   C.tags = [];
   if (group.type === 'trend') { try { C.tags = (await api('GET', '/trend/tags')).tags; } catch {} }
@@ -61,37 +55,37 @@ export async function renderChat(view, gid) {
 }
 
 function subtitle(g) {
-  if (g.type === 'trend') return `Nơi đăng các bài cần tương tác · bài của bạn được admin duyệt trước khi hiện · ${g.memberCount} thành viên`;
-  if (g.type === 'topic') return `${g.highlighted ? '<span class="hl-pill">★ Nổi bật</span> ' : ''}Chủ đề thảo luận${g.description ? ` · ${esc(g.description)}` : ''} · ${g.memberCount} thành viên`;
-  if (isPublic(g)) return `Nhóm công khai · vào tự do, không cần duyệt · ${g.memberCount} thành viên`;
-  if (g.type === 'private') return `Nhóm riêng · ${g.memberCount}/${g.memberLimit} thành viên`;
+  if (g.type === 'trend') return `${tr('guest.subTrend')} · ${tr('ch.subTrendReview')} · ${tr('ch.members', { n: g.memberCount })}`;
+  if (g.type === 'topic') return `${g.highlighted ? `<span class="hl-pill">★ ${tr('ch.featured')}</span> ` : ''}${tr('ch.topic')}${g.description ? ` · ${esc(g.description)}` : ''} · ${tr('ch.members', { n: g.memberCount })}`;
+  if (isPublic(g)) return `${tr('ch.publicSub')} · ${tr('ch.members', { n: g.memberCount })}`;
+  if (g.type === 'private') return `${tr('ch.privateSub')} · ${tr('ch.members', { n: `${g.memberCount}/${g.memberLimit}` })}`;
   const p = g.peer;
-  return `Tin nhắn riêng${p?.online ? ' · <span class="dot"></span> đang online' : ''}`;
+  return `${tr('nav.dm')}${p?.online ? ` · <span class="dot"></span> ${tr('ch.online')}` : ''}`;
 }
 
 function drawChat(view) {
   const g = C.group;
   view.innerHTML = `
   <div class="chat-head">
-    <a class="icon-btn back" href="#/chat" aria-label="Quay lại danh sách">${icon('back', 22)}</a>
+    <a class="icon-btn back" href="#/chat" aria-label="${tr('ch.backList')}">${icon('back', 22)}</a>
     ${g.type === 'dm' ? avatar(g.peer) : groupAvatar(g)}
     <div class="grow"><h1>${esc(g.name)}</h1><div class="small muted sub">${subtitle(g)}</div></div>
-    ${C.joined && ['country', 'region', 'province', 'private'].includes(g.type) ? `<button class="icon-btn welcome-btn" data-act="welcome-open" data-id="${g.id}" aria-label="Chào mừng thành viên mới${g.newcomers ? `, ${g.newcomers} người chưa được bạn chào` : ''}" title="Chào mừng thành viên mới">👋${g.newcomers ? `<span class="badge">${g.newcomers > 99 ? '99+' : g.newcomers}</span>` : ''}</button>` : ''}
-    ${g.type === 'topic' ? `<button class="icon-btn" data-act="share-topic" data-id="${g.id}" data-name="${esc(g.name)}" aria-label="Chia sẻ chủ đề" title="Chia sẻ chủ đề">${icon('share', 20)}</button>` : ''}
-    <button class="icon-btn info-btn" data-act="info" aria-label="Thông tin nhóm">${icon('info', 20)}</button>
-    ${g.type !== 'dm' && C.joined ? `<button class="icon-btn" data-act="mute-dialog" aria-label="Thông báo" title="${g.muted ? 'Đang tắt thông báo' : 'Tắt thông báo'}">${icon('bell', 20)}${g.muted ? '<span class="sr-only">đang tắt</span>' : ''}</button>
-    ${g.type !== 'trend' && g.type !== 'country' ? `<button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">Rời nhóm</button>` : ''}` : ''}
+    ${C.joined && ['country', 'region', 'province', 'private'].includes(g.type) ? `<button class="icon-btn welcome-btn" data-act="welcome-open" data-id="${g.id}" aria-label="${tr('ch.welcomeNew')}${g.newcomers ? `, ${tr('ch.notGreeted', { n: g.newcomers })}` : ''}" title="${tr('ch.welcomeNew')}">👋${g.newcomers ? `<span class="badge">${g.newcomers > 99 ? '99+' : g.newcomers}</span>` : ''}</button>` : ''}
+    ${g.type === 'topic' ? `<button class="icon-btn" data-act="share-topic" data-id="${g.id}" data-name="${esc(g.name)}" aria-label="${tr('ch.shareTopic')}" title="${tr('ch.shareTopic')}">${icon('share', 20)}</button>` : ''}
+    <button class="icon-btn info-btn" data-act="info" aria-label="${tr('ch.groupInfo')}">${icon('info', 20)}</button>
+    ${g.type !== 'dm' && C.joined ? `<button class="icon-btn" data-act="mute-dialog" aria-label="${tr('nav.notifs')}" title="${g.muted ? tr('ch.mutedNow') : tr('ch.mute')}">${icon('bell', 20)}${g.muted ? `<span class="sr-only">${tr('ch.mutedSr')}</span>` : ''}</button>
+    ${g.type !== 'trend' && g.type !== 'country' ? `<button class="btn sm leave-btn" data-act="leave" data-id="${g.id}">${tr('ch.leave')}</button>` : ''}` : ''}
   </div>
   <div id="pinbar">${pinBarHtml()}</div>
   <div id="tagbar">${tagBarHtml()}</div>
   <div id="subs"></div>
   <div class="chat-body">
     <div class="chat-col">
-      <div class="msgs" id="msgs" aria-live="off"><div id="more" ${C.hasMore ? '' : 'hidden'} style="text-align:center"><button class="btn sm" data-act="load-more">Tải tin cũ hơn</button></div></div>
-      <div class="rt-wrap"><button class="read-toggle" id="readtoggle" data-act="toggle-read" aria-pressed="false" aria-label="Ẩn hoặc hiện thanh tiêu đề, ô nhập và menu"></button></div>
+      <div class="msgs" id="msgs" aria-live="off"><div id="more" ${C.hasMore ? '' : 'hidden'} style="text-align:center"><button class="btn sm" data-act="load-more">${tr('ch.loadOlder')}</button></div></div>
+      <div class="rt-wrap"><button class="read-toggle" id="readtoggle" data-act="toggle-read" aria-pressed="false" aria-label="${tr('ch.readToggle')}"></button></div>
       <div class="composer" id="composer">${composerHtml()}</div>
     </div>
-    <aside class="info wide" aria-label="Thông tin nhóm">${infoHtml()}</aside>
+    <aside class="info wide" aria-label="${tr('ch.groupInfo')}">${infoHtml()}</aside>
   </div>`;
   wireComposer();
   syncReadMode();
@@ -118,56 +112,56 @@ function tagBarHtml() {
   if (C?.group?.type !== 'trend') return '';
   const admin = S.me?.role === 'admin';
   const hasTags = !!C.tags?.length;
-  return `<div class="tagbar"><span class="tiny muted grow">${hasTags || admin ? 'Click để xem post nổi bật' : 'Bấm link X: tự copy caption và mở ô trả lời'}</span>
-    <button class="btn sm" data-act="cap-toggle" aria-pressed="${capOn()}" title="Bấm link X trong Đẩy trend: tự copy caption và mở ô trả lời">Caption tự động: ${capOn() ? 'Bật' : 'Tắt'}</button>
-    ${admin ? `<button class="btn sm" data-act="tags-edit">Sửa</button>` : ''}
-    ${hasTags || admin ? `<div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="Mở hashtag ${esc(t)} trên X, tab Top">#${esc(t)} ${icon('share', 13)}</a>`).join('') || '<span class="tiny muted">Chưa đặt hashtag</span>'}</div>` : ''}</div>`;
+  return `<div class="tagbar"><span class="tiny muted grow">${hasTags || admin ? tr('ch.tagsHint') : tr('ch.capHint')}</span>
+    <button class="btn sm" data-act="cap-toggle" aria-pressed="${capOn()}" title="${tr('ch.capTitle')}">${tr('ch.autoCap')}: ${capOn() ? tr('ch.on') : tr('ch.off')}</button>
+    ${admin ? `<button class="btn sm" data-act="tags-edit">${tr('ch.edit')}</button>` : ''}
+    ${hasTags || admin ? `<div class="tag-row">${(C.tags || []).map((t) => `<a class="tag-chip" href="${xTagUrl(t)}" target="_blank" rel="noopener noreferrer" aria-label="${tr('ch.openTag', { t: esc(t) })}">#${esc(t)} ${icon('share', 13)}</a>`).join('') || `<span class="tiny muted">${tr('ch.noTags')}</span>`}</div>` : ''}</div>`;
 }
 actions['tags-edit'] = () => {
-  const m = openModal(`<form id="tagf" class="col"><h2>Hashtag hôm nay</h2>
-    <div class="field"><label for="tagin">Mỗi dòng một hashtag (tối đa 5)</label>
+  const m = openModal(`<form id="tagf" class="col"><h2>${tr('ch.tagsToday')}</h2>
+    <div class="field"><label for="tagin">${tr('ch.tagsPerLine')}</label>
     <textarea class="input" id="tagin" rows="5" placeholder="#usmilePajamaPartyWithOrm">${esc((C.tags || []).map((t) => '#' + t).join('\n'))}</textarea></div>
-    <p class="tiny muted">Bấm vào hashtag sẽ mở tab Top trên X. App không tự lấy bài từ X.</p>
-    <div class="field"><label for="capsel">Chủ đề caption cho link mới</label><select class="input" id="capsel" disabled><option>Đang tải…</option></select>
-    <p class="tiny muted">Lấy từ công cụ tạo caption. Chỉ áp dụng cho link đăng từ lúc đổi; link cũ giữ caption đã tạo.</p></div>
-    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Lưu</button></div></form>`);
+    <p class="tiny muted">${tr('ch.tagsNote')}</p>
+    <div class="field"><label for="capsel">${tr('ch.capTopic')}</label><select class="input" id="capsel" disabled><option>${tr('cmt.loading')}</option></select>
+    <p class="tiny muted">${tr('ch.capNote')}</p></div>
+    <div class="btns"><button type="button" class="btn" data-close>${tr('c.cancel')}</button><button class="btn primary">${tr('ch.save')}</button></div></form>`);
   $('[data-close]', m).onclick = closeModal;
   let capSel = '';
   api('GET', '/admin/trend/caption-topic').then((r) => {
     capSel = r.selected;
     const el = $('#capsel', m); if (!el) return;
-    el.innerHTML = `<option value="">Tự động (chủ đề đang bật đầu tiên)</option>${r.topics.map((t) => `<option value="${esc(t.label)}" ${t.label === r.selected ? 'selected' : ''}>${esc(t.label)}${t.enabled ? ' (đang bật)' : ''}</option>`).join('')}`;
+    el.innerHTML = `<option value="">${tr('ch.capAuto')}</option>${r.topics.map((t) => `<option value="${esc(t.label)}" ${t.label === r.selected ? 'selected' : ''}>${esc(t.label)}${t.enabled ? ` (${tr('ch.enabled')})` : ''}</option>`).join('')}`;
     el.disabled = false;
-  }).catch(() => { const el = $('#capsel', m); if (el) el.innerHTML = '<option>Không tải được danh sách chủ đề</option>'; });
+  }).catch(() => { const el = $('#capsel', m); if (el) el.innerHTML = `<option>${tr('ch.capLoadFail')}</option>`; });
   $('#tagf', m).onsubmit = async (e) => {
     e.preventDefault();
     const tags = $('#tagin', m).value.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
     try {
       const sel = $('#capsel', m); if (sel && !sel.disabled && sel.value !== capSel) await api('PUT', '/admin/trend/caption-topic', { label: sel.value });
-      C.tags = (await api('PUT', '/admin/trend/tags', { tags })).tags; closeModal(); const el = $('#tagbar'); if (el) el.innerHTML = tagBarHtml(); toast('Đã lưu hashtag'); } catch (er) { fail(er); }
+      C.tags = (await api('PUT', '/admin/trend/tags', { tags })).tags; closeModal(); const el = $('#tagbar'); if (el) el.innerHTML = tagBarHtml(); toast(tr('ch.tagsSaved')); } catch (er) { fail(er); }
   };
 };
 
 function pinBarHtml() {
   const p = C?.group?.pinned;
   if (!p) return '';
-  const text = p.body ? p.body.replace(/\s+/g, ' ').slice(0, 140) : p.imageUrl ? '[Ảnh]' : '';
-  return `<div class="pinbar"><button type="button" class="pin-go" data-act="goto-msg" data-id="${p.id}" aria-label="Đi tới tin đã ghim">
+  const text = p.body ? p.body.replace(/\s+/g, ' ').slice(0, 140) : p.imageUrl ? tr('a.photoTag') : '';
+  return `<div class="pinbar"><button type="button" class="pin-go" data-act="goto-msg" data-id="${p.id}" aria-label="${tr('ch.gotoPinned')}">
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 5 3 3H7l3-3-1-5zM12 12v8"/></svg>
       <span class="pin-txt"><b>${esc(p.user.displayName)}</b>: ${esc(text)}</span></button>
-    ${C.group.canPin ? `<button type="button" class="icon-btn pin-x" data-act="unpin" aria-label="Bỏ ghim">${icon('x', 16)}</button>` : ''}</div>`;
+    ${C.group.canPin ? `<button type="button" class="icon-btn pin-x" data-act="unpin" aria-label="${tr('ch.unpin')}">${icon('x', 16)}</button>` : ''}</div>`;
 }
 const redrawPin = () => { const el = $('#pinbar'); if (el) el.innerHTML = pinBarHtml(); };
 actions['pin-msg'] = async (el) => {
   const id = Number(el.dataset.id);
   try {
-    if (C.group.pinned?.id === id) { await api('DELETE', `/groups/${C.gid}/pin`); C.group.pinned = null; toast('Đã bỏ ghim'); }
-    else { C.group.pinned = (await api('POST', `/groups/${C.gid}/pin`, { messageId: id })).pinned; toast('Đã ghim lên đầu nhóm'); }
+    if (C.group.pinned?.id === id) { await api('DELETE', `/groups/${C.gid}/pin`); C.group.pinned = null; toast(tr('ch.unpinned')); }
+    else { C.group.pinned = (await api('POST', `/groups/${C.gid}/pin`, { messageId: id })).pinned; toast(tr('ch.pinned')); }
     redrawPin();
   } catch (e) { fail(e); }
 };
 actions.unpin = async () => {
-  try { await api('DELETE', `/groups/${C.gid}/pin`); C.group.pinned = null; redrawPin(); toast('Đã bỏ ghim'); } catch (e) { fail(e); }
+  try { await api('DELETE', `/groups/${C.gid}/pin`); C.group.pinned = null; redrawPin(); toast(tr('ch.unpinned')); } catch (e) { fail(e); }
 };
 
 const canAct = () => C.joined || C.open;
@@ -184,25 +178,25 @@ async function becameMember() {
 function composerHtml() {
   const g = C.group;
   if (!canAct())
-    return `<div class="notice row between wrap"><span>Bạn đang xem nhóm này ở chế độ chỉ đọc.</span><button class="btn primary sm" data-act="join" data-id="${g.id}">Tham gia nhóm</button></div>`;
+    return `<div class="notice row between wrap"><span>${tr('ch.readOnly')}</span><button class="btn primary sm" data-act="join" data-id="${g.id}">${tr('ch.join')}</button></div>`;
   if (g.type === 'trend' && !g.canPost && !g.canSubmit)
-    return `<div class="notice">Chỉ admin và mod được đăng ở đây. Bạn hãy bấm vào bài, tương tác rồi thả tim cho bài đó nhé.</div>`;
+    return `<div class="notice">${tr('ch.staffOnly')}</div>`;
   if (isPublic(g) && !C.open && !g.rulesAck)
-    return `<div class="notice row between wrap"><span>Hãy xác nhận đã đọc quy tắc cộng đồng để bắt đầu chat.</span><button class="btn primary sm" data-act="rules">Xem quy tắc</button></div>`;
+    return `<div class="notice row between wrap"><span>${tr('ch.ackRules')}</span><button class="btn primary sm" data-act="rules">${tr('ch.viewRules')}</button></div>`;
   if (g.modMutedUntil && g.modMutedUntil > Date.now())
-    return `<div class="notice">Bạn đang bị tắt tiếng trong nhóm này đến ${fmtTime(g.modMutedUntil)} ${fmtDate(g.modMutedUntil)}.</div>`;
+    return `<div class="notice">${tr('ch.modMuted', { d: `${fmtTime(g.modMutedUntil)} ${fmtDate(g.modMutedUntil)}` })}</div>`;
   return `
-    ${g.type === 'trend' ? `<div class="tiny muted" style="padding:4px 12px 0">Tin trong Đẩy trend tự xóa sau 38 giờ. Link đã có sẽ không được gửi lại.${g.canSubmit ? ' <b>Bài của bạn sẽ hiện sau khi admin duyệt</b> (từ cấp Tím Mộng Mơ trở lên đăng thẳng, không cần chờ).' : ''}</div>` : ''}
-    ${C.replyTo ? `<div class="replybar"><span class="grow small">Trả lời <b>${esc(C.replyTo.name)}</b>: ${esc(C.replyTo.text)}</span><button class="link-btn" data-act="cancel-reply" aria-label="Hủy trả lời">${icon('x', 14)}</button></div>` : ''}
-    ${C.images.length ? `<div class="preview-row">${C.images.map((u, i) => `<div class="preview"><img src="${esc(u)}" alt="Ảnh sẽ gửi ${i + 1}"><button type="button" data-act="remove-image" data-i="${i}" aria-label="Bỏ ảnh ${i + 1}">${icon('x', 14)}</button></div>`).join('')}</div>` : ''}
+    ${g.type === 'trend' ? `<div class="tiny muted" style="padding:4px 12px 0">${tr('ch.trendNote')}${g.canSubmit ? ` <b>${tr('ch.trendReview')}</b> ${tr('ch.trendReview2', { l: tr('lv.3') })}` : ''}</div>` : ''}
+    ${C.replyTo ? `<div class="replybar"><span class="grow small">${tr('ch.reply')} <b>${esc(C.replyTo.name)}</b>: ${esc(C.replyTo.text)}</span><button class="link-btn" data-act="cancel-reply" aria-label="${tr('ch.cancelReply')}">${icon('x', 14)}</button></div>` : ''}
+    ${C.images.length ? `<div class="preview-row">${C.images.map((u, i) => `<div class="preview"><img src="${esc(u)}" alt="${tr('ch.imgToSend', { n: i + 1 })}"><button type="button" data-act="remove-image" data-i="${i}" aria-label="${tr('ch.removeImg', { n: i + 1 })}">${icon('x', 14)}</button></div>`).join('')}</div>` : ''}
     ${C.emoji ? composerPanelHtml() : ''}
     <form id="msgform" autocomplete="off">
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
-      <button type="button" class="icon-btn" data-act="pick-image" aria-label="Gửi ảnh">${icon('image', 22)}</button>
-      <button type="button" class="icon-btn" data-act="emoji-toggle" aria-label="Chọn emoji" aria-expanded="${C.emoji}">${icon('smile', 22)}</button>
-      <label for="msg" class="sr-only">Tin nhắn</label>
-      <input class="input" id="msg" type="text" maxlength="2000" placeholder="Nhắn vào ${esc(g.name)}">
-      <button class="btn primary" style="width:48px;padding:0" aria-label="Gửi">${icon('send', 20)}</button>
+      <button type="button" class="icon-btn" data-act="pick-image" aria-label="${tr('ch.sendImg')}">${icon('image', 22)}</button>
+      <button type="button" class="icon-btn" data-act="emoji-toggle" aria-label="${tr('ch.pickEmoji')}" aria-expanded="${C.emoji}">${icon('smile', 22)}</button>
+      <label for="msg" class="sr-only">${tr('ch.message')}</label>
+      <input class="input" id="msg" type="text" maxlength="2000" placeholder="${tr('ch.msgTo', { g: esc(g.name) })}">
+      <button class="btn primary" style="width:48px;padding:0" aria-label="${tr('cmt.send')}">${icon('send', 20)}</button>
     </form>`;
 }
 
@@ -230,7 +224,7 @@ function wireComposer() {
       const message = sent.message;
       C.mentionMap = {};
       C.replyTo = null; C.images = []; C.emoji = false;
-      if (sent.pending) { toast('Đã gửi, bài sẽ hiện sau khi admin duyệt', 5000); loadSubs(); } else appendMsg(message);
+      if (sent.pending) { toast(tr('ch.sentPending'), 5000); loadSubs(); } else appendMsg(message);
       becameMember();
       setTimeout(maybeAskPush, 1200);
       scrollBottom(true);
@@ -248,7 +242,7 @@ function wireComposer() {
     e.target.value = '';
     if (!files.length) return;
     try {
-      if (C.images.length + files.length > 4) throw new Error(`Mỗi tin nhắn gửi kèm tối đa 4 ảnh (đã chọn ${C.images.length})`);
+      if (C.images.length + files.length > 4) throw new Error(tr('ch.max4', { n: C.images.length }));
       for (const f of files) C.images.push((await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url);
       redrawComposer();
     } catch (err) { redrawComposer(); fail(err); }
@@ -334,32 +328,32 @@ function onlyEmoji(body) {
 }
 function msgHtml(m) {
   const own = mine(m);
-  const quote = m.reply && !m.reply.deleted ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="Đi tới tin nhắn được trả lời">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? 'Tin nhắn đã bị xóa' : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? '[Ảnh]' : ''}</button>` : '';
+  const quote = m.reply && !m.reply.deleted ? `<button type="button" class="quote" data-act="goto-msg" data-id="${m.reply.id}" aria-label="${tr('ch.gotoReplied')}">↪ ${esc(m.reply.displayName)}: ${m.reply.deleted ? tr('ch.deleted') : m.reply.body ? esc(m.reply.body) : m.reply.hasImage ? tr('a.photoTag') : ''}</button>` : '';
   const text = m.deleted
-    ? `<div class="text gone">Tin nhắn đã bị xóa</div>`
+    ? `<div class="text gone">${tr('ch.deleted')}</div>`
     : (m.body ? (own ? `<div class="bubble${onlyEmoji(m.body)}">${linkify(m.body, mentionsOf(m))}</div>` : `<div class="text${onlyEmoji(m.body)}">${linkify(m.body, mentionsOf(m))}</div>`) : '');
   // ảnh (tối đa 4, dạng lưới) và xem trước link nằm dưới chữ
   const media = m.deleted ? '' : `${newsGallery(m.imageUrls?.length ? m.imageUrls : m.imageUrl ? [m.imageUrl] : [], 'zoom')}${m.preview ? previewHtml(m.preview) : ''}`;
   const rr = roleOf(m.user, m.modRole);
   rememberRx(m);
-  const reactBtn = m.deleted || own || !canAct() ? '' : `<button type="button" class="link-btn reactbtn" data-act="react-open" data-id="${m.id}" aria-label="Thêm react">${reactIcon}</button>`;
-  const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ Chuyển tiếp từ ${esc(m.fwd.name)}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
+  const reactBtn = m.deleted || own || !canAct() ? '' : `<button type="button" class="link-btn reactbtn" data-act="react-open" data-id="${m.id}" aria-label="${tr('ch.addReact')}">${reactIcon}</button>`;
+  const fwdTag = m.fwd && !m.deleted ? `<div class="tiny muted fwd">↪ ${tr('ch.fwdFrom', { n: esc(m.fwd.name) })}${m.fwd.group ? ` · ${esc(m.fwd.group)}` : ''}</div>` : '';
   const canReply = canAct() && !(C.group.type === 'trend' && !C.group.canPost);
   const acts = m.deleted ? '' : `<div class="actions">
-      <button type="button" class="link-btn more" data-act="msg-more" aria-haspopup="menu" aria-expanded="false" aria-label="Thêm thao tác">⋯</button>
+      <button type="button" class="link-btn more" data-act="msg-more" aria-haspopup="menu" aria-expanded="false" aria-label="${tr('ch.moreActions')}">⋯</button>
       <div class="msg-menu" role="menu" hidden>
-        ${canReply ? `<button type="button" role="menuitem" data-act="reply" data-id="${m.id}">Trả lời</button>` : ''}
-        <button type="button" role="menuitem" data-act="fwd-msg" data-id="${m.id}">Chuyển tiếp</button>
-        <button type="button" role="menuitem" data-act="react-who" data-id="${m.id}">Ai đã react</button>
-        ${C.group.canPin ? `<button type="button" role="menuitem" data-act="pin-msg" data-id="${m.id}">${C.group.pinned?.id === m.id ? 'Bỏ ghim' : 'Ghim lên đầu nhóm'}</button>` : ''}
-        ${!own && canAct() ? `<button type="button" role="menuitem" data-act="report-msg" data-id="${m.id}">Báo cáo</button>` : ''}
-        ${canDelete(m) ? `<button type="button" role="menuitem" class="danger" data-act="del-msg" data-id="${m.id}">Xóa</button>` : ''}
+        ${canReply ? `<button type="button" role="menuitem" data-act="reply" data-id="${m.id}">${tr('ch.reply')}</button>` : ''}
+        <button type="button" role="menuitem" data-act="fwd-msg" data-id="${m.id}">${tr('ch.forward')}</button>
+        <button type="button" role="menuitem" data-act="react-who" data-id="${m.id}">${tr('ch.whoReacted')}</button>
+        ${C.group.canPin ? `<button type="button" role="menuitem" data-act="pin-msg" data-id="${m.id}">${C.group.pinned?.id === m.id ? tr('ch.unpin') : tr('ch.pin')}</button>` : ''}
+        ${!own && canAct() ? `<button type="button" role="menuitem" data-act="report-msg" data-id="${m.id}">${tr('ch.report')}</button>` : ''}
+        ${canDelete(m) ? `<button type="button" role="menuitem" class="danger" data-act="del-msg" data-id="${m.id}">${tr('news.delete')}</button>` : ''}
       </div></div>`;
   const who = m.user.deleted
     ? `<span class="who muted">${esc(m.user.displayName)}</span>`
     : `<button class="who${roleClass(rr)}${nameCls(m.user)}" data-act="profile" data-id="${m.user.id}">${esc(m.user.displayName)}${roleSr(rr)}${lvBadge(m.user.level)}</button>`;
   return `<div class="msg ${own ? 'own' : ''}" data-mid="${m.id}" data-uid="${m.user.id}" data-t="${m.createdAt}" data-name="${esc(m.user.displayName)}">
-    ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="Xem hồ sơ ${esc(m.user.displayName)}">${avatarR(m.user, rr)}</button>`}
+    ${own ? '' : m.user.deleted ? avatar(m.user) : `<button class="av-btn" style="background:none;border:0;padding:0" data-act="profile" data-id="${m.user.id}" aria-label="${tr('ch.viewProfile', { n: esc(m.user.displayName) })}">${avatarR(m.user, rr)}</button>`}
     <div class="body">
       <div class="meta">${own ? '' : who}<span class="tiny muted time">${fmtTime(m.createdAt)}</span></div>
       ${fwdTag}${quote}${media ? `${text}<div class="bline"><div class="bmedia">${media}</div><div class="row">${reactBtn}${acts}</div></div>` : `<div class="bline">${text}<div class="row">${reactBtn}${acts}</div></div>`}
@@ -442,9 +436,9 @@ export function onSocket(ev) {
 
 // ---- quy tắc, thông báo, rời nhóm ----------------------------------------------
 function showRules() {
-  openModal(`<h2>Quy tắc cộng đồng</h2><p class="muted small">Vui lòng đọc và xác nhận trước khi chat trong "${esc(C.group.name)}".</p>
-    <ol class="col small" style="padding-left:20px;margin:0">${RULES.map((r) => `<li>${esc(r)}</li>`).join('')}</ol>
-    <div class="btns"><button class="btn" data-close>Để sau</button><button class="btn primary" id="ack">Tôi đã đọc và đồng ý</button></div>`);
+  openModal(`<h2>${tr('ch.rules')}</h2><p class="muted small">${tr('ch.rulesRead', { g: esc(C.group.name) })}</p>
+    <ol class="col small" style="padding-left:20px;margin:0">${RULES.map((r) => `<li>${esc(tr(r))}</li>`).join('')}</ol>
+    <div class="btns"><button class="btn" data-close>${tr('push.askLater')}</button><button class="btn primary" id="ack">${tr('ch.readAgree')}</button></div>`);
   $('#modal [data-close]').onclick = closeModal;
   $('#ack').onclick = async () => {
     try {
@@ -466,8 +460,8 @@ actions.join = async (el) => {
 };
 actions.leave = async (el) => {
   const g = S.groups.find((x) => x.id === Number(el.dataset.id));
-  const msg = g?.type === 'private' ? 'Rời xong bạn không xem được tin nhắn mới và phải được mời lại để quay lại.' : 'Bạn có thể tham gia lại bất cứ lúc nào.';
-  if (!(await confirmBox(`Rời "${g?.name || 'nhóm'}"?`, msg, 'Rời nhóm', true))) return;
+  const msg = g?.type === 'private' ? tr('ch.leavePrivate') : tr('ch.leavePublic');
+  if (!(await confirmBox(tr('ch.leaveQ', { g: g?.name || '' }), msg, tr('ch.leave'), true))) return;
   try {
     await api('POST', `/groups/${el.dataset.id}/leave`);
     await refreshGroups();
@@ -476,9 +470,9 @@ actions.leave = async (el) => {
 };
 actions['mute-dialog'] = async () => {
   const v = await ask({
-    title: 'Thông báo của nhóm',
-    fields: [{ name: 'duration', label: 'Tắt thông báo', type: 'select', value: C.group.muted ? 'off' : '1h', options: [
-      { value: '1h', label: 'Trong 1 giờ' }, { value: '8h', label: 'Trong 8 giờ' }, { value: 'forever', label: 'Vô thời hạn' }, { value: 'off', label: 'Bật lại thông báo' }] }],
+    title: tr('ch.groupNotifs'),
+    fields: [{ name: 'duration', label: tr('ch.mute'), type: 'select', value: C.group.muted ? 'off' : '1h', options: [
+      { value: '1h', label: tr('ch.for1h') }, { value: '8h', label: tr('ch.for8h') }, { value: 'forever', label: tr('ch.forever') }, { value: 'off', label: tr('ch.unmute') }] }],
   });
   if (!v) return;
   try {
@@ -486,7 +480,7 @@ actions['mute-dialog'] = async () => {
     C.group.muted = r.muted; C.group.mutedUntil = r.mutedUntil;
     const g = S.groups.find((x) => x.id === C.gid);
     if (g) { g.muted = r.muted; g.mutedUntil = r.mutedUntil; }
-    toast(r.muted ? 'Đã tắt thông báo nhóm' : 'Đã bật lại thông báo');
+    toast(r.muted ? tr('ch.mutedToast') : tr('ch.unmutedToast'));
   } catch (e) { fail(e); }
 };
 
@@ -499,7 +493,7 @@ export function setHeart(btn, hearts, hearted) {
     btn.innerHTML = icon('heart', 15, hearted ? 'fill="currentColor"' : '') + '<span class="hc"></span>';
   }
   $('.hc', btn).textContent = hearts || '';
-  btn.setAttribute('aria-label', `Thả tim, hiện có ${hearts} tim`);
+  btn.setAttribute('aria-label', tr('news.heart', { n: hearts }));
 }
 actions.heart = async (el) => {
   const r = await api('POST', `/messages/${el.dataset.id}/heart`);
@@ -566,7 +560,7 @@ function wireSwipe() {
 
 actions.reply = (el) => {
   const msg = el.closest('.msg');
-  C.replyTo = { id: Number(msg.dataset.mid), name: msg.dataset.name, text: ($('.text, .bubble', msg)?.textContent || '[Ảnh]').slice(0, 60) };
+  C.replyTo = { id: Number(msg.dataset.mid), name: msg.dataset.name, text: ($('.text, .bubble', msg)?.textContent || tr('a.photoTag')).slice(0, 60) };
   redrawComposer();
 };
 actions['cancel-reply'] = () => { C.replyTo = null; redrawComposer(); };
@@ -582,7 +576,7 @@ actions['goto-msg'] = async (el) => {
     await actions['load-more']();
   }
   const t = find();
-  if (!t) return toast('Không tìm thấy tin nhắn gốc');
+  if (!t) return toast(tr('ch.origMissing'));
   t.scrollIntoView({ block: 'center', behavior: 'smooth' });
   t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
 };
@@ -601,9 +595,9 @@ actions['del-msg'] = async (el) => {
   const msg = el.closest('.msg');
   const own = msg.dataset.uid === String(S.me.id);
   let reason;
-  if (own) { if (!(await confirmBox('Xóa tin nhắn?', 'Tin nhắn sẽ biến mất với mọi người.', 'Xóa', true))) return; }
+  if (own) { if (!(await confirmBox(tr('ch.delQ'), tr('ch.delText'), tr('news.delete'), true))) return; }
   else {
-    const v = await ask({ title: 'Xóa tin nhắn vi phạm', fields: [{ name: 'reason', label: 'Lý do (gửi cho người bị xử lý)', type: 'textarea', required: true, max: 300 }], ok: 'Xóa', danger: true });
+    const v = await ask({ title: tr('ch.delViolation'), fields: [{ name: 'reason', label: tr('ch.reasonSent'), type: 'textarea', required: true, max: 300 }], ok: tr('news.delete'), danger: true });
     if (!v) return;
     reason = v.reason;
   }
@@ -615,29 +609,31 @@ actions['fwd-msg'] = async (el) => {
   try {
     const { groups } = await api('GET', '/groups/mine');
     const opts = groups.filter((g) => g.type !== 'trend' || g.canPost).map((g) => ({ value: g.id, label: g.name }));
-    if (!opts.length) return toast('Bạn chưa tham gia nhóm nào để chuyển tiếp');
-    const v = await ask({ title: 'Chuyển tiếp tin nhắn', text: 'Chọn nhóm bạn đã tham gia để gửi tin này vào.', fields: [{ name: 'groupId', label: 'Chuyển tiếp tới', type: 'select', options: opts }], ok: 'Chuyển tiếp' });
+    if (!opts.length) return toast(tr('ch.noFwdGroups'));
+    const v = await ask({ title: tr('ch.fwdTitle'), text: tr('ch.fwdText'), fields: [{ name: 'groupId', label: tr('ch.fwdTo'), type: 'select', options: opts }], ok: tr('ch.forward') });
     if (!v) return;
     await api('POST', `/messages/${mid}/forward`, { groupId: Number(v.groupId) });
-    toast('Đã chuyển tiếp');
+    toast(tr('ch.forwarded'));
   } catch (e) { fail(e); }
 };
 
+// giá trị gửi lên máy chủ giữ tiếng Việt (admin đọc); nhãn hiển thị theo ngôn ngữ
 export const REPORT_REASONS = ['Spam hoặc quảng cáo', 'Quấy rối, công kích', 'Nội dung không phù hợp', 'Mạo danh', 'Khác'];
+export const reasonLabel = (r) => tr(`ch.rr${REPORT_REASONS.indexOf(r)}`);
 export async function reportDialog({ messageId, userId, groupId }) {
   const v = await ask({
-    title: messageId ? 'Báo cáo tin nhắn' : 'Báo cáo người dùng',
-    text: 'Người bị báo cáo sẽ không biết ai đã báo cáo.',
+    title: messageId ? tr('ch.reportMsg') : tr('ch.reportUser'),
+    text: tr('ch.reportAnon'),
     fields: [
-      { name: 'cat', label: 'Lý do', type: 'select', options: REPORT_REASONS.map((r) => ({ value: r, label: r })) },
-      { name: 'detail', label: 'Mô tả thêm (không bắt buộc)', type: 'textarea', max: 400 },
+      { name: 'cat', label: tr('ch.reason'), type: 'select', options: REPORT_REASONS.map((r) => ({ value: r, label: reasonLabel(r) })) },
+      { name: 'detail', label: tr('ch.moreDetail'), type: 'textarea', max: 400 },
     ],
-    ok: 'Gửi báo cáo',
+    ok: tr('ch.sendReport'),
   });
   if (!v) return;
   try {
     await api('POST', '/reports', { messageId, userId, groupId, reason: v.detail ? `${v.cat}: ${v.detail}` : v.cat });
-    toast('Đã gửi báo cáo. Cảm ơn bạn!');
+    toast(tr('ch.reportSent'));
   } catch (e) { fail(e); }
 }
 actions['report-msg'] = (el) => reportDialog({ messageId: Number(el.closest('.msg').dataset.mid), groupId: C?.gid });
@@ -649,79 +645,79 @@ export async function openProfile(uid, gid = C?.gid) {
   try { r = await api('GET', `/users/${uid}`); } catch (e) { return fail(e); }
   const u = r.user;
   const g = gid ? S.groups.find((x) => x.id === gid) : null;
-  const rel = u.isAdmin ? '' : { none: `<button class="btn primary" data-act="friend-add" data-id="${u.id}">Kết bạn</button>`,
-    sent: `<button class="btn" disabled>Đã gửi lời mời</button>`,
-    received: `<button class="btn primary" data-act="fr-accept" data-id="${r.requestId}">Chấp nhận lời mời</button>`,
-    friend: `<button class="btn primary" data-act="dm" data-id="${u.id}">Nhắn tin</button>` }[r.relation] || '';
+  const rel = u.isAdmin ? '' : { none: `<button class="btn primary" data-act="friend-add" data-id="${u.id}">${tr('ch.addFriend')}</button>`,
+    sent: `<button class="btn" disabled>${tr('ch.reqSent')}</button>`,
+    received: `<button class="btn primary" data-act="fr-accept" data-id="${r.requestId}">${tr('ch.acceptReq')}</button>`,
+    friend: `<button class="btn primary" data-act="dm" data-id="${u.id}">${tr('ch.dm')}</button>` }[r.relation] || '';
   const staff = g && canModerate(g) && r.relation !== 'self';
   openModal(`<div class="row">${avatar(u, 'lg')}<div class="grow"><h2>${esc(u.displayName)} ${u.isAdmin ? '<span class="pill">Admin</span>' : ''}</h2>
-      ${u.online ? '<div class="small"><span class="dot"></span> Đang online</div>' : ''}
+      ${u.online ? `<div class="small"><span class="dot"></span> ${tr('ch.onlineCap')}</div>` : ''}
       ${u.location ? `<div class="small muted loc-line">${icon('pin', 14)}${esc(locText(u.location))}</div>` : ''}</div></div>
     <div class="row wrap">${rel}</div>
     <div class="row wrap">
-      ${r.relation === 'friend' ? `<button class="btn sm" data-act="unfriend" data-id="${u.id}">Hủy kết bạn</button>` : ''}
-      <button class="btn sm" data-act="block" data-id="${u.id}">Chặn</button>
-      <button class="btn sm" data-act="report-user" data-id="${u.id}" data-gid="${gid || ''}">Báo cáo</button>
+      ${r.relation === 'friend' ? `<button class="btn sm" data-act="unfriend" data-id="${u.id}">${tr('ch.unfriend')}</button>` : ''}
+      <button class="btn sm" data-act="block" data-id="${u.id}">${tr('ch.block')}</button>
+      <button class="btn sm" data-act="report-user" data-id="${u.id}" data-gid="${gid || ''}">${tr('ch.report')}</button>
     </div>
-    ${staff ? `<div><div class="h2">Quản lý nhóm</div><div class="row wrap"><button class="btn sm" data-act="mod-mute" data-id="${u.id}" data-gid="${g.id}">Tắt tiếng</button><button class="btn sm danger" data-act="mod-kick" data-id="${u.id}" data-gid="${g.id}">${g.type === 'private' ? 'Xóa khỏi nhóm' : 'Mời ra khỏi nhóm'}</button></div></div>` : ''}
-    <div class="btns"><button class="btn" data-close>Đóng</button></div>`);
+    ${staff ? `<div><div class="h2">${tr('ch.manageGroup')}</div><div class="row wrap"><button class="btn sm" data-act="mod-mute" data-id="${u.id}" data-gid="${g.id}">${tr('ch.muteUser')}</button><button class="btn sm danger" data-act="mod-kick" data-id="${u.id}" data-gid="${g.id}">${g.type === 'private' ? tr('ch.removeFromGroup') : tr('ch.kick')}</button></div></div>` : ''}
+    <div class="btns"><button class="btn" data-close>${tr('lang.close')}</button></div>`);
   $('#modal [data-close]').onclick = closeModal;
 }
 actions.profile = (el) => openProfile(Number(el.dataset.id));
 actions['report-user'] = (el) => { closeModal(); reportDialog({ userId: Number(el.dataset.id), groupId: Number(el.dataset.gid) || undefined }); };
 actions['mod-mute'] = async (el) => {
-  const v = await ask({ title: 'Tắt tiếng thành viên', fields: [
-    { name: 'minutes', label: 'Số phút', type: 'number', value: 60, min: 1, max: 43200, required: true },
-    { name: 'reason', label: 'Lý do', type: 'textarea', required: true, max: 300 }], ok: 'Tắt tiếng' });
+  const v = await ask({ title: tr('ch.muteMember'), fields: [
+    { name: 'minutes', label: tr('ch.minutes'), type: 'number', value: 60, min: 1, max: 43200, required: true },
+    { name: 'reason', label: tr('ch.reason'), type: 'textarea', required: true, max: 300 }], ok: tr('ch.muteUser') });
   if (!v) return;
-  try { await api('POST', `/groups/${el.dataset.gid}/members/${el.dataset.id}/mute`, { minutes: Number(v.minutes), reason: v.reason }); toast('Đã tắt tiếng thành viên'); } catch (e) { fail(e); }
+  try { await api('POST', `/groups/${el.dataset.gid}/members/${el.dataset.id}/mute`, { minutes: Number(v.minutes), reason: v.reason }); toast(tr('ch.memberMuted')); } catch (e) { fail(e); }
 };
 actions['mod-kick'] = async (el) => {
-  const v = await ask({ title: 'Xóa thành viên khỏi nhóm', fields: [{ name: 'reason', label: 'Lý do', type: 'textarea', required: true, max: 300 }], ok: 'Xóa', danger: true });
+  const v = await ask({ title: tr('ch.removeMember'), fields: [{ name: 'reason', label: tr('ch.reason'), type: 'textarea', required: true, max: 300 }], ok: tr('news.delete'), danger: true });
   if (!v) return;
   try {
     await api('POST', `/groups/${el.dataset.gid}/members/${el.dataset.id}/kick`, { reason: v.reason });
-    toast('Đã xóa thành viên');
+    toast(tr('ch.memberRemoved'));
     if (C) { C.group = (await api('GET', `/groups/${C.gid}`)).group; $('.info')?.replaceChildren(); $('.info') && ($('.info').innerHTML = infoHtml()); }
   } catch (e) { fail(e); }
 };
 
 // ---- panel thông tin nhóm ------------------------------------------------------
 const ABOUT = {
-  country: 'Nhóm chat cả nước, tự động có khi bạn đăng ký. Ai cũng có thể tham gia.',
-  region: 'Nhóm chat theo khu vực, tự động có theo tỉnh/thành bạn chọn. Ai cũng có thể tham gia.',
-  province: 'Nhóm chat theo tỉnh/thành, tự động có khi bạn chọn nơi ở. Ai cũng có thể tham gia.',
-  private: 'Nhóm riêng tư, không xuất hiện trong tìm kiếm hay gợi ý.',
-  dm: 'Cuộc trò chuyện riêng giữa hai người bạn bè.',
+  country: 'ch.aboutCountry',
+  region: 'ch.aboutRegion',
+  province: 'ch.aboutProvince',
+  private: 'ch.aboutPrivate',
+  dm: 'ch.aboutDm',
 };
 function infoHtml() {
   const g = C.group;
-  let h = `<section><div class="h2">Về nhóm</div><p class="small">${esc(ABOUT[g.type])}</p></section>`;
+  let h = `<section><div class="h2">${tr('ch.about')}</div><p class="small">${esc(ABOUT[g.type] ? tr(ABOUT[g.type]) : '')}</p></section>`;
   if (isPublic(g)) {
-    h += `<section><div class="h2">Quản trị viên</div>${g.mods.length ? g.mods.map((u) => `<div class="row" style="min-height:44px">${avatar(u)}<span>${esc(u.displayName)} <span class="muted">· Mod</span></span></div>`).join('') : '<p class="small muted">Chưa có mod.</p>'}
-      <p class="small muted" style="margin-top:4px">Mod là tùy chọn, do admin hệ thống chỉ định.</p></section>`;
+    h += `<section><div class="h2">${tr('ch.mods')}</div>${g.mods.length ? g.mods.map((u) => `<div class="row" style="min-height:44px">${avatar(u)}<span>${esc(u.displayName)} <span class="muted">· Mod</span></span></div>`).join('') : `<p class="small muted">${tr('ch.noMods')}</p>`}
+      <p class="small muted" style="margin-top:4px">${tr('ch.modsNote')}</p></section>`;
   }
-  if (g.type === 'topic' && S.me.role === 'admin') h += `<section class="col"><div class="h2">Quản lý chủ đề</div><button class="btn danger block" data-act="topic-del" data-id="${g.id}" data-name="${esc(g.name)}">Đóng chủ đề</button>
-      <p class="small muted" style="margin-top:4px">Xóa toàn bộ tin nhắn trong chủ đề và báo cho thành viên.</p></section>`;
+  if (g.type === 'topic' && S.me.role === 'admin') h += `<section class="col"><div class="h2">${tr('ch.manageTopic')}</div><button class="btn danger block" data-act="topic-del" data-id="${g.id}" data-name="${esc(g.name)}">${tr('ch.closeTopic')}</button>
+      <p class="small muted" style="margin-top:4px">${tr('ch.closeTopicNote')}</p></section>`;
   if (g.type === 'private') {
     const admin = g.role === 'admin';
-    h += `<section><div class="h2">Thành viên (${g.members.length}/${g.memberLimit})</div><div class="list">${g.members.map((u) => `
-      <div class="row" style="min-height:44px">${avatar(u)}<button class="who grow" style="background:none;border:0;text-align:left;font-weight:600;padding:0" data-act="profile" data-id="${u.id}">${esc(u.displayName)}${u.role === 'admin' ? ' <span class="pill">Admin</span>' : ''}${u.id === S.me.id ? ' <span class="muted">(bạn)</span>' : ''}</button>
-        ${admin && u.id !== S.me.id ? `<button class="link-btn" data-act="pg-admin" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? 'Gỡ admin' : 'Làm admin'}</button><button class="link-btn" data-act="mod-kick" data-id="${u.id}" data-gid="${g.id}">Xóa</button>` : ''}</div>`).join('')}</div></section>`;
-    if (admin) h += `<section class="col"><div class="h2">Quản lý nhóm</div>
-      <button class="btn sm" data-act="pg-invite">${canAddAny() ? 'Thêm thành viên' : 'Mời bạn bè'}</button>
-      <button class="btn sm" data-act="pg-links">Liên kết mời</button>
-      <button class="btn sm" data-act="pg-edit">Đổi tên / giới hạn</button>
-      <button class="btn sm danger" data-act="pg-dissolve">Giải tán nhóm</button></section>`;
+    h += `<section><div class="h2">${tr('ch.membersTitle')} (${g.members.length}/${g.memberLimit})</div><div class="list">${g.members.map((u) => `
+      <div class="row" style="min-height:44px">${avatar(u)}<button class="who grow" style="background:none;border:0;text-align:left;font-weight:600;padding:0" data-act="profile" data-id="${u.id}">${esc(u.displayName)}${u.role === 'admin' ? ' <span class="pill">Admin</span>' : ''}${u.id === S.me.id ? ` <span class="muted">(${tr('ch.you')})</span>` : ''}</button>
+        ${admin && u.id !== S.me.id ? `<button class="link-btn" data-act="pg-admin" data-id="${u.id}" data-role="${u.role}">${u.role === 'admin' ? tr('ch.removeAdmin') : tr('ch.makeAdmin')}</button><button class="link-btn" data-act="mod-kick" data-id="${u.id}" data-gid="${g.id}">${tr('news.delete')}</button>` : ''}</div>`).join('')}</div></section>`;
+    if (admin) h += `<section class="col"><div class="h2">${tr('ch.manageGroup')}</div>
+      <button class="btn sm" data-act="pg-invite">${canAddAny() ? tr('ch.addMembers') : tr('ch.inviteFriends')}</button>
+      <button class="btn sm" data-act="pg-links">${tr('ch.inviteLinks')}</button>
+      <button class="btn sm" data-act="pg-edit">${tr('ch.renameLimit')}</button>
+      <button class="btn sm danger" data-act="pg-dissolve">${tr('ch.dissolve')}</button></section>`;
   }
-  if (!C.joined && !C.open) h += `<section><button class="btn primary block" data-act="join" data-id="${g.id}">Tham gia nhóm</button></section>`;
-  else if (g.type !== 'dm' && g.type !== 'trend' && g.type !== 'country') h += `<section><button class="btn danger block" data-act="leave" data-id="${g.id}">Rời nhóm</button></section>`;
-  if (g.type !== 'dm') h += `<section><div class="h2">Gặp vấn đề?</div><button class="btn block" data-act="report-help">Báo cáo người dùng cho ${g.type === 'private' ? 'admin nhóm' : 'admin/mod'}</button></section>`;
-  else h += `<section><div class="h2">Gặp vấn đề?</div><button class="btn block" data-act="report-user" data-id="${g.peer.id}" data-gid="${g.id}">Báo cáo người này</button></section>`;
+  if (!C.joined && !C.open) h += `<section><button class="btn primary block" data-act="join" data-id="${g.id}">${tr('ch.join')}</button></section>`;
+  else if (g.type !== 'dm' && g.type !== 'trend' && g.type !== 'country') h += `<section><button class="btn danger block" data-act="leave" data-id="${g.id}">${tr('ch.leave')}</button></section>`;
+  if (g.type !== 'dm') h += `<section><div class="h2">${tr('ch.problem')}</div><button class="btn block" data-act="report-help">${g.type === 'private' ? tr('ch.reportToAdmin') : tr('ch.reportToMod')}</button></section>`;
+  else h += `<section><div class="h2">${tr('ch.problem')}</div><button class="btn block" data-act="report-user" data-id="${g.peer.id}" data-gid="${g.id}">${tr('ch.reportPerson')}</button></section>`;
   return h;
 }
-actions.info = () => openModal(`${infoHtml()}<div class="btns"><button class="btn" data-close>Đóng</button></div>`) && ($('#modal [data-close]').onclick = closeModal);
-actions['report-help'] = () => openModal(`<h2>Báo cáo vi phạm</h2><p class="small">Bấm vào <b>tên người dùng</b> để xem hồ sơ rồi chọn <b>Báo cáo</b>, hoặc bấm <b>Báo cáo</b> dưới từng tin nhắn. Người bị báo cáo sẽ không biết ai đã báo cáo.</p><div class="btns"><button class="btn primary" data-close>Đã hiểu</button></div>`) && ($('#modal [data-close]').onclick = closeModal);
+actions.info = () => openModal(`${infoHtml()}<div class="btns"><button class="btn" data-close>${tr('lang.close')}</button></div>`) && ($('#modal [data-close]').onclick = closeModal);
+actions['report-help'] = () => openModal(`<h2>${tr('ch.reportViolation')}</h2><p class="small">${tr('ch.reportHow')}</p><div class="btns"><button class="btn primary" data-close>${tr('ch.gotIt')}</button></div>`) && ($('#modal [data-close]').onclick = closeModal);
 
 async function reloadGroup() {
   C.group = (await api('GET', `/groups/${C.gid}`)).group;
@@ -735,14 +731,14 @@ actions['pg-admin'] = async (el) => {
   } catch (e) { fail(e); }
 };
 actions['pg-edit'] = async () => {
-  const v = await ask({ title: 'Cài đặt nhóm', fields: [
-    { name: 'name', label: 'Tên nhóm', value: C.group.name, required: true, max: 50 },
-    { name: 'memberLimit', label: 'Giới hạn thành viên (tối đa 200)', type: 'number', value: C.group.memberLimit, min: 2, max: 200, required: true }], ok: 'Lưu' });
+  const v = await ask({ title: tr('ch.groupSettings'), fields: [
+    { name: 'name', label: tr('ch.groupName'), value: C.group.name, required: true, max: 50 },
+    { name: 'memberLimit', label: tr('ch.memberLimit'), type: 'number', value: C.group.memberLimit, min: 2, max: 200, required: true }], ok: tr('ch.save') });
   if (!v) return;
   try { await api('PATCH', `/private/${C.gid}`, { name: v.name, memberLimit: Number(v.memberLimit) }); await reloadGroup(); location.reload(); } catch (e) { fail(e); }
 };
 actions['pg-dissolve'] = async () => {
-  if (!(await confirmBox('Giải tán nhóm?', 'Toàn bộ tin nhắn sẽ bị xóa và không thể khôi phục.', 'Giải tán', true))) return;
+  if (!(await confirmBox(tr('ch.dissolveQ'), tr('ch.dissolveText'), tr('ch.dissolveOk'), true))) return;
   try { await api('DELETE', `/private/${C.gid}`); await refreshGroups(); go('#/chat'); } catch (e) { fail(e); }
 };
 actions['pg-invite'] = async () => {
@@ -750,29 +746,29 @@ actions['pg-invite'] = async () => {
   const ids = new Set(C.group.members.map((m) => m.id));
   const cands = friends.filter((f) => !ids.has(f.id));
   const sysAdmin = canAddAny();
-  if (!cands.length && !sysAdmin) return toast('Không còn bạn bè nào để mời');
-  openModal(`<form id="invf" class="col"><h2>${sysAdmin ? 'Thêm thành viên' : 'Mời bạn bè'}</h2><p class="small muted">${sysAdmin ? 'Bạn thêm được bất kỳ ai, không cần kết bạn. Người được thêm vào nhóm ngay và nhận thông báo.' : 'Chỉ mời được người là bạn bè.'}</p>
+  if (!cands.length && !sysAdmin) return toast(tr('ch.noMoreFriends'));
+  openModal(`<form id="invf" class="col"><h2>${sysAdmin ? tr('ch.addMembers') : tr('ch.inviteFriends')}</h2><p class="small muted">${sysAdmin ? tr('ch.addAnyNote') : tr('ch.friendsOnly')}</p>
     ${memberPickerHtml(cands)}
-    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">${sysAdmin ? 'Thêm' : 'Mời'}</button></div></form>`);
+    <div class="btns"><button type="button" class="btn" data-close>${tr('c.cancel')}</button><button class="btn primary">${sysAdmin ? tr('ch.add') : tr('ch.invite')}</button></div></form>`);
   $('#modal [data-close]').onclick = closeModal;
   wireMemberPicker(ids);
   $('#invf').onsubmit = async (e) => {
     e.preventDefault();
     const userIds = pickedIds();
     if (!userIds.length) return;
-    try { await api('POST', `/private/${C.gid}/invite`, { userIds }); closeModal(); toast('Đã thêm thành viên'); await reloadGroup(); } catch (er) { fail(er); }
+    try { await api('POST', `/private/${C.gid}/invite`, { userIds }); closeModal(); toast(tr('ch.membersAdded')); await reloadGroup(); } catch (er) { fail(er); }
   };
 };
 actions['pg-links'] = async () => {
   const draw = async () => {
     const { links } = await api('GET', `/private/${C.gid}/links`);
-    const m = openModal(`<h2>Liên kết mời</h2><p class="small muted">Người vào bằng liên kết phải chờ admin duyệt. Liên kết hết hạn sau thời gian đặt và có thể thu hồi bất cứ lúc nào.</p>
-      <div class="list">${links.map((l) => { const url = `${location.origin}/#/join/${l.code}`; return `<div class="card col"><input class="input" readonly value="${esc(url)}" aria-label="Liên kết mời"><div class="row between"><span class="tiny muted">Hết hạn ${fmtTime(l.expires_at)} ${fmtDate(l.expires_at)}</span><span><button class="btn sm" data-copy="${esc(url)}">Sao chép</button> <button class="btn sm danger" data-revoke="${l.code}">Thu hồi</button></span></div></div>`; }).join('') || '<p class="small muted">Chưa có liên kết nào.</p>'}</div>
-      <form id="lf" class="row"><label class="sr-only" for="hrs">Số giờ hiệu lực</label><select class="input" id="hrs"><option value="1">1 giờ</option><option value="24" selected>24 giờ</option><option value="168">7 ngày</option><option value="720">30 ngày</option></select><button class="btn primary">Tạo liên kết</button></form>
-      <div class="btns"><button class="btn" data-close>Đóng</button></div>`);
+    const m = openModal(`<h2>${tr('ch.inviteLinks')}</h2><p class="small muted">${tr('ch.linksNote')}</p>
+      <div class="list">${links.map((l) => { const url = `${location.origin}/#/join/${l.code}`; return `<div class="card col"><input class="input" readonly value="${esc(url)}" aria-label="${tr('ch.inviteLinks')}"><div class="row between"><span class="tiny muted">${tr('ch.expires', { d: `${fmtTime(l.expires_at)} ${fmtDate(l.expires_at)}` })}</span><span><button class="btn sm" data-copy="${esc(url)}">${tr('ch.copy')}</button> <button class="btn sm danger" data-revoke="${l.code}">${tr('ch.revoke')}</button></span></div></div>`; }).join('') || `<p class="small muted">${tr('ch.noLinks')}</p>`}</div>
+      <form id="lf" class="row"><label class="sr-only" for="hrs">${tr('ch.validFor')}</label><select class="input" id="hrs"><option value="1">${tr('ch.hours', { n: 1 })}</option><option value="24" selected>${tr('ch.hours', { n: 24 })}</option><option value="168">${tr('ch.days', { n: 7 })}</option><option value="720">${tr('ch.days', { n: 30 })}</option></select><button class="btn primary">${tr('ch.createLink')}</button></form>
+      <div class="btns"><button class="btn" data-close>${tr('lang.close')}</button></div>`);
     $('[data-close]', m).onclick = closeModal;
     $('#lf', m).onsubmit = async (e) => { e.preventDefault(); try { await api('POST', `/private/${C.gid}/links`, { hours: Number($('#hrs').value) }); draw(); } catch (er) { fail(er); } };
-    $$('[data-copy]', m).forEach((b) => (b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy).then(() => toast('Đã sao chép liên kết'))));
+    $$('[data-copy]', m).forEach((b) => (b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy).then(() => toast(tr('ch.linkCopied')))));
     $$('[data-revoke]', m).forEach((b) => (b.onclick = async () => { await api('DELETE', `/private/links/${b.dataset.revoke}`).catch(fail); draw(); }));
   };
   draw().catch(fail);
@@ -786,7 +782,7 @@ function applyRead(on) {
   const b = document.getElementById('readtoggle');
   if (b) {
     b.setAttribute('aria-pressed', String(on));
-    b.title = on ? 'Hiện khung chat và menu' : 'Ẩn khung chat và menu';
+    b.title = on ? tr('ch.showChrome') : tr('ch.hideChrome');
     b.innerHTML = on
       ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>'
       : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
@@ -817,7 +813,7 @@ function capOn() { try { return localStorage.getItem('jkr_cap') !== 'off'; } cat
 actions['cap-toggle'] = () => {
   try { localStorage.setItem('jkr_cap', capOn() ? 'off' : 'on'); } catch { /* bỏ qua */ }
   const el = $('#tagbar'); if (el) el.innerHTML = tagBarHtml();
-  toast(capOn() ? 'Đã bật: bấm link X sẽ copy caption và mở ô trả lời' : 'Đã tắt caption tự động');
+  toast(capOn() ? tr('ch.capOnToast') : tr('ch.capOffToast'));
 };
 // copy ngay trong lúc bấm (trình duyệt chỉ cho copy khi đang có thao tác của người dùng)
 function copyText(text) {
@@ -849,26 +845,26 @@ async function loadSubs() {
     const r = await api('GET', '/trend/submissions');
     if (C !== mine || !$('#subs')) return;
     const item = (x, review) => `<div class="card col" style="gap:4px;padding:10px 12px" data-sid="${x.id}">
-      <div class="tiny muted">${review ? `<b>${esc(x.author.displayName)}</b> gửi · ` : ''}${x.status === 'rejected' ? `<span style="color:var(--danger,#B42318)">Chưa được duyệt${x.note ? `: ${esc(x.note)}` : ''}</span>` : 'Đang chờ admin duyệt'}</div>
+      <div class="tiny muted">${review ? `<b>${esc(x.author.displayName)}</b> · ` : ''}${x.status === 'rejected' ? `<span style="color:var(--danger,#B42318)">${tr('ch.notApproved')}${x.note ? `: ${esc(x.note)}` : ''}</span>` : tr('ch.waitingReview')}</div>
       <div class="small" style="white-space:pre-wrap;word-break:break-word">${esc(x.body.slice(0, 300))}</div>
-      ${x.imageUrls.length ? `<div class="tiny muted">Kèm ${x.imageUrls.length} ảnh</div>` : ''}
+      ${x.imageUrls.length ? `<div class="tiny muted">${tr('ch.withPhotos', { n: x.imageUrls.length })}</div>` : ''}
       <div class="row" style="gap:8px;justify-content:flex-end">${review
-        ? `<button class="btn sm" data-act="sub-reject" data-id="${x.id}">Từ chối</button><button class="btn primary sm" data-act="sub-approve" data-id="${x.id}">Duyệt</button>`
-        : x.status === 'pending' ? `<button class="btn sm" data-act="sub-cancel" data-id="${x.id}">Rút lại</button>` : ''}</div></div>`;
+        ? `<button class="btn sm" data-act="sub-reject" data-id="${x.id}">${tr('ch.reject')}</button><button class="btn primary sm" data-act="sub-approve" data-id="${x.id}">${tr('ch.approve')}</button>`
+        : x.status === 'pending' ? `<button class="btn sm" data-act="sub-cancel" data-id="${x.id}">${tr('ch.withdraw')}</button>` : ''}</div></div>`;
     const parts = [];
-    if (r.review.length) parts.push(`<details class="card col" style="padding:8px 12px" open><summary><b>Bài chờ duyệt (${r.review.length})</b></summary><div class="col" style="gap:8px;margin-top:8px;max-height:40vh;overflow-y:auto">${r.review.map((x) => item(x, true)).join('')}</div></details>`);
-    if (r.mine.length) parts.push(`<details class="card col" style="padding:8px 12px" open><summary><b>Bài của bạn đang chờ (${r.mine.length})</b></summary><div class="col" style="gap:8px;margin-top:8px">${r.mine.map((x) => item(x, false)).join('')}</div></details>`);
+    if (r.review.length) parts.push(`<details class="card col" style="padding:8px 12px" open><summary><b>${tr('ch.pendingPosts')} (${r.review.length})</b></summary><div class="col" style="gap:8px;margin-top:8px;max-height:40vh;overflow-y:auto">${r.review.map((x) => item(x, true)).join('')}</div></details>`);
+    if (r.mine.length) parts.push(`<details class="card col" style="padding:8px 12px" open><summary><b>${tr('ch.myPending')} (${r.mine.length})</b></summary><div class="col" style="gap:8px;margin-top:8px">${r.mine.map((x) => item(x, false)).join('')}</div></details>`);
     el.innerHTML = parts.length ? `<div class="col" style="gap:8px;padding:8px 12px">${parts.join('')}</div>` : '';
   } catch { /* bỏ qua */ }
 }
 window.addEventListener('trend-sub', () => { if (C?.group?.type === 'trend') loadSubs(); });
-actions['sub-approve'] = async (el) => { el.disabled = true; try { await api('POST', `/trend/submissions/${el.dataset.id}/approve`); toast('Đã duyệt, bài đã hiện trong Đẩy trend'); } catch (e) { fail(e); } loadSubs(); };
+actions['sub-approve'] = async (el) => { el.disabled = true; try { await api('POST', `/trend/submissions/${el.dataset.id}/approve`); toast(tr('ch.approvedToast')); } catch (e) { fail(e); } loadSubs(); };
 actions['sub-reject'] = async (el) => {
-  const reason = prompt('Lý do từ chối (không bắt buộc):');
+  const reason = prompt(tr('ch.rejectReason'));
   if (reason === null) return;
-  el.disabled = true; try { await api('POST', `/trend/submissions/${el.dataset.id}/reject`, { reason }); toast('Đã từ chối'); } catch (e) { fail(e); } loadSubs();
+  el.disabled = true; try { await api('POST', `/trend/submissions/${el.dataset.id}/reject`, { reason }); toast(tr('ch.rejected')); } catch (e) { fail(e); } loadSubs();
 };
-actions['sub-cancel'] = async (el) => { try { await api('DELETE', `/trend/submissions/${el.dataset.id}`); toast('Đã rút lại bài'); } catch (e) { fail(e); } loadSubs(); };
+actions['sub-cancel'] = async (el) => { try { await api('DELETE', `/trend/submissions/${el.dataset.id}`); toast(tr('ch.withdrawn')); } catch (e) { fail(e); } loadSubs(); };
 
 // Admin đổi chủ đề caption (hoặc công cụ caption đổi hashtag): bỏ caption đã tải, tải lại theo chủ đề mới
 window.addEventListener('trend-caps', () => { if (C?.group?.type === 'trend') { C.caps = {}; loadCaps(); } });
@@ -897,6 +893,6 @@ document.addEventListener('click', (e) => {
     a.href = `https://x.com/intent/post?in_reply_to=${st[1]}&text=${encodeURIComponent(text)}`;
     setTimeout(() => { a.href = orig; }, 1000);
   }
-  if (captioned) toast('Đã copy caption (kèm keyword, hashtag). Đang mở ô trả lời…');
-  api('POST', '/trend/click', { messageId: mid, url: orig, captioned }).then((r) => { if (r.coins) toast(`+${r.coins} xu tím`); }).catch(() => {});
+  if (captioned) toast(tr('ch.capCopied'));
+  api('POST', '/trend/click', { messageId: mid, url: orig, captioned }).then((r) => { if (r.coins) toast(`+${r.coins} ${tr('coin').toLowerCase()}`); }).catch(() => {});
 });

@@ -1,5 +1,6 @@
 // Emoji tùy chỉnh do Admin thêm, react tin nhắn bằng emoji, bảng chọn emoji và trang quản trị emoji
 import { $, $$, S, api, esc, icon, avatar, actions, fail, toast, openModal, closeModal, confirmBox } from './core.js';
+import { t as tr } from './i18n.js';
 
 export const UNICODE = ['😀', '😂', '🥹', '😍', '🥰', '😭', '😘', '🤣', '👍', '🙏', '👏', '🔥', '💜', '💚', '💙', '💖', '✨', '🎉', '😎', '🤗', '😅', '🥺', '😢', '😡', '🤔', '🙌', '💪', '🌸', '⭐', '🎬', '📺', '🍿'];
 const RECENT_KEY = 'jkr_emoji_recent';
@@ -37,8 +38,8 @@ export function reactsHtml(m, { own = false, can = true } = {}) {
   if (m.deleted) return '';
   const list = RX.get(m.id) || m.reactions || [];
   if (!list.length && (own || !can)) return `<div class="reacts" data-rx="${m.id}"></div>`;
-  const chips = list.map((r) => `<button type="button" class="rchip${r.mine ? ' mine' : ''}" data-act="${own || !can ? 'react-who' : 'react-toggle'}" data-id="${m.id}" data-emoji="${esc(r.emoji)}" aria-pressed="${r.mine}" aria-label="${esc(keyLabel(r.emoji, r.custom))}, ${r.count} người">${emojiHtml(r.emoji, r.custom)}<span>${r.count}</span></button>`).join('');
-  const add = !own && can && list.length ? `<button type="button" class="radd" data-act="react-open" data-id="${m.id}" aria-label="Thêm react"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>` : '';
+  const chips = list.map((r) => `<button type="button" class="rchip${r.mine ? ' mine' : ''}" data-act="${own || !can ? 'react-who' : 'react-toggle'}" data-id="${m.id}" data-emoji="${esc(r.emoji)}" aria-pressed="${r.mine}" aria-label="${esc(keyLabel(r.emoji, r.custom))}, ${tr('em.people', { n: r.count })}">${emojiHtml(r.emoji, r.custom)}<span>${r.count}</span></button>`).join('');
+  const add = !own && can && list.length ? `<button type="button" class="radd" data-act="react-open" data-id="${m.id}" aria-label="${tr('ch.addReact')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>` : '';
   return `<div class="reacts" data-rx="${m.id}">${chips}${add}</div>`;
 }
 function redrawRx(mid) {
@@ -79,14 +80,14 @@ function pkBtn(key, name) {
 function pickerBody(mode) {
   const rec = recent().filter(keyValid).filter((k) => mode === 'react' || k !== 'heart');
   const custom = pickable();
-  return `${rec.length ? `<div class="pk-sec">GẦN ĐÂY</div><div class="pk-grid">${rec.map((k) => pkBtn(k, keyLabel(k))).join('')}</div>` : ''}
+  return `${rec.length ? `<div class="pk-sec">${tr('em.recent')}</div><div class="pk-grid">${rec.map((k) => pkBtn(k, keyLabel(k))).join('')}</div>` : ''}
     ${mode === 'react' ? `<div class="pk-sec">TIM</div><div class="pk-grid">${pkBtn('heart', 'tim')}</div>` : ''}
     ${custom.length ? `<div class="pk-sec">EMOJI JKR TALKS <span>${custom.length}</span></div><div class="pk-grid">${custom.map((e) => pkBtn(`e:${e.id}`, `:${e.name}:`)).join('')}</div>` : ''}
-    <div class="pk-sec" data-default>MẶC ĐỊNH</div><div class="pk-grid" data-default>${UNICODE.map((u) => pkBtn(`u:${u}`, u)).join('')}</div>`;
+    <div class="pk-sec" data-default>${tr('em.default')}</div><div class="pk-grid" data-default>${UNICODE.map((u) => pkBtn(`u:${u}`, u)).join('')}</div>`;
 }
 export function openPicker(mode, id) {
   const m = openModal(`<div class="col picker" data-mode="${mode}" data-id="${id || ''}"><div class="sheet-grab" aria-hidden="true"></div>
-    <label class="sr-only" for="pk-q">Tìm emoji</label><input class="input" id="pk-q" type="search" placeholder="Tìm emoji theo tên" autocomplete="off">
+    <label class="sr-only" for="pk-q">${tr('em.search')}</label><input class="input" id="pk-q" type="search" placeholder="${tr('em.searchPh')}" autocomplete="off">
     <div id="pk-body" class="pk-body">${pickerBody(mode)}</div></div>`);
   $('.modal', m).classList.add('sheet');
   const q = $('#pk-q', m);
@@ -111,9 +112,9 @@ actions['pick-emoji'] = async (el) => {
 // ---- soạn tin: bảng emoji nhỏ cạnh khung soạn tin và gợi ý :tên: ----------------------------------------
 export function composerPanelHtml() {
   const custom = pickable();
-  return `<div class="emoji-panel emoji-panel-lg" role="group" aria-label="Chọn emoji">
+  return `<div class="emoji-panel emoji-panel-lg" role="group" aria-label="${tr('ch.pickEmoji')}">
     ${custom.length ? `<div class="pk-sec">EMOJI JKR TALKS</div><div class="pk-grid">${custom.map((e) => `<button type="button" class="pk" data-act="emoji-insert" data-name="${esc(e.name)}" aria-label=":${esc(e.name)}:">${emojiHtml(`e:${e.id}`)}</button>`).join('')}</div>` : ''}
-    <div class="pk-sec">MẶC ĐỊNH</div><div class="pk-grid">${UNICODE.map((u) => `<button type="button" class="pk" data-act="emoji" data-e="${u}" aria-label="${u}"><span class="rx-u">${u}</span></button>`).join('')}</div></div>`;
+    <div class="pk-sec">${tr('em.default')}</div><div class="pk-grid">${UNICODE.map((u) => `<button type="button" class="pk" data-act="emoji" data-e="${u}" aria-label="${u}"><span class="rx-u">${u}</span></button>`).join('')}</div></div>`;
 }
 actions['emoji-insert'] = (el) => {
   const i = $('#msg');
@@ -179,10 +180,10 @@ actions['react-who'] = async (el) => {
     const rows = tab === 'all'
       ? [...new Map(reactions.flatMap((r) => r.users.map((u) => [u.id, { u, keys: reactions.filter((x) => x.users.some((y) => y.id === u.id)).map((x) => x.emoji) }]))).values()]
       : reactions.find((r) => r.emoji === tab).users.map((u) => ({ u, keys: [tab] }));
-    $('#who-sheet', m).innerHTML = `<div class="sheet-grab" aria-hidden="true"></div><h2 style="margin:0">Ai đã react</h2>
-      ${total ? `<div class="pillnav" role="group" aria-label="Lọc theo emoji"><button data-wt="all" aria-pressed="${tab === 'all'}">Tất cả ${total}</button>${reactions.map((r) => `<button data-wt="${esc(r.emoji)}" aria-pressed="${tab === r.emoji}">${emojiHtml(r.emoji)} ${r.users.length}</button>`).join('')}</div>
-      <div class="list">${rows.map(({ u, keys }) => `<div class="row" style="min-height:48px">${avatar(u)}<b class="grow">${esc(u.displayName)}${u.id === S.me?.id ? ' <span class="tiny muted">(bạn)</span>' : ''}</b><span class="row" style="gap:4px">${keys.map((k) => emojiHtml(k, reactions.find((r) => r.emoji === k)?.custom)).join('')}</span></div>`).join('')}</div>` : '<p class="small muted">Chưa có ai react tin nhắn này.</p>'}
-      <div class="btns"><button class="btn" data-close>Đóng</button></div>`;
+    $('#who-sheet', m).innerHTML = `<div class="sheet-grab" aria-hidden="true"></div><h2 style="margin:0">${tr('ch.whoReacted')}</h2>
+      ${total ? `<div class="pillnav" role="group" aria-label="${tr('em.filter')}"><button data-wt="all" aria-pressed="${tab === 'all'}">${tr('em.all')} ${total}</button>${reactions.map((r) => `<button data-wt="${esc(r.emoji)}" aria-pressed="${tab === r.emoji}">${emojiHtml(r.emoji)} ${r.users.length}</button>`).join('')}</div>
+      <div class="list">${rows.map(({ u, keys }) => `<div class="row" style="min-height:48px">${avatar(u)}<b class="grow">${esc(u.displayName)}${u.id === S.me?.id ? ` <span class="tiny muted">(${tr('ch.you')})</span>` : ''}</b><span class="row" style="gap:4px">${keys.map((k) => emojiHtml(k, reactions.find((r) => r.emoji === k)?.custom)).join('')}</span></div>`).join('')}</div>` : `<p class="small muted">${tr('em.noReacts')}</p>`}
+      <div class="btns"><button class="btn" data-close>${tr('lang.close')}</button></div>`;
     $$('[data-wt]', m).forEach((b) => (b.onclick = () => { tab = b.dataset.wt; draw(); }));
     $('[data-close]', m).onclick = closeModal;
   };

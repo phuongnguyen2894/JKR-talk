@@ -4,6 +4,7 @@ import { pushToUser, PUSH_TYPE_MAP } from './push.js';
 import { db, now } from './db.js';
 import { provinceById, regionByCode, COUNTRY, COUNTRIES, countryByCode, isIntlCountry } from './geo.js';
 import { subdivisionOf, subdivisionName } from './geo_sea.js';
+import { nt, regionNameFor, trendNameFor } from './i18n.js';
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -63,7 +64,7 @@ export function locationOf(u) {
   }
   const p = provinceById(u.province_id);
   const r = p && regionByCode(p.region);
-  return { country: c.name, countryCode: c.code, countryNames: c.names, province: p?.name || null, region: r?.name || null };
+  return { country: c.name, countryCode: c.code, countryNames: c.names, province: p?.name || null, region: r?.name || null, regionCode: p?.region || null };
 }
 
 // Cờ mở các quốc gia ngoài Việt Nam cho mọi người (mặc định tắt: chỉ Admin thấy). Lưu trong app_settings.
@@ -74,6 +75,8 @@ export const setIntlPublic = (on) => db.prepare("INSERT INTO app_settings (key, 
 export const groupHidden = (g, user) => !!g && ['country', 'province', 'region'].includes(g.type) && isIntlCountry(String(g.key || '').split(':')[0]) && !intlPublic() && user?.role !== 'admin';
 // Tên nhóm quốc gia theo ngôn ngữ người xem
 export function groupNameFor(g, lang) {
+  if (g.type === 'trend') return trendNameFor(lang);
+  if (g.type === 'region') return regionNameFor(String(g.key || '').split(':').pop(), lang, g.name);
   if (g.type === 'country') return countryByCode(g.key)?.names[lang] || g.name;
   if (g.type === 'province') {
     const [cc, , slug] = String(g.key || '').split(':');
@@ -231,7 +234,13 @@ export const isOnline = (uid) => sockets.has(uid);
 export const onlineUserIds = () => [...sockets.keys()]; // người dùng đang mở kết nối realtime
 
 // Thông báo trong app (đẩy realtime nếu đang online)
+// text: chuỗi, hoặc [khoá, biến] để viết theo ngôn ngữ của người nhận (xem i18n.js)
 export function notify(uid, type, text, opts = {}) {
+  if (Array.isArray(text) || Array.isArray(opts.pushBody)) {
+    const lang = getUser(uid)?.language || 'vi';
+    if (Array.isArray(text)) text = nt(text[0], lang, text[1]);
+    if (Array.isArray(opts.pushBody)) opts = { ...opts, pushBody: nt(opts.pushBody[0], lang, opts.pushBody[1]) };
+  }
   const r = db
     .prepare('INSERT INTO notifications (user_id, type, text, created_at, url, msg_id) VALUES (?,?,?,?,?,?)')
     .run(uid, type, text, now(), opts.url || null, opts.msgId || null);

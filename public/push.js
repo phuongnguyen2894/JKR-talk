@@ -143,5 +143,5 @@ actions['install-app'] = async () => {
 document.addEventListener('change', async (e) => {
   const k = e.target?.dataset?.pref;
   if (!k) return;
-  try { await api('PATCH', '/push/prefs', { [k]: e.target.checked }); toast('Đã lưu'); } catch (er) { e.target.checked = !e.target.checked; fail(er); }
+  try { await api('PATCH', '/push/prefs', { [k]: e.target.checked }); toast(t('set.saved')); } catch (er) { e.target.checked = !e.target.checked; fail(er); }
 });

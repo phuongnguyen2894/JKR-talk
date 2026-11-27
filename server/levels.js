@@ -71,7 +71,7 @@ export function conditionsFor(L, u) {
   if (L.links) { const h = trendLinks(u.id); c.push({ key: 'links', label: 'Gửi link vào Đẩy trend', have: h, need: L.links, ok: h >= L.links }); }
   if (L.news) { const h = newsPosts(u.id); c.push({ key: 'news', label: 'Đăng bài vào Bản tin', have: h, need: L.news, ok: h >= L.news }); }
   if (L.topics) { const h = topicsWithPeople(u.id); c.push({ key: 'topics', label: `Chủ đề có ${TOPIC_PEOPLE} người khác nhau gửi tin`, have: h, need: L.topics, ok: h >= L.topics }); }
-  if (L.title) { const h = hasTitle(u.id, L.title); c.push({ key: 'title', label: `Danh hiệu ${TITLES[L.title]}`, have: h ? 1 : 0, need: 1, ok: h, title: true }); }
+  if (L.title) { const h = hasTitle(u.id, L.title); c.push({ key: 'title', titleKey: L.title, label: `Danh hiệu ${TITLES[L.title]}`, have: h ? 1 : 0, need: 1, ok: h, title: true }); }
   return c;
 }
 
@@ -97,7 +97,7 @@ function grantTitles(uid, silent) {
     if (d.needs && !hasTitle(uid, d.needs)) break;
     if (clicks < d.clicks || (d.links && links < d.links)) break;
     db.prepare('INSERT OR IGNORE INTO user_titles (user_id, title, granted_at) VALUES (?,?,?)').run(uid, d.key, now());
-    if (!silent) notify(uid, 'title', `Bạn đã nhận danh hiệu ${TITLES[d.key]}. Khung avatar và màu tên mới đang chờ bạn trong mục Danh hiệu.`, { url: '/#/titles', tag: `title-${d.key}` });
+    if (!silent) notify(uid, 'title', ['title', { ti: d.key }], { url: '/#/titles', tag: `title-${d.key}` });
   }
 }
 
@@ -117,9 +117,7 @@ export function recompute(uid, { silent = false } = {}) {
     db.prepare('UPDATE users SET lvl = ?, lvl_seen = CASE WHEN ? THEN ? ELSE lvl_seen END WHERE id = ?').run(target, silent ? 1 : 0, target, uid);
     if (!silent) {
       const L = LEVELS.find((x) => x.lvl === target);
-      const text = target === 1
-        ? `Bạn đã nhận cấp 1 ${L.name}. Xu tím bạn đã kiếm từ trước vẫn được giữ nguyên.`
-        : `Bạn đã lên ${L.name} (cấp ${target}). ${L.perk}`;
+      const text = target === 1 ? ['level1', { lv: 1 }] : ['levelUp', { lv: target }]; // theo ngôn ngữ người nhận
       notify(uid, 'level', text, { url: '/#/level', tag: `level-${target}` });
     }
   }
@@ -220,7 +218,7 @@ export function titlesStatus(uid) {
     const conditions = [{ key: 'clicks', label: 'Bấm link X trong Đẩy trend', have: has ? Math.max(clicks, d.clicks) : clicks, need: d.clicks, ok: has || clicks >= d.clicks }];
     if (d.links) conditions.push({ key: 'links', label: 'Gửi link vào Đẩy trend', have: has ? Math.max(links, d.links) : links, need: d.links, ok: has || links >= d.links });
     const prevOk = !d.needs || hasTitle(uid, d.needs);
-    return { n: d.n, key: d.key, name: TITLES[d.key], state: has ? 'done' : prevOk ? 'doing' : 'locked', conditions, reward: { frame: `title:${d.n}`, frameName: TITLE_REWARDS[d.n].frame, color: `title:${d.n}`, colorName: TITLE_REWARDS[d.n].color }, needs: d.needs ? TITLES[d.needs] : null };
+    return { n: d.n, key: d.key, name: TITLES[d.key], state: has ? 'done' : prevOk ? 'doing' : 'locked', conditions, reward: { frame: `title:${d.n}`, frameName: TITLE_REWARDS[d.n].frame, color: `title:${d.n}`, colorName: TITLE_REWARDS[d.n].color }, needs: d.needs ? TITLES[d.needs] : null, needsKey: d.needs || null };
   });
   return { titles: out, equipped: { frame: u.frame || null, color: u.name_color || null } };
 }

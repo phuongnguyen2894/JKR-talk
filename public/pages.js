@@ -2,7 +2,7 @@ import { pushSectionHtml } from './push.js';
 import { t, getLang, setLang } from './i18n.js';
 import { langBar, restoreForm, applyLang } from './langpick.js';
 import { newsText, fitNews } from './newstext.js';
-import { LANGS } from './i18n.js';
+import { LANGS, t as tr } from './i18n.js';
 import { adminEmoji } from './emoji.js';
 import { adminGame } from './mtadmin.js';
 import { renderStats } from './stats.js';
@@ -111,17 +111,17 @@ export async function renderRegister(root) {
 export async function renderDiscover(view) {
   let type = 'region', q = '';
   view.innerHTML = `<div class="page"><div class="page-inner">
-    <h1>Khám phá nhóm</h1>
-    <label class="sr-only" for="q">Tìm nhóm</label>
-    <input class="input" id="q" type="search" placeholder="Tìm vùng, tỉnh/thành">
-    <div class="pillnav" role="group" aria-label="Loại nhóm">
-      <button data-type="country" aria-pressed="false">Quốc gia</button><button data-type="region" aria-pressed="true">Vùng</button><button data-type="province" aria-pressed="false">Tỉnh / Thành</button></div>
-    <p class="small muted">Nhóm công khai tại Việt Nam: vào tự do, không cần duyệt. Tham gia nhóm khác không làm đổi vị trí của bạn.</p>
+    <h1>${tr('nav.discover')}</h1>
+    <label class="sr-only" for="q">${tr('pg.findGroup')}</label>
+    <input class="input" id="q" type="search" placeholder="${tr('pg.findPh')}">
+    <div class="pillnav" role="group" aria-label="${tr('pg.groupType')}">
+      <button data-type="country" aria-pressed="false">${tr('auth.country')}</button><button data-type="region" aria-pressed="true">${tr('auth.region')}</button><button data-type="province" aria-pressed="false">${tr('auth.city')}</button></div>
+    <p class="small muted">${tr('pg.discoverNote')}</p>
     <div id="sugg"></div><div class="list" id="gl"></div></div></div>`;
   const load = async () => {
     const { groups } = await api('GET', `/groups/discover?type=${type}&q=${encodeURIComponent(q)}`);
-    $('#gl').innerHTML = groups.map((g) => `<div class="card">${groupAvatar(g)}<div class="grow"><div style="font-weight:600">${esc(g.name)}</div><div class="tiny muted">${g.memberCount} thành viên</div></div>
-      ${g.joined ? `<span class="pill ok" style="padding:6px 10px;font-size:13px">Đã vào</span><a class="btn sm" href="#/chat/${g.id}">Mở</a>` : `<button class="btn primary" data-act="join-from-discover" data-id="${g.id}">Tham gia</button>`}</div>`).join('') || '<p class="muted">Không tìm thấy nhóm phù hợp.</p>';
+    $('#gl').innerHTML = groups.map((g) => `<div class="card">${groupAvatar(g)}<div class="grow"><div style="font-weight:600">${esc(g.name)}</div><div class="tiny muted">${tr('ch.members', { n: g.memberCount })}</div></div>
+      ${g.joined ? `<span class="pill ok" style="padding:6px 10px;font-size:13px">${tr('hot.joined')}</span><a class="btn sm" href="#/chat/${g.id}">${tr('pg.open')}</a>` : `<button class="btn primary" data-act="join-from-discover" data-id="${g.id}">${tr('pg.join')}</button>`}</div>`).join('') || `<p class="muted">${tr('pg.noMatch')}</p>`;
   };
   $$('.pillnav button', view).forEach((b) => (b.onclick = () => { type = b.dataset.type; $$('.pillnav button', view).forEach((x) => x.setAttribute('aria-pressed', x === b)); load().catch(fail); }));
   let t;
@@ -129,12 +129,12 @@ export async function renderDiscover(view) {
   await load();
   if (!S.me.hideSuggestions) {
     const s = await api('GET', '/groups/suggestions').catch(() => ({ groups: [] }));
-    if (s.groups.length) $('#sugg').innerHTML = `<div class="card col" style="background:var(--soft)"><div class="row between"><strong>Gợi ý cho bạn</strong><button class="link-btn" data-act="hide-sugg">Ẩn gợi ý</button></div>
-      ${s.groups.map((g) => `<div class="row"><div class="grow"><b>${esc(g.name)}</b> <span class="tiny muted">· ${esc(g.reason)}</span></div><button class="btn sm primary" data-act="join-from-discover" data-id="${g.id}">Tham gia</button></div>`).join('')}</div>`;
+    if (s.groups.length) $('#sugg').innerHTML = `<div class="card col" style="background:var(--soft)"><div class="row between"><strong>${tr('pg.suggested')}</strong><button class="link-btn" data-act="hide-sugg">${tr('set.hideSug')}</button></div>
+      ${s.groups.map((g) => `<div class="row"><div class="grow"><b>${esc(g.name)}</b> <span class="tiny muted">· ${esc(g.reason)}</span></div><button class="btn sm primary" data-act="join-from-discover" data-id="${g.id}">${tr('pg.join')}</button></div>`).join('')}</div>`;
   }
 }
 actions['join-from-discover'] = async (el) => {
-  try { await api('POST', `/groups/${el.dataset.id}/join`); await refreshGroups(); toast('Đã tham gia nhóm'); go(`#/chat/${el.dataset.id}`); } catch (e) { fail(e); }
+  try { await api('POST', `/groups/${el.dataset.id}/join`); await refreshGroups(); toast(tr('pg.joined')); go(`#/chat/${el.dataset.id}`); } catch (e) { fail(e); }
 };
 actions['hide-sugg'] = async () => {
   try { const r = await api('PATCH', '/me', { hideSuggestions: true }); S.me = r.user; $('#sugg').innerHTML = ''; } catch (e) { fail(e); }
@@ -148,22 +148,22 @@ export async function renderNews(view) {
   const admin = S.me.role === 'admin';
   const canPost = admin || (S.me.level || 0) >= 4; // từ cấp Tím Thủy Chung được đăng bản tin
   view.innerHTML = `<div class="page"><div class="page-inner">
-    <div class="row between"><h1>${t('nav.news')}</h1>${canPost ? '<button class="btn primary" data-act="news-new">Đăng bản tin</button>' : ''}</div>
+    <div class="row between"><h1>${t('nav.news')}</h1>${canPost ? `<button class="btn primary" data-act="news-new">${tr('pg.postNews')}</button>` : ''}</div>
     <p class="small muted">${t('news.intro')}</p>
     <div class="list">${news.map((n) => `<article class="card col" ${n.read ? '' : 'style="border-color:var(--accent)"'}>
-      <div class="row wrap">${n.pinned ? `<span class="pill warn">${t('news.pinned')}</span>` : ''}${n.read ? '' : `<span class="pill">${t('news.new')}</span>`}${n.author ? `<span class="tiny" style="font-weight:600">${esc(n.author.displayName)}${lvBadge(n.author.level, 16)}</span>` : ''}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? '<span class="tiny muted">· đã chỉnh sửa</span>' : ''}</div>
+      <div class="row wrap">${n.pinned ? `<span class="pill warn">${t('news.pinned')}</span>` : ''}${n.read ? '' : `<span class="pill">${t('news.new')}</span>`}${n.author ? `<span class="tiny" style="font-weight:600">${esc(n.author.displayName)}${lvBadge(n.author.level, 16)}</span>` : ''}<span class="tiny muted">${fmtDateTime(n.createdAt)}</span>${n.edited ? `<span class="tiny muted">${t('news.edited')}</span>` : ''}</div>
       ${newsText(n)}
       ${newsGallery(n.imageUrls)}
       <div class="row" style="gap:4px"><button type="button" class="heart ${n.hearted ? 'on' : ''}" data-act="news-heart" data-id="${n.id}" aria-pressed="${n.hearted}" aria-label="${t('news.heart', { n: n.hearts })}">${icon('heart', 15, n.hearted ? 'fill="currentColor"' : '')}<span class="hc">${n.hearts || ''}</span></button>${commentBlock('news', n.id, n.commentCount)}</div>
       ${!admin && n.mine ? `<div class="row wrap"><button class="btn sm danger" data-act="news-del" data-id="${n.id}" data-mine="1">${t('news.delete')}</button></div>` : ''}
-      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.titleOrig)}" data-body="${esc(n.bodyOrig)}" data-imgs="${esc(JSON.stringify(n.imageUrls || []))}">Sửa</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">Xóa</button></div>` : ''}
+      ${admin ? `<div class="row wrap"><button class="btn sm" data-act="news-pin" data-id="${n.id}" data-pinned="${n.pinned ? 1 : 0}">${n.pinned ? tr('ch.unpin') : tr('pg.pinTop')}</button><button class="btn sm" data-act="news-edit" data-id="${n.id}" data-title="${esc(n.titleOrig)}" data-body="${esc(n.bodyOrig)}" data-imgs="${esc(JSON.stringify(n.imageUrls || []))}">${tr('ch.edit')}</button><button class="btn sm danger" data-act="news-del" data-id="${n.id}">${tr('news.delete')}</button></div>` : ''}
     </article>`).join('') || `<p class="muted">${t('news.empty')}</p>`}</div></div></div>`;
   fitNews(view);
   if (S.unreadNews) { api('POST', '/news/read-all').then(() => { S.unreadNews = 0; S.hooks.renderSide(); }).catch(() => {}); }
 }
 const newsForm = (v = {}) => [
-  { name: 'title', label: 'Tiêu đề', value: v.title || '', required: true, max: 150 },
-  { name: 'body', label: 'Nội dung', type: 'textarea', value: v.body || '', required: true, max: 5000 },
+  { name: 'title', label: tr('pg.title'), value: v.title || '', required: true, max: 150 },
+  { name: 'body', label: tr('tp.body'), type: 'textarea', value: v.body || '', required: true, max: 5000 },
 ];
 actions['news-heart'] = async (el) => {
   const r = await api('POST', `/news/${el.dataset.id}/heart`);
@@ -175,19 +175,19 @@ actions['news-heart'] = async (el) => {
 actions['news-zoom'] = (el) => lightbox(el.dataset.src);
 actions['news-more'] = (el) => { const p = el.previousElementSibling; const open = p.classList.toggle('clamp'); el.textContent = open ? t('news.more') : t('news.less'); };
 actions['news-new'] = async () => {
-  const m = openModal(`<form id="nf" class="col"><h2>Đăng bản tin</h2>
-    <div class="field"><label for="nt">Tiêu đề (không bắt buộc)</label><input class="input" id="nt" maxlength="150"></div>
-    <div class="field"><label for="nb">Nội dung (không bắt buộc)</label><textarea class="input" id="nb" maxlength="5000"></textarea></div>
-    <div class="field"><label for="ni">Ảnh (không bắt buộc, tối đa 4 ảnh, mỗi ảnh tối đa 2MB)</label><input id="ni" type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp"></div>
-    ${S.me.role === 'admin' ? '<label class="check"><input type="checkbox" id="np"> Ghim lên đầu</label>' : ''}
-    <p class="small muted">${S.me.role === 'admin' ? 'Bản tin hiện cho toàn bộ người dùng và gửi thông báo đẩy tới người bật thông báo bản tin.' : 'Bài hiện cho toàn bộ người dùng, ghi tên bạn là người đăng. Admin có thể xóa bài vi phạm.'}</p>
-    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Đăng</button></div></form>`);
+  const m = openModal(`<form id="nf" class="col"><h2>${tr('pg.postNews')}</h2>
+    <div class="field"><label for="nt">${tr('pg.titleOpt')}</label><input class="input" id="nt" maxlength="150"></div>
+    <div class="field"><label for="nb">${tr('pg.bodyOpt')}</label><textarea class="input" id="nb" maxlength="5000"></textarea></div>
+    <div class="field"><label for="ni">${tr('pg.imgsOpt')}</label><input id="ni" type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp"></div>
+    ${S.me.role === 'admin' ? `<label class="check"><input type="checkbox" id="np"> ${tr('pg.pinTop')}</label>` : ''}
+    <p class="small muted">${S.me.role === 'admin' ? tr('pg.newsAdminNote') : tr('pg.newsUserNote')}</p>
+    <div class="btns"><button type="button" class="btn" data-close>${tr('c.cancel')}</button><button class="btn primary">${tr('tp.post')}</button></div></form>`);
   $('[data-close]', m).onclick = closeModal;
   $('#nf').onsubmit = async (e) => {
     e.preventDefault();
     try {
       const files = [...$('#ni').files];
-      if (files.length > 4) throw new Error('Chỉ chọn tối đa 4 ảnh');
+      if (files.length > 4) throw new Error(tr('pg.max4'));
       const imageUrls = [];
       for (const f of files) imageUrls.push((await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url);
       await api('POST', S.me.role === 'admin' ? '/admin/news' : '/news', { title: $('#nt').value, body: $('#nb').value, imageUrls, pinned: !!$('#np')?.checked });
@@ -198,12 +198,12 @@ actions['news-new'] = async () => {
 actions['news-edit'] = async (el) => {
   const d = el.dataset;
   let cur = []; try { cur = JSON.parse(d.imgs || '[]'); } catch { /* không có ảnh */ }
-  const m = openModal(`<form id="nef" class="col"><h2>Sửa bản tin</h2>
-    <div class="field"><label for="net">Tiêu đề (không bắt buộc)</label><input class="input" id="net" maxlength="150"></div>
-    <div class="field"><label for="neb">Nội dung (không bắt buộc)</label><textarea class="input" id="neb" maxlength="5000" rows="8"></textarea></div>
-    ${cur.length ? `<div class="thumb-row">${cur.map((u, i) => `<div class="th"><img src="${esc(u)}" alt="Ảnh ${i + 1}"><label><input type="checkbox" data-rm="${i}"> Gỡ</label></div>`).join('')}</div>` : ''}
-    <div class="field"><label for="nei">Thêm ảnh (tổng tối đa 4 ảnh, không bắt buộc)</label><input id="nei" type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp"></div>
-    <div class="btns"><button type="button" class="btn" data-close>Hủy</button><button class="btn primary">Lưu</button></div></form>`);
+  const m = openModal(`<form id="nef" class="col"><h2>${tr('pg.editNews')}</h2>
+    <div class="field"><label for="net">${tr('pg.titleOpt')}</label><input class="input" id="net" maxlength="150"></div>
+    <div class="field"><label for="neb">${tr('pg.bodyOpt')}</label><textarea class="input" id="neb" maxlength="5000" rows="8"></textarea></div>
+    ${cur.length ? `<div class="thumb-row">${cur.map((u, i) => `<div class="th"><img src="${esc(u)}" alt="${tr('ch.imgToSend', { n: i + 1 })}"><label><input type="checkbox" data-rm="${i}"> ${tr('pg.remove')}</label></div>`).join('')}</div>` : ''}
+    <div class="field"><label for="nei">${tr('pg.addImgs')}</label><input id="nei" type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp"></div>
+    <div class="btns"><button type="button" class="btn" data-close>${tr('c.cancel')}</button><button class="btn primary">${tr('ch.save')}</button></div></form>`);
   $('#net').value = d.title; $('#neb').value = d.body;
   $('[data-close]', m).onclick = closeModal;
   $('#nef').onsubmit = async (e) => {
@@ -212,7 +212,7 @@ actions['news-edit'] = async (el) => {
       const patch = { title: $('#net').value, body: $('#neb').value };
       const kept = cur.filter((_, i) => !$(`[data-rm="${i}"]`)?.checked);
       const files = [...$('#nei').files];
-      if (kept.length + files.length > 4) throw new Error(`Tối đa 4 ảnh (hiện giữ ${kept.length}, thêm ${files.length})`);
+      if (kept.length + files.length > 4) throw new Error(tr('pg.max4b', { k: kept.length, a: files.length }));
       for (const f of files) kept.push((await api('POST', '/upload', { dataUrl: await imageToDataUrl(f) })).url);
       patch.imageUrls = kept;
       await api('PATCH', `/admin/news/${d.id}`, patch);
@@ -222,7 +222,7 @@ actions['news-edit'] = async (el) => {
 };
 actions['news-pin'] = async (el) => { try { await api('PATCH', `/admin/news/${el.dataset.id}`, { pinned: el.dataset.pinned !== '1' }); renderNews($('#view')); } catch (e) { fail(e); } };
 actions['news-del'] = async (el) => {
-  if (!(await confirmBox('Xóa bản tin?', 'Bản tin sẽ biến mất với mọi người.', 'Xóa', true))) return;
+  if (!(await confirmBox(tr('pg.delNewsQ'), tr('pg.delNewsText'), tr('news.delete'), true))) return;
   try { await api('DELETE', el.dataset.mine ? `/news/${el.dataset.id}` : `/admin/news/${el.dataset.id}`); renderNews($('#view')); } catch (e) { fail(e); }
 };
 
@@ -237,7 +237,7 @@ export async function renderSettings(view) {
   view.innerHTML = `<div class="page"><div class="page-inner">
     <h1>${t('set.title')}</h1>
     <section class="card col"><div class="h2" style="margin:0">${t('set.profile')}</div>
-      <div class="row">${avatar(u, 'lg')}<div class="grow"><div class="small muted">${esc(u.email)}</div><div class="small muted">${esc(u.location.province ? `${u.location.province} · ${u.location.region}` : locText(u.location))}</div></div></div>
+      <div class="row">${avatar(u, 'lg')}<div class="grow"><div class="small muted">${esc(u.email)}</div><div class="small muted">${esc(u.location.province ? `${u.location.province} · ${u.location.regionCode ? tr(`rg.${u.location.regionCode}`) : u.location.region}` : locText(u.location))}</div></div></div>
       <form id="pf" class="col">
         <div class="field"><label for="dn">${t('auth.displayName')}</label><input class="input" id="dn" value="${esc(u.displayName)}" required minlength="2" maxlength="30"></div>
         <div class="field"><label for="lang">${t('lang.label')}</label><select class="input" id="lang">${LANGS.map((l) => `<option value="${l.code}" ${u.language === l.code ? 'selected' : ''}>${l.name}</option>`).join('')}</select></div>
@@ -270,7 +270,7 @@ export async function renderSettings(view) {
   let pendingAvatar;
   $('#avf').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    try { const dataUrl = await imageToDataUrl(f, 512); pendingAvatar = (await api('POST', '/upload', { dataUrl })).url; toast('Đã chọn ảnh. Bấm "Lưu hồ sơ".'); } catch (er) { fail(er); }
+    try { const dataUrl = await imageToDataUrl(f, 512); pendingAvatar = (await api('POST', '/upload', { dataUrl })).url; toast(tr('pg.avatarPicked')); } catch (er) { fail(er); }
   };
   const save = async (body) => { try { const r = await api('PATCH', '/me', body); S.me = r.user; if (body.language) setLang(S.me.language); toast(t('set.saved')); S.hooks.renderSide(); return true; } catch (e) { fail(e); } };
   $('#pf').onsubmit = async (e) => {
@@ -288,11 +288,11 @@ export async function renderSettings(view) {
   };
   $('#pwf').onsubmit = async (e) => {
     e.preventDefault();
-    if ($('#pw1').value !== $('#pw2').value) return toast('Mật khẩu xác nhận không khớp');
+    if ($('#pw1').value !== $('#pw2').value) return toast(tr('auth.pwMismatch'));
     try {
       await api('POST', '/me/password', { currentPassword: $('#pw0').value, newPassword: $('#pw1').value, confirmPassword: $('#pw2').value });
       e.target.reset();
-      toast('Đã đổi mật khẩu');
+      toast(tr('pg.pwChanged'));
     } catch (er) { fail(er); }
   };
   $('#savepriv').onclick = () => save({ friendPolicy: $('#fp').value, showOnline: $('#so').checked, shareLocation: $('#sl').checked, newsPush: $('#np').checked, hideSuggestions: $('#hs').checked });
@@ -309,22 +309,22 @@ export async function renderSettings(view) {
     e.preventDefault();
     const cc = $('#hc') ? $('#hc').value : 'VN';
     const pid = Number($('#hp').value);
-    if (cc === 'VN' && (u.country || 'VN') === 'VN' && pid === u.provinceId) return toast('Bạn đang chọn tỉnh/thành này rồi');
+    if (cc === 'VN' && (u.country || 'VN') === 'VN' && pid === u.provinceId) return toast(tr('pg.sameProvince'));
     const sdv = $('#hsfield').hidden ? undefined : $('#hs2').value;
-    if (cc !== 'VN' && cc === u.country && (sdv || null) === (u.subdivision || null)) return toast('Bạn đang chọn nơi này rồi');
+    if (cc !== 'VN' && cc === u.country && (sdv || null) === (u.subdivision || null)) return toast(tr('pg.samePlace'));
     const cobj = myCountries.find((c) => c.code === cc);
     const sobj = (cobj?.subdivisions || []).find((s) => s.code === sdv);
     const cname = `${sobj ? `${subLabel(sobj)}, ` : ''}${cobj?.names[getLang()] || cc}`;
-    const v = await ask({ title: `Đổi vị trí sang ${cc === 'VN' ? provinceName(pid) : cname}?`, text: 'Bạn sẽ vào các nhóm theo vị trí mới. Bạn chỉ đổi được 1 lần / 30 ngày.', fields: [{ name: 'leaveOld', type: 'checkbox', label: 'Rời các nhóm vùng và tỉnh/thành cũ', value: true }], ok: 'Đổi vị trí' });
+    const v = await ask({ title: tr('pg.moveQ', { p: cc === 'VN' ? provinceName(pid) : cname }), text: tr('pg.moveText'), fields: [{ name: 'leaveOld', type: 'checkbox', label: tr('pg.leaveOld'), value: true }], ok: tr('set.changeHome') });
     if (!v) return;
-    try { const r = await api('POST', '/me/home', cc === 'VN' ? { country: 'VN', provinceId: pid, leaveOld: v.leaveOld } : { country: cc, subdivision: sdv, leaveOld: v.leaveOld }); S.me = r.user; await refreshGroups(); toast('Đã đổi vị trí'); renderSettings(view); } catch (er) { fail(er); }
+    try { const r = await api('POST', '/me/home', cc === 'VN' ? { country: 'VN', provinceId: pid, leaveOld: v.leaveOld } : { country: cc, subdivision: sdv, leaveOld: v.leaveOld }); S.me = r.user; await refreshGroups(); toast(tr('pg.moved')); renderSettings(view); } catch (er) { fail(er); }
   };
 };
 actions.logout = () => S.hooks.logout();
 actions['delete-account'] = async () => {
-  const v = await ask({ title: 'Xóa tài khoản?', text: 'Dữ liệu cá nhân của bạn sẽ bị xóa. Tin nhắn cũ trong group công khai sẽ hiển thị là "Người dùng đã xóa". Không thể hoàn tác.', fields: [{ name: 'password', label: 'Nhập mật khẩu để xác nhận', type: 'password', required: true }], ok: 'Xóa vĩnh viễn', danger: true });
+  const v = await ask({ title: tr('pg.delAccQ'), text: tr('pg.delAccText'), fields: [{ name: 'password', label: tr('pg.pwConfirm'), type: 'password', required: true }], ok: tr('pg.delForever'), danger: true });
   if (!v) return;
-  try { await api('DELETE', '/me', { password: v.password }); toast('Tài khoản đã được xóa'); S.hooks.logout(true); } catch (e) { fail(e); }
+  try { await api('DELETE', '/me', { password: v.password }); toast(tr('pg.accDeleted')); S.hooks.logout(true); } catch (e) { fail(e); }
 };
 
 // ===========================================================================
@@ -520,17 +520,17 @@ async function adminLogs(body) {
 // Công cụ: liên kết tới các trang ngoài
 // ===========================================================================
 const TOOLS = [
-  { name: 'Tạo caption', url: 'https://vbots-caption.vercel.app', desc: 'Công cụ tạo caption.', ic: 'news' },
-  { name: 'Theo dõi trend', url: 'https://www.lingorm.site/lingorm_tagtrend', desc: 'Theo dõi trend của LingOrm.', ic: 'trend' },
+  { name: 'pg.tool1', url: 'https://vbots-caption.vercel.app', desc: 'pg.tool1d', ic: 'news' },
+  { name: 'pg.tool2', url: 'https://www.lingorm.site/lingorm_tagtrend', desc: 'pg.tool2d', ic: 'trend' },
 ];
 export function renderTools(view) {
   view.innerHTML = `<div class="page"><div class="page-inner">
-    <h1>Công cụ</h1>
-    <p class="small muted">Các trang hỗ trợ dành cho fan LingOrm. Mở ở tab mới.</p>
+    <h1>${tr('nav.tools')}</h1>
+    <p class="small muted">${tr('pg.toolsNote')}</p>
     <div class="list">${TOOLS.map((t) => `<a class="card tool-card" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">
       <span class="tool-ic">${icon(t.ic, 22)}</span>
-      <span class="grow"><b>${esc(t.name)}</b><span class="small muted tool-desc">${esc(t.desc)}</span><span class="tiny muted">${esc(new URL(t.url).host)}</span></span>
+      <span class="grow"><b>${esc(tr(t.name))}</b><span class="small muted tool-desc">${esc(tr(t.desc))}</span><span class="tiny muted">${esc(new URL(t.url).host)}</span></span>
       <span class="tool-go" aria-hidden="true">${icon('ext', 18)}</span>
-      <span class="sr-only">(mở tab mới)</span></a>`).join('')}</div>
+      <span class="sr-only">(${tr('pg.newTab')})</span></a>`).join('')}</div>
   </div></div>`;
 }

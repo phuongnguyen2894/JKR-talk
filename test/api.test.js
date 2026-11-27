@@ -2473,3 +2473,22 @@ test('khoá Gemini: chỉ Admin hệ thống; lưu mã hoá, không bao giờ tr
   const { clearGeminiKey } = await import('../server/secrets.js');
   clearGeminiKey();
 });
+
+test('lỗi và thông báo theo ngôn ngữ: lỗi theo header x-lang, thông báo theo ngôn ngữ người nhận', async () => {
+  const a = await signup('langA', 1), b = await signup('langB', 1);
+  // lỗi: cùng một lỗi, header x-lang khác nhau
+  const bad = async (lang) => (await (await fetch(BASE + '/me', { method: 'PATCH', headers: { 'content-type': 'application/json', authorization: `Bearer ${a.token}`, ...(lang ? { 'x-lang': lang } : {}) }, body: JSON.stringify({ language: 'xx' }) })).json()).error;
+  assert.equal(await bad(), 'Ngôn ngữ không hợp lệ', 'mặc định tiếng Việt');
+  assert.equal(await bad('en'), 'Invalid language');
+  assert.equal(await bad('th'), 'ภาษาไม่ถูกต้อง');
+  assert.equal(await bad('zz'), 'Ngôn ngữ không hợp lệ', 'ngôn ngữ lạ thì giữ tiếng Việt');
+  // thông báo: B dùng tiếng Anh nhận lời mời kết bạn bằng tiếng Anh, A dùng tiếng Việt nhận tin chấp nhận bằng tiếng Việt
+  await call('PATCH', '/me', { language: 'en' }, b.token);
+  assert.equal((await call('POST', '/friends/request', { userId: b.id }, a.token)).status, 201);
+  const nb = (await call('GET', '/notifications', null, b.token)).data.notifications[0];
+  assert.equal(nb.text, 'langA wants to be your friend');
+  const reqId = (await call('GET', '/friends', null, b.token)).data.incoming[0].id;
+  assert.equal((await call('POST', `/friends/requests/${reqId}/accept`, {}, b.token)).status, 200);
+  const na = (await call('GET', '/notifications', null, a.token)).data.notifications[0];
+  assert.equal(na.text, 'langB đã chấp nhận lời mời kết bạn');
+});
