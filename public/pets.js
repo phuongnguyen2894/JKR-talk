@@ -384,8 +384,9 @@ async function onClick(e) {
   if (a === 'a-imgdel') return run(async () => { await api('PATCH', `/admin/pets/kinds/${encodeURIComponent(t.dataset.id)}`, { imageUrl: null }); await refresh(root); });
 }
 function openAdopt(root) {
+  // theo thứ tự chữ cái (máy chủ đã sắp); bạn "Sắp ra mắt" hiện mờ, không bấm được
   const free = P.s.kinds.filter((k) => !k.adopted);
-  openModal(`<h2>Nhận nuôi một bạn</h2><div class="pt-adopt">${free.map((k) => `<button type="button" class="pt-adopt-i" data-pt="adopt-do" data-kind="${esc(k.id)}">${face(k, 52)}<span class="grow"><b>${esc(k.name)}</b> <small>${esc(k.species)}</small><span class="pt-sub">${esc(k.trait)}</span></span></button>`).join('') || '<p class="pt-sub">Bạn đã nuôi đủ cả 6 bạn.</p>'}</div>
+  openModal(`<h2>Nhận nuôi một bạn</h2><div class="pt-adopt">${free.map((k) => `<button type="button" class="pt-adopt-i${k.soon ? ' soon' : ''}"${k.soon ? ' disabled aria-disabled="true"' : ` data-pt="adopt-do" data-kind="${esc(k.id)}"`}>${face(k, 52)}<span class="grow"><b>${esc(k.name)}</b> <small>${esc(k.species)}</small>${k.soon ? ' <span class="pt-soon">Sắp ra mắt</span>' : ''}<span class="pt-sub">${esc(k.trait)}</span></span></button>`).join('') || '<p class="pt-sub">Bạn đã nuôi đủ cả 6 bạn.</p>'}</div>
     <div class="btns"><button class="btn primary" data-close>Đóng</button></div>`);
   $('#modal [data-close]').onclick = closeModal;
   $('#modal').addEventListener('click', (ev) => { const b = ev.target.closest('[data-pt="adopt-do"]'); if (b) onClick({ target: b, currentTarget: root }); });

@@ -1,4 +1,4 @@
-// Game "Nuôi thú": mỗi người có một khu nhà chung cho các bạn thú (Juad, Abu, Uni, Charsiu, Tofu, Udon).
+// Game "Nuôi thú": mỗi người có một khu nhà chung cho các bạn thú (Abu, Charsiu, Juad, Tofu, Udon, Uni).
 // Chăm sóc miễn phí; phần thưởng duy nhất là điểm Thân thiết (không kiếm xu). Chỉ mở rộng khu nhà mới tốn xu tím.
 // Số thú nuôi được = sức chứa của khu nhà; cấp bậc quyết định bậc khu nhà tối đa được mua. Thú không bao giờ mất.
 // Chỉ số tính theo thời gian thật (tụt dần), máy chủ quyết định mọi thay đổi. Thú buồn (chỉ số dưới 20) bị trừ Thân thiết theo giờ.
@@ -47,6 +47,7 @@ export const KINDS = [
 ];
 const SP_OF = { juad: 'turtle', abu: 'parrot', uni: 'dog', charsiu: 'dog', tofu: 'dog', udon: 'dog' };
 for (const k of KINDS) k.sp = SP_OF[k.id];
+KINDS.sort((a, b) => a.name.localeCompare(b.name, 'vi')); // danh sách các bạn theo thứ tự chữ cái (Abu, Charsiu, Juad, Tofu, Udon, Uni)
 const KIND = Object.fromEntries(KINDS.map((k) => [k.id, k]));
 // ---- cửa hàng: đồ ăn (dùng một lần), đồ chơi (dùng mãi), nhà / lồng / bể (giúp thú tụt chỉ số chậm hơn) -------------------------------
 // bạn thú nào ở loại chỗ ở nào: chó ở nhà, vẹt ở lồng, rùa ở bể
@@ -181,7 +182,7 @@ export function checkPetName(raw, exceptPetId = 0) {
   if (name.length < 2 || name.length > 20) throw bad('Tên thú từ 2 đến 20 ký tự');
   if (!/^[\p{L}\p{N} _.'-]+$/u.test(name)) throw bad("Tên chỉ gồm chữ, số, dấu cách và các dấu - _ . '");
   const key = nameKey(name);
-  if (KINDS.some((k) => nameKey(k.name) === key)) throw bad('Không được đặt trùng tên mặc định (Juad, Abu, Uni, Charsiu, Tofu, Udon)');
+  if (KINDS.some((k) => nameKey(k.name) === key)) throw bad('Không được đặt trùng tên mặc định (Abu, Charsiu, Juad, Tofu, Udon, Uni)');
   if (db.prepare('SELECT id, name FROM pets WHERE id != ?').all(exceptPetId).some((r) => nameKey(r.name) === key)) throw bad('Tên này đã có bạn thú khác dùng, hãy chọn tên khác');
   return name;
 }
@@ -227,6 +228,8 @@ function moodOf(st) {
 }
 // Hình pixel art đầy đủ 4 giai đoạn (đã vẽ sẵn kích thước lớn dần): bạn nào có trong ART thì game hiển thị sprite này thay cho hình tạm
 const ART = { abu: true };
+// Bạn nào đang cho nhận nuôi (các bạn khác hiện "Sắp ra mắt"). Mặc định chỉ Abu (đã có đủ hình); PETS_OPEN_KINDS=all mở tất cả, hoặc liệt kê mã cách nhau bằng dấu phẩy
+const isOpenKind = (id) => { const v = (process.env.PETS_OPEN_KINDS ?? 'abu').trim(); return v === 'all' || v.split(',').map((x) => x.trim()).includes(id); };
 const spriteUrl = (kind, stage) => (ART[kind] ? `/pets/${kind}/stage_${stage}.webp` : null);
 // Hoạt hình đã có (theo bạn và giai đoạn): idle, walk, happy. Giai đoạn nào chưa có thì hiển thị hình tĩnh.
 // Abu cả 4 giai đoạn (Bé, Con nhỏ, Thiếu niên, Trưởng thành) có đủ 12 hoạt hình, cùng số khung và FPS
@@ -434,7 +437,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
       socialEveryMin: SOCIAL_EVERY / 60_000, social: SOCIAL,
       closet: Object.entries(owned(uid)).filter(([k, q]) => q > 0 && /^(outfit|collar):/.test(k) && ITEM[k]).map(([k]) => ({ slot: ITEM[k].cat, id: ITEM[k].id, sp: ITEM[k].sp, name: ITEM[k].name, emoji: ITEM[k].emoji })),
       inv: owned(uid), habitat: Object.fromEntries(Object.entries(habTiers(uid)).map(([t, n]) => { const it = SHOP[t].find((x) => x.tier === n); return [t, { tier: n, emoji: it?.emoji || null, name: it?.name || null, slow: Math.round((1 - HAB_MULT[n]) * 100) }]; })), shopFoods: SHOP.food.map((f) => ({ id: f.id, sp: f.sp, name: f.name, emoji: f.emoji, food: f.food, fun: f.fun || 0, health: f.health || 0, int: f.int })), shopToys: SHOP.toy.map((x) => ({ id: x.id, sp: x.sp, name: x.name, emoji: x.emoji, fun: x.fun, health: x.health || 0, int: x.int })),
-      kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, sprite: spriteUrl(k.id, 0), adopted: mine.has(k.id) })),
+      kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, sprite: spriteUrl(k.id, 0), adopted: mine.has(k.id), soon: !isOpenKind(k.id) })),
       levels: LEVELS, foodsBySp: FREE_FOODS, species: Object.entries(SPECIES).map(([id, v]) => ({ id, name: v.name })), stages: STAGES, dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
     };
   };
@@ -444,6 +447,7 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     rateLimit(`padopt:${me(req)}`, 20, 60_000);
     const uid = me(req), k = KIND[String(req.body?.kind || '')];
     if (!k) throw bad('Bạn thú không hợp lệ');
+    if (!isOpenKind(k.id)) throw bad(`${k.name} sắp ra mắt, hiện chưa nhận nuôi được`);
     tx(() => {
       const name = checkPetName(req.body?.name);
       const h = homeOf(uid);

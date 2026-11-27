@@ -10,6 +10,7 @@ process.env.PUSH_DRY_RUN = '1';
 process.env.HOT_MIN_HEARTS = '1'; // các test cũ chỉ cần 1 tim; ngưỡng thật (38) được kiểm tra riêng ở cuối
 process.env.REGISTER_RATE_LIMIT = '1000';
 process.env.LOGIN_RATE_LIMIT = '1000';
+process.env.PETS_OPEN_KINDS = 'all'; // các test cũ nuôi đủ loại; giới hạn mặc định (chỉ Abu) được kiểm tra riêng
 process.env.UPLOAD_DIR = path.join(os.tmpdir(), 'jkr-test-uploads');
 const BASE = 'http://localhost:3998/api';
 // công cụ caption giả lập (máy chủ thật không được gọi trong test)
@@ -1962,6 +1963,22 @@ test('Nuôi thú: chỉ Admin thử khi chưa mở; chăm sóc, thân thiết, k
   assert.equal((await call('GET', '/pets', null, u.token)).status, 403);
 });
 
+test('Nuôi thú: hiện chỉ nhận nuôi được Abu; các bạn khác "Sắp ra mắt"', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('petSoon', 1);
+  await call('PUT', '/admin/pets/settings', { mode: 'all' }, adm.token);
+  const prev = process.env.PETS_OPEN_KINDS; delete process.env.PETS_OPEN_KINDS; // mặc định: chỉ Abu
+  try {
+    const s = (await call('GET', '/pets', null, u.token)).data;
+    assert.deepEqual(s.kinds.filter((k) => !k.soon).map((k) => k.id), ['abu']);
+    assert.equal(s.kinds.filter((k) => k.soon).length, 5);
+    assert.deepEqual(s.kinds.map((k) => k.name), ['Abu', 'Charsiu', 'Juad', 'Tofu', 'Udon', 'Uni']); // theo thứ tự chữ cái
+    const r = await call('POST', '/pets/adopt', { kind: 'uni', name: 'Bông Xù' }, u.token);
+    assert.equal(r.status, 400); assert.match(r.data.error, /sắp ra mắt/);
+    assert.equal((await call('POST', '/pets/adopt', { kind: 'abu', name: 'Xanh Lá' }, u.token)).status, 201);
+  } finally { process.env.PETS_OPEN_KINDS = prev; await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
+});
+
 test('Nuôi thú: thú buồn bị trừ Thân thiết theo giờ, không tụt khỏi giai đoạn, chăm xong thì chốt điểm', async () => {
   const { db, now } = await import('../server/db.js');
   const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
@@ -2123,7 +2140,7 @@ test('Nuôi thú: mỗi bạn phản ứng khác nhau với từng đồ ăn, đ
     assert.equal((await call('POST', `/pets/${tofu.id}/play`, {}, u.token)).data.reaction.action, 'play_neutral');
     // cửa hàng cho biết phản ứng của từng bạn với từng món
     const item = (await call('GET', '/pets/shop', null, u.token)).data.species.find((x) => x.id === 'dog').food.find((x) => x.id === 'dog_bo');
-    assert.deepEqual(item.react.map((r) => r.level), ['neutral', 'love', 'dislike', 'like']); // Uni, Charsiu, Tofu, Udon
+    assert.deepEqual(item.react.map((r) => r.level), ['love', 'dislike', 'like', 'neutral']); // Charsiu, Tofu, Udon, Uni (thứ tự chữ cái)
     // tắm và ngủ không có phản ứng khẩu vị
     reset(char.id); db.prepare('UPDATE pets SET clean = 10, cd = NULL WHERE id = ?').run(char.id);
     assert.equal((await call('POST', `/pets/${char.id}/wash`, {}, u.token)).data.reaction, null);
