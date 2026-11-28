@@ -12,6 +12,7 @@ const IDX = { vi: 0, en: 1, th: 2, zh: 3, es: 4, pt: 5 };
 export const LOCALE = { vi: 'vi-VN', en: 'en-US', th: 'th-TH', zh: 'zh-CN', es: 'es-419', pt: 'pt-BR' };
 import { ES_PT } from './i18n-es-pt.js';
 import { UI } from './i18n-ui.js';
+import { PETS } from './i18n-pets.js';
 
 const D = {
   // ---- ngôn ngữ ----
@@ -181,7 +182,7 @@ const D = {
 
 for (const [k, v] of Object.entries(ES_PT)) if (D[k]) { D[k][4] = v[0]; D[k][5] = v[1]; }
 // các màn chuyển sau (chat, cấp bậc, cửa hàng...): mỗi khoá đủ 6 ngôn ngữ [vi, en, th, zh, es, pt]
-Object.assign(D, UI);
+Object.assign(D, UI, PETS);
 
 let cur = 'vi';
 export const getLang = () => cur;

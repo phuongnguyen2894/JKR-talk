@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { db, tx, now } from './db.js';
 import { HttpError, bad, forbidden, notFound, getUser, rateLimit, isBlockedEither, areFriends, notify, hub, locationOf, log } from './lib.js';
 import { balanceOf } from './levels.js';
+import { langOf, noName } from './i18n.js';
 import { MT, validStake, payoutFor, generateScript, fighterView, initialsOf, defaultHead, avatarHex } from './muaythai.js';
 
 export const PVP = { TTL_MS: 30 * 60_000, START_DELAY_MS: 3000, MAX_PENDING_OUT: 5, INVITES_PER_HOUR: 10, PAIR_PER_DAY: 10 };
@@ -32,7 +33,7 @@ function addNet(uid, delta, reason, id) {
   db.prepare('INSERT INTO mt_ledger (user_id, delta, reason, match_id, balance_after, created_at) VALUES (?,?,?,?,?,?)').run(uid, delta, reason, id, balanceOf(getUser(uid)), now());
 }
 const chRow = (id) => (typeof id === 'string' && id.length < 60 ? db.prepare('SELECT * FROM mt_challenges WHERE id = ?').get(id) : null);
-const nameOf = (uid) => getUser(uid)?.display_name || 'Người dùng';
+const nameOf = (uid, L) => getUser(uid)?.display_name || noName('user', L);
 
 // hoàn xu cho người mời và đổi trạng thái (chỉ khi còn chờ)
 function closePending(id, status) {
@@ -49,7 +50,7 @@ export function expireDue() {
   for (const { id } of rows) {
     const c = closePending(id, 'expired');
     if (c) {
-      notify(c.from_id, 'mt_invite', ['mtExpired', { u: nameOf(c.to_id), n: c.stake }], { url: '/#/muaythai/box', tag: `mtch-${id}` });
+      notify(c.from_id, 'mt_invite', ['mtExpired', { u: nameOf(c.to_id, getUser(c.from_id)?.language), n: c.stake }], { url: '/#/muaythai/box', tag: `mtch-${id}` });
       hub.send(c.from_id, { type: 'mt_pvp', id });
       hub.send(c.to_id, { type: 'mt_pvp', id });
     }
@@ -60,20 +61,20 @@ export function expireDue() {
 const redId = (c) => (c.from_red ? c.from_id : c.to_id);
 const blueId = (c) => (c.from_red ? c.to_id : c.from_id);
 const sideOf = (c, uid) => (uid === redId(c) ? 'A' : 'B');
-function userCard(uid) {
+function userCard(uid, L = 'vi') {
   const u = getUser(uid);
   const own = u && u.status === 'active' ? u.avatar_url : null;
-  return { id: uid, name: u && u.status !== 'deleted' ? u.display_name : 'Người dùng', initials: initialsOf(u?.display_name), color: avatarHex(u?.avatar_color), headUrl: own || defaultHead(), province: u ? locationOf(u).province : null };
+  return { id: uid, name: u && u.status !== 'deleted' ? u.display_name : noName('user', L), initials: initialsOf(u?.display_name), color: avatarHex(u?.avatar_color), headUrl: own || defaultHead(), province: u ? locationOf(u).province : null };
 }
-function dto(c, viewer) {
+function dto(c, viewer, L = 'vi') {
   const mine = viewer === c.from_id ? 'from' : 'to';
   const other = mine === 'from' ? c.to_id : c.from_id;
   const mySide = sideOf(c, viewer);
   const out = {
     id: c.id, status: c.status, stake: c.stake, payout: payoutFor(c.stake), payoutMultiplier: MT.PAYOUT_MULTIPLIER, role: mine,
     createdAt: c.created_at, expiresAt: c.expires_at, serverNow: now(),
-    fighters: [fighterView('A', 'user', redId(c)), fighterView('B', 'user', blueId(c))], mySide,
-    opponent: { ...userCard(other), isFriend: areFriends(viewer, other) },
+    fighters: [fighterView('A', 'user', redId(c), L), fighterView('B', 'user', blueId(c), L)], mySide,
+    opponent: { ...userCard(other, L), isFriend: areFriends(viewer, other) },
   };
   if (c.status === 'settled') {
     const winSide = (c.winner === 'from') === !!c.from_red ? 'A' : 'B';
@@ -135,7 +136,7 @@ export function mountPvp(api, wrap) {
     });
     notify(toId, 'mt_invite', ['mtChallenge', { u: req.user.display_name, n: stake }], { url: `/#/muaythai/pvp/${id}`, tag: `mtch-${id}` });
     hub.send(toId, { type: 'mt_pvp', id });
-    res.status(201).json(dto(chRow(id), uid));
+    res.status(201).json(dto(chRow(id), uid, langOf(req)));
   }));
 
   // danh sách: in (nhận), out (đã gửi), history (lịch sử) + thống kê
@@ -148,14 +149,14 @@ export function mountPvp(api, wrap) {
     else rows = db.prepare("SELECT * FROM mt_challenges WHERE (from_id = ? OR to_id = ?) AND status != 'pending' ORDER BY COALESCE(settled_at, created_at) DESC LIMIT 30").all(uid, uid);
     const items = rows.map((c) => {
       const other = uid === c.from_id ? c.to_id : c.from_id;
-      const base = { id: c.id, status: c.status, stake: c.stake, role: uid === c.from_id ? 'from' : 'to', expiresAt: c.expires_at, at: c.settled_at || c.created_at, opponent: userCard(other) };
+      const base = { id: c.id, status: c.status, stake: c.stake, role: uid === c.from_id ? 'from' : 'to', expiresAt: c.expires_at, at: c.settled_at || c.created_at, opponent: userCard(other, langOf(req)) };
       if (c.status === 'settled') { const won = (c.winner === 'from') === (uid === c.from_id); base.won = won; base.delta = won ? c.payout - c.stake : -c.stake; }
       return base;
     });
     res.json({ items, stats: stats(uid), incoming: pendingIncoming(uid), serverNow: now() });
   }));
 
-  api.get('/mt/pvp/:id', wrap((req, res) => { const c = mineOrFail(req); res.json(dto(c, me(req))); }));
+  api.get('/mt/pvp/:id', wrap((req, res) => { const c = mineOrFail(req); res.json(dto(c, me(req), langOf(req))); }));
 
   // chấp nhận: giữ xu của người nhận, bốc thăm, chốt kết quả, ghi giờ bắt đầu chung
   api.post('/mt/pvp/:id/accept', wrap((req, res) => {
@@ -179,7 +180,7 @@ export function mountPvp(api, wrap) {
     });
     notify(c0.from_id, 'mt_invite', ['mtAccepted', { u: req.user.display_name }], { url: `/#/muaythai/pvp/${c0.id}`, tag: `mtch-${c0.id}` });
     hub.send(c0.from_id, { type: 'mt_pvp', id: c0.id });
-    res.json(dto(chRow(c0.id), uid));
+    res.json(dto(chRow(c0.id), uid, langOf(req)));
   }));
 
   api.post('/mt/pvp/:id/decline', wrap((req, res) => {
@@ -189,7 +190,7 @@ export function mountPvp(api, wrap) {
     closePending(c0.id, 'declined');
     notify(c0.from_id, 'mt_invite', ['mtDeclined', { u: req.user.display_name, n: c0.stake }], { url: '/#/muaythai/box', tag: `mtch-${c0.id}` });
     hub.send(c0.from_id, { type: 'mt_pvp', id: c0.id });
-    res.json(dto(chRow(c0.id), me(req)));
+    res.json(dto(chRow(c0.id), me(req), langOf(req)));
   }));
   api.post('/mt/pvp/:id/cancel', wrap((req, res) => {
     const c0 = mineOrFail(req);
@@ -197,7 +198,7 @@ export function mountPvp(api, wrap) {
     if (c0.status !== 'pending') throw err(409, 'CHALLENGE_CLOSED', 'Lời thách đấu này không còn hiệu lực');
     closePending(c0.id, 'cancelled');
     hub.send(c0.to_id, { type: 'mt_pvp', id: c0.id });
-    res.json(dto(chRow(c0.id), me(req)));
+    res.json(dto(chRow(c0.id), me(req), langOf(req)));
   }));
 
   setInterval(() => { try { expireDue(); } catch { /* thử lại ở lần sau */ } }, 30_000).unref();

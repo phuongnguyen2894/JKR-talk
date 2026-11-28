@@ -17,6 +17,12 @@ const REGION = {
 const TREND = ['Đẩy trend', 'Boost trend', 'ดันเทรนด์', '推热门', 'Impulsar tendencia', 'Impulsionar trend'];
 export const regionNameFor = (code, lang, fb) => (REGION[code] ? pick(REGION[code], lang) : fb);
 export const trendNameFor = (lang) => pick(TREND, lang);
+// tên thay thế khi không có tên (tài khoản đã xóa, nhân vật chưa đặt tên)
+const NONAME = {
+  user: ['Người dùng', 'User', 'ผู้ใช้', '用户', 'Usuario', 'Usuário'],
+  fighter: ['Võ sĩ', 'Fighter', 'นักมวย', '拳手', 'Luchador', 'Lutador'],
+};
+export const noName = (kind, lang) => pick(NONAME[kind], lang);
 
 // ---- thông báo (theo ngôn ngữ người nhận) -------------------------------------------------
 const N = {

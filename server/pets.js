@@ -6,6 +6,8 @@ import crypto from 'node:crypto';
 import { db, tx, now } from './db.js';
 import { bad, notFound, forbidden, getUser, rateLimit, areFriends, isBlockedEither, notify, pushOnly, isOnline, isSystemAdmin, log } from './lib.js';
 import { balanceOf } from './levels.js';
+import { langOf } from './i18n.js';
+import { ptr } from './pets-i18n.js';
 
 const LEVEL_NAMES = ['Chưa có cấp', 'Tím Mầm Non', 'Tím Sương Sương', 'Tím Mộng Mơ', 'Tím Thủy Chung', 'Tím Thủy Tổ'];
 
@@ -178,13 +180,13 @@ CREATE INDEX IF NOT EXISTS idx_pet_events_user ON pet_events(user_id, id);`);
 
 // ---- tên thú: phải riêng biệt (không trùng tên thú của ai khác) và không được trùng tên mặc định của các bạn ----------------------
 const nameKey = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
-export function checkPetName(raw, exceptPetId = 0) {
+export function checkPetName(raw, exceptPetId = 0, L = 'vi') {
   const name = String(raw ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
-  if (name.length < 2 || name.length > 20) throw bad('Tên thú từ 2 đến 20 ký tự');
-  if (!/^[\p{L}\p{N} _.'-]+$/u.test(name)) throw bad("Tên chỉ gồm chữ, số, dấu cách và các dấu - _ . '");
+  if (name.length < 2 || name.length > 20) throw bad(ptr(L, 'err.nameLen', 'Tên thú từ 2 đến 20 ký tự'));
+  if (!/^[\p{L}\p{N} _.'-]+$/u.test(name)) throw bad(ptr(L, 'err.nameChars', "Tên chỉ gồm chữ, số, dấu cách và các dấu - _ . '"));
   const key = nameKey(name);
-  if (KINDS.some((k) => nameKey(k.name) === key)) throw bad('Không được đặt trùng tên mặc định (Abu, Charsiu, Juad, Tofu, Udon, Uni)');
-  if (db.prepare('SELECT id, name FROM pets WHERE id != ?').all(exceptPetId).some((r) => nameKey(r.name) === key)) throw bad('Tên này đã có bạn thú khác dùng, hãy chọn tên khác');
+  if (KINDS.some((k) => nameKey(k.name) === key)) throw bad(ptr(L, 'err.nameDefault', 'Không được đặt trùng tên mặc định (Abu, Charsiu, Juad, Tofu, Udon, Uni)'));
+  if (db.prepare('SELECT id, name FROM pets WHERE id != ?').all(exceptPetId).some((r) => nameKey(r.name) === key)) throw bad(ptr(L, 'err.nameTaken', 'Tên này đã có bạn thú khác dùng, hãy chọn tên khác'));
   return name;
 }
 
@@ -222,11 +224,26 @@ function settle(p, t, crowd) {
   return { row: db.prepare('SELECT * FROM pets WHERE id = ?').get(p.id), loss };
 }
 const stageOf = (i) => [...STAGES].reverse().find((s) => i >= s.from);
-function moodOf(st) {
+const MOOD_VI = { hungry: 'Đang đói bụng', bored: 'Đang buồn chán', dirty: 'Cần được tắm', sleepy: 'Đang buồn ngủ', happy: 'Đang rất vui', ok: 'Ổn' };
+function moodOf(st, L = 'vi') {
   const low = Object.entries(st).sort((a, b) => a[1] - b[1])[0];
-  if (low[1] < 25) return { key: { food: 'hungry', fun: 'bored', clean: 'dirty', health: 'sleepy' }[low[0]], label: { food: 'Đang đói bụng', fun: 'Đang buồn chán', clean: 'Cần được tắm', health: 'Đang buồn ngủ' }[low[0]] };
-  return (st.food + st.fun + st.clean + st.health) / 4 >= 70 ? { key: 'happy', label: 'Đang rất vui' } : { key: 'ok', label: 'Ổn' };
+  const key = low[1] < 25 ? { food: 'hungry', fun: 'bored', clean: 'dirty', health: 'sleepy' }[low[0]] : (st.food + st.fun + st.clean + st.health) / 4 >= 70 ? 'happy' : 'ok';
+  return { key, label: ptr(L, `mood.${key}`, MOOD_VI[key]) };
 }
+// ---- chữ theo ngôn ngữ người xem (L): tên loài, đồ, giai đoạn, bậc nhà, cấp... (xem pets-i18n.js) --------------------------------
+const itemName = (L, cat, it) => ptr(L, `${cat}:${it.id}`, it.name);
+const stageName = (L, s) => ptr(L, `stage.${s.n}`, s.name);
+const tierName = (L, t) => ptr(L, `tier.${t.tier}`, t.name);
+const lvName = (L, n) => ptr(L, `lv.${n}`, LEVEL_NAMES[n]);
+const spName = (L, sp) => ptr(L, `sp.${sp}`, SPECIES[sp].name);
+const spFor = (L, sp) => ptr(L, `spFor.${sp}`, SPECIES[sp].name.toLowerCase());
+const habName = (L, type) => ptr(L, `hab.${type}`, HAB_TYPES[type]);
+const tiersL = (L) => tiers().map((t) => ({ ...t, name: tierName(L, t) }));
+const stagesL = (L) => STAGES.map((s) => ({ ...s, name: stageName(L, s) }));
+const levelsL = (L) => Object.fromEntries(Object.entries(LEVELS).map(([k, v]) => [k, { ...v, label: ptr(L, `level.${k}`, v.label) }]));
+const socialL = (L) => Object.fromEntries(Object.entries(SOCIAL).map(([k, v]) => [k, { ...v, label: ptr(L, `soc.${k}`, v.label) }]));
+const freeFoodsL = (L) => Object.fromEntries(Object.entries(FREE_FOODS).map(([sp, l]) => [sp, l.map((f) => ({ ...f, name: ptr(L, `free.${f.id}`, f.name) }))]));
+const kindL = (L, k) => ({ species: spName(L, k.sp), trait: ptr(L, `trait.${k.id}`, k.trait) });
 // Hình pixel art đầy đủ 4 giai đoạn (đã vẽ sẵn kích thước lớn dần): bạn nào có trong ART thì game hiển thị sprite này thay cho hình tạm
 const ART = { abu: true };
 // Bạn nào đang cho nhận nuôi (các bạn khác hiện "Sắp ra mắt"). Mặc định chỉ Abu (đã có đủ hình); PETS_OPEN_KINDS=all mở tất cả, hoặc liệt kê mã cách nhau bằng dấu phẩy
@@ -240,15 +257,15 @@ const animFor = (kind, stage) => {
   const a = ANIM[kind]?.[stage];
   return a ? Object.fromEntries(Object.entries(a).map(([name, v]) => [name, { fps: v.fps, ...(v.blink ? { blink: true } : {}), urls: Array.from({ length: v.n }, (_, i) => `/pets/${kind}/s${stage}/${name}/${String(i + 1).padStart(2, '0')}.webp`) }])) : null;
 };
-const wearInfo = (slot, id) => { const it = id && ITEM[`${slot}:${id}`]; return it ? { id: it.id, name: it.name, emoji: it.emoji } : null; };
-export function petView(p, t, crowd, kinds = imgMap()) {
+const wearInfo = (slot, id, L = 'vi') => { const it = id && ITEM[`${slot}:${id}`]; return it ? { id: it.id, name: itemName(L, slot, it), emoji: it.emoji } : null; };
+export function petView(p, t, crowd, kinds = imgMap(), L = 'vi') {
   const k = KIND[p.kind], st = current(p, t, crowd), cd = (() => { try { return JSON.parse(p.cd || '{}'); } catch { return {}; } })();
   const loss = lossOf(p, t, crowd), intimacy = p.intimacy - loss; // điểm hiển thị đã trừ phần mất do bỏ mặc
   const stage = stageOf(intimacy), next = STAGES.find((s) => s.from > intimacy);
   return {
-    id: p.id, kind: p.kind, kindName: k.name, species: k.species, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, trait: k.trait,
-    sprite: spriteUrl(p.kind, stage.n), anim: animFor(p.kind, stage.n), outfit: wearInfo('outfit', p.outfit), collar: wearInfo('collar', p.collar), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], inHome: !!p.in_home, intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stage.name, nextAt: next ? next.from : null,
-    stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st),
+    id: p.id, kind: p.kind, kindName: k.name, emoji: k.emoji, initials: k.initials, color: k.color, imageUrl: kinds[p.kind] || null, name: p.name, ...kindL(L, k),
+    sprite: spriteUrl(p.kind, stage.n), anim: animFor(p.kind, stage.n), outfit: wearInfo('outfit', p.outfit, L), collar: wearInfo('collar', p.collar, L), favFood: k.fav, tastes: { ...TASTE[k.id].food, ...TASTE[k.id].toy }, sp: k.sp, homeType: HOME_OF[p.kind], inHome: !!p.in_home, intimacy, losing: Math.min(...Object.values(st)) < SAD_BELOW, lossRate: LOSS_PER_HOUR, stage: stage.n, stageName: stageName(L, stage), nextAt: next ? next.from : null,
+    stats: Object.fromEntries(Object.entries(st).map(([a, v]) => [a, Math.round(v)])), mood: moodOf(st, L),
     cooldowns: Object.fromEntries(Object.entries(ACTIONS).map(([a, c]) => [a, Math.max(0, (cd[a] || 0) + c.cd - t)])),
     gainLeft: Math.max(0, DAILY_GAIN_CAP - (p.day === dayKey(t) ? p.day_gain : 0)),
   };
@@ -271,37 +288,37 @@ function gain(p, amount, t) {
 
 // ---- thao tác chăm sóc ------------------------------------------------------------------------------------------------
 const bodyHasToy = (b) => !!b?.toy;
-function care(uid, petId, action, body) {
+function care(uid, petId, action, body, L = 'vi') {
   return tx(() => {
     const p0 = db.prepare('SELECT * FROM pets WHERE id = ? AND user_id = ?').get(petId, uid);
-    if (!p0) throw notFound('Không tìm thấy bạn thú này');
+    if (!p0) throw notFound(ptr(L, 'err.notFound', 'Không tìm thấy bạn thú này'));
     const t = now(), all = myPets(uid), crowd = factorFn(uid, all.length)(p0), k = KIND[p0.kind], inv = owned(uid), hab = habTiers(uid);
     const { row: p, loss: lost } = settle(p0, t, crowd), st = current(p, t, crowd);
     const cd = (() => { try { return JSON.parse(p.cd || '{}'); } catch { return {}; } })();
     const wait = (cd[action] || 0) + ACTIONS[action].cd - t;
-    if (wait > 0) throw bad(`Đợi ${Math.ceil(wait / 1000)} giây nữa nhé`);
+    if (wait > 0) throw bad(ptr(L, 'err.wait', 'Đợi {s} giây nữa nhé', { s: Math.ceil(wait / 1000) }));
     let stat, delta = {}, base = 0, level = null, bonusInt = 0, use = null, act = null;
     if (action === 'feed') {
-      const prem = ITEM[`food:${body?.food}`], f = prem || FREE_FOODS[k.sp].find((x) => x.id === body?.food); if (!f) throw bad('Món ăn không hợp lệ');
-      if (prem && prem.sp !== k.sp) throw bad(`${prem.name} không dành cho ${SPECIES[k.sp].name.toLowerCase()}`);
-      if (st.food >= 95) throw bad(`${p.name} no rồi`);
-      if (prem && !(inv[`food:${prem.id}`] > 0)) throw bad(`Bạn chưa có ${prem.name}, hãy mua ở cửa hàng`);
+      const prem = ITEM[`food:${body?.food}`], f = prem || FREE_FOODS[k.sp].find((x) => x.id === body?.food); if (!f) throw bad(ptr(L, 'err.badFood', 'Món ăn không hợp lệ'));
+      if (prem && prem.sp !== k.sp) throw bad(ptr(L, 'err.notFor', '{i} không dành cho {s}', { i: itemName(L, 'food', prem), s: spFor(L, k.sp) }));
+      if (st.food >= 95) throw bad(ptr(L, 'err.full', '{n} no rồi', { n: p.name }));
+      if (prem && !(inv[`food:${prem.id}`] > 0)) throw bad(ptr(L, 'err.noFood', 'Bạn chưa có {i}, hãy mua ở cửa hàng', { i: itemName(L, 'food', prem) }));
       stat = 'food'; delta.food = f.food;
       act = 'feed'; level = TASTE[k.id].food[f.id] || 'neutral';
       if (prem) { use = `food:${prem.id}`; if (prem.fun) delta.fun = prem.fun; if (prem.health) delta.health = prem.health; bonusInt = prem.int || 0; }
     } else if (action === 'play') {
-      if (st.fun >= 95) throw bad(`${p.name} đang rất vui rồi`);
+      if (st.fun >= 95) throw bad(ptr(L, 'err.happy', '{n} đang rất vui rồi', { n: p.name }));
       const toy = body?.toy ? ITEM[`toy:${body.toy}`] : null;
-      if (body?.toy && !(toy && inv[`toy:${toy.id}`] > 0)) throw bad('Bạn chưa có đồ chơi này, hãy mua ở cửa hàng');
-      if (toy && toy.sp !== k.sp) throw bad(`${toy.name} không dành cho ${SPECIES[k.sp].name.toLowerCase()}`);
+      if (body?.toy && !(toy && inv[`toy:${toy.id}`] > 0)) throw bad(ptr(L, 'err.noToy', 'Bạn chưa có đồ chơi này, hãy mua ở cửa hàng'));
+      if (toy && toy.sp !== k.sp) throw bad(ptr(L, 'err.notFor', '{i} không dành cho {s}', { i: itemName(L, 'toy', toy), s: spFor(L, k.sp) }));
       stat = 'fun'; delta = { fun: Math.round(25 * (k.playBoost || 1)) + (toy?.fun || 0), food: -5, clean: -5 };
       act = 'play'; level = toy ? TASTE[k.id].toy[toy.id] || 'neutral' : 'neutral'; // chơi tay không: phản ứng bình thường, không đổi hiệu quả
       if (toy) { if (toy.health) delta.health = toy.health; bonusInt = toy.int || 0; }
     } else if (action === 'wash') {
-      if (st.clean >= 90) throw bad(`${p.name} đang sạch sẽ rồi`);
+      if (st.clean >= 90) throw bad(ptr(L, 'err.clean', '{n} đang sạch sẽ rồi', { n: p.name }));
       stat = 'clean'; delta = { clean: 40 };
     } else {
-      if (st.health >= 90) throw bad(`${p.name} đang khỏe rồi`);
+      if (st.health >= 90) throw bad(ptr(L, 'err.healthy', '{n} đang khỏe rồi', { n: p.name }));
       stat = 'health'; delta = { health: Math.round(30 * (k.sleepBoost || 1)) + HAB_SLEEP * (hab[HOME_OF[p.kind]] || 0) }; // chỗ ở tốt thì ngủ hồi nhiều hơn
     }
     // chỉ cộng Thân thiết khi chỉ số đó thật sự cần chăm; chăm lúc còn đầy thì cộng ít
@@ -312,7 +329,7 @@ function care(uid, petId, action, body) {
       const M = LEVELS[level], useItem = action === 'feed' || bodyHasToy(body);
       if (useItem && M.mult !== 1) for (const s of Object.keys(delta)) if (delta[s] > 0) delta[s] = Math.round(delta[s] * M.mult);
       if (useItem) { base += M.int; if (level === 'dislike') base = Math.max(0, base - 1); }
-      reaction = { level, action: `${act}_${level}`, emoji: M.emoji, label: M.label, text: REACT_TEXT[k.id][act][level].replaceAll('{n}', p.name) };
+      reaction = { level, action: `${act}_${level}`, emoji: M.emoji, label: ptr(L, `level.${level}`, M.label), text: ptr(L, `react.${k.id}.${act}.${level}`, REACT_TEXT[k.id][act][level], { n: p.name }) };
     }
     if (use) db.prepare('UPDATE pet_inventory SET qty = qty - 1 WHERE user_id = ? AND item = ?').run(uid, use);
     const next = { ...st };
@@ -321,7 +338,7 @@ function care(uid, petId, action, body) {
     db.prepare('UPDATE pets SET food = ?, fun = ?, clean = ?, health = ?, stat_at = ?, cd = ? WHERE id = ?').run(next.food, next.fun, next.clean, next.health, t, JSON.stringify(cd), p.id);
     const added = gain(db.prepare('SELECT * FROM pets WHERE id = ?').get(p.id), base, t);
     const fresh = db.prepare('SELECT * FROM pets WHERE id = ?').get(p.id);
-    return { pet: petView(fresh, t, crowd), inv: owned(uid), gained: added, lost, liked: reaction?.level === 'love', reaction, levelUp: stageOf(fresh.intimacy).n > stageOf(p.intimacy).n ? stageOf(fresh.intimacy).name : null };
+    return { pet: petView(fresh, t, crowd, imgMap(), L), inv: owned(uid), gained: added, lost, liked: reaction?.level === 'love', reaction, levelUp: stageOf(fresh.intimacy).n > stageOf(p.intimacy).n ? stageName(L, stageOf(fresh.intimacy)) : null };
   });
 }
 
@@ -349,6 +366,10 @@ export const SOCIAL_TEXT = {
   tofu: { play: '{a} chơi với {b} được vài phút rồi ngáp dài.', cuddle: '{a} gối đầu lên {b} lim dim.', nap: '{a} và {b} cùng ngủ một giấc ngon lành.', groom: '{a} lim dim liếm nhẹ lông cho {b}.', share: '{a} đẩy bánh sang cho {b} rồi nằm xuống.', chat: '{a} thì thầm ngái ngủ kể chuyện cho {b}.', comfort: '{a} nằm im bên cạnh {b} cho ấm lòng.' },
   udon: { play: '{a} phóng vụt đuổi {b}, thân dài uốn lượn khắp nhà!', cuddle: '{a} cuộn thân dài quanh {b}.', nap: '{a} duỗi dài ngủ cạnh {b}.', groom: '{a} liếm tai cho {b}.', share: '{a} cắn đôi miếng ăn chia cho {b}.', chat: '{a} sủa vang kể chuyện rượt bóng cho {b}.', comfort: '{a} đưa đồ chơi cho {b} để dỗ.' },
 };
+function eventText(L, e, list) {
+  const A = list.find((p) => p.id === e.a_id), B = list.find((p) => p.id === e.b_id), tpl = A && SOCIAL_TEXT[A.kind]?.[e.type];
+  return A && B && tpl ? ptr(L, `social.${A.kind}.${e.type}`, tpl, { a: A.name, b: B.name }) : e.text;
+}
 const sadOf = (s) => Math.min(s.food, s.fun, s.clean, s.health) < 25;
 // điều kiện và hiệu quả: a là bạn chủ động, b là bạn kia
 const SOCIAL_RULES = {
@@ -410,8 +431,11 @@ export function petsSweep() {
       const list = myPets(h.user_id), fx = factorFn(h.user_id, list.length);
       const needy = list.filter((p) => Math.min(...Object.values(current(p, t, fx(p)))) < 25);
       if (!needy.length) continue;
-      const one = needy.length === 1 ? moodOf(current(needy[0], t, fx(needy[0]))).label.toLowerCase() : '';
-      pushOnly(h.user_id, 'social', { body: needy.length === 1 ? `${needy[0].name} ${one}. Vào chăm bạn ấy nhé!` : `${needy.length} bạn thú đang cần được chăm: ${needy.map((p) => p.name).join(', ')}`, url: '/#/pets', tag: 'pets-need' });
+      const L = getUser(h.user_id)?.language || 'vi';
+      const one = needy.length === 1 ? moodOf(current(needy[0], t, fx(needy[0])), L).label : '';
+      const body = needy.length === 1 ? ptr(L, 'push.one', '{n} {m}. Vào chăm bạn ấy nhé!', { n: needy[0].name, m: L === 'vi' ? one.toLowerCase() : one })
+        : ptr(L, 'push.many', '{c} bạn thú đang cần được chăm: {list}', { c: needy.length, list: needy.map((p) => p.name).join(', ') });
+      pushOnly(h.user_id, 'social', { body, url: '/#/pets', tag: 'pets-need' });
       db.prepare('UPDATE pet_home SET push_at = ?, push_day = ?, push_n = ? WHERE user_id = ?').run(t, day, pushedToday + 1, h.user_id);
     } catch (e) { console.error('[pets]', e.message); }
   }
@@ -423,143 +447,143 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
 
   // ai cũng hỏi được (để ẩn/hiện thẻ game); các đường còn lại chỉ mở khi được phép
   api.get('/pets/access', wrap((req, res) => res.json({ open: canUsePets(me(req)), beta: petsMode() === 'admin' })));
-  api.use('/pets', (req, _res, next) => { if (!canUsePets(me(req))) throw forbidden('Game Nuôi thú chưa mở cho bạn'); next(); });
+  api.use('/pets', (req, _res, next) => { if (!canUsePets(me(req))) throw forbidden(ptr(langOf(req), 'err.closed', 'Game Nuôi thú chưa mở cho bạn')); next(); });
 
-  const state = (uid) => {
+  const state = (uid, L = 'vi') => {
     socialTick(uid);
-    const h = homeOf(uid), t = now(), list = myPets(uid), fx = factorFn(uid, list.length), T = tiers(), cur = T.find((x) => x.tier === h.tier), nxt = T.find((x) => x.tier === h.tier + 1) || null, u = getUser(uid), kinds = imgMap();
+    const h = homeOf(uid), t = now(), list = myPets(uid), fx = factorFn(uid, list.length), T = tiersL(L), cur = T.find((x) => x.tier === h.tier), nxt = T.find((x) => x.tier === h.tier + 1) || null, u = getUser(uid), kinds = imgMap();
     const mine = new Set(list.map((p) => p.kind));
     return {
       serverNow: t, balance: balanceOf(u), level: u.lvl || 0,
       home: { tier: cur.tier, name: cur.name, capacity: cur.capacity, used: list.length, area: { total: cur.area, used: areaUsed(uid) }, tiers: T,
-        next: nxt && { tier: nxt.tier, name: nxt.name, capacity: nxt.capacity, area: nxt.area, price: nxt.price, minLevel: nxt.minLevel, minLevelName: LEVEL_NAMES[nxt.minLevel], levelOk: (u.lvl || 0) >= nxt.minLevel } },
-      pets: list.map((p) => petView(p, t, fx(p), kinds)),
-      events: db.prepare('SELECT * FROM pet_events WHERE user_id = ? ORDER BY id DESC LIMIT 15').all(uid).map((e) => ({ id: e.id, at: e.at, type: e.type, emoji: SOCIAL[e.type].emoji, label: SOCIAL[e.type].label, a: e.a_id, b: e.b_id, text: e.text })),
-      socialEveryMin: SOCIAL_EVERY / 60_000, social: SOCIAL,
-      closet: Object.entries(owned(uid)).filter(([k, q]) => q > 0 && /^(outfit|collar):/.test(k) && ITEM[k]).map(([k]) => ({ slot: ITEM[k].cat, id: ITEM[k].id, sp: ITEM[k].sp, name: ITEM[k].name, emoji: ITEM[k].emoji })),
-      inv: owned(uid), habitat: Object.fromEntries(Object.entries(habTiers(uid)).map(([t, n]) => { const it = SHOP[t].find((x) => x.tier === n); return [t, { tier: n, emoji: it?.emoji || null, name: it?.name || null, slow: Math.round((1 - HAB_MULT[n]) * 100) }]; })), shopFoods: SHOP.food.map((f) => ({ id: f.id, sp: f.sp, name: f.name, emoji: f.emoji, food: f.food, fun: f.fun || 0, health: f.health || 0, int: f.int })), shopToys: SHOP.toy.map((x) => ({ id: x.id, sp: x.sp, name: x.name, emoji: x.emoji, fun: x.fun, health: x.health || 0, int: x.int })),
-      kinds: KINDS.map((k) => ({ id: k.id, name: k.name, species: k.species, sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, trait: k.trait, fav: k.fav, imageUrl: kinds[k.id] || null, sprite: spriteUrl(k.id, 0), adopted: mine.has(k.id), soon: !isOpenKind(k.id) })),
-      levels: LEVELS, foodsBySp: FREE_FOODS, species: Object.entries(SPECIES).map(([id, v]) => ({ id, name: v.name })), stages: STAGES, dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
+        next: nxt && { tier: nxt.tier, name: nxt.name, capacity: nxt.capacity, area: nxt.area, price: nxt.price, minLevel: nxt.minLevel, minLevelName: lvName(L, nxt.minLevel), levelOk: (u.lvl || 0) >= nxt.minLevel } },
+      pets: list.map((p) => petView(p, t, fx(p), kinds, L)),
+      events: db.prepare('SELECT * FROM pet_events WHERE user_id = ? ORDER BY id DESC LIMIT 15').all(uid).map((e) => ({ id: e.id, at: e.at, type: e.type, emoji: SOCIAL[e.type].emoji, label: ptr(L, `soc.${e.type}`, SOCIAL[e.type].label), a: e.a_id, b: e.b_id, text: eventText(L, e, list) })),
+      socialEveryMin: SOCIAL_EVERY / 60_000, social: socialL(L),
+      closet: Object.entries(owned(uid)).filter(([k, q]) => q > 0 && /^(outfit|collar):/.test(k) && ITEM[k]).map(([k]) => ({ slot: ITEM[k].cat, id: ITEM[k].id, sp: ITEM[k].sp, name: ptr(L, k, ITEM[k].name), emoji: ITEM[k].emoji })),
+      inv: owned(uid), habitat: Object.fromEntries(Object.entries(habTiers(uid)).map(([t, n]) => { const it = SHOP[t].find((x) => x.tier === n); return [t, { tier: n, emoji: it?.emoji || null, name: it ? itemName(L, t, it) : null, slow: Math.round((1 - HAB_MULT[n]) * 100) }]; })), shopFoods: SHOP.food.map((f) => ({ id: f.id, sp: f.sp, name: itemName(L, 'food', f), emoji: f.emoji, food: f.food, fun: f.fun || 0, health: f.health || 0, int: f.int })), shopToys: SHOP.toy.map((x) => ({ id: x.id, sp: x.sp, name: itemName(L, 'toy', x), emoji: x.emoji, fun: x.fun, health: x.health || 0, int: x.int })),
+      kinds: KINDS.map((k) => ({ id: k.id, name: k.name, ...kindL(L, k), sp: k.sp, emoji: k.emoji, initials: k.initials, color: k.color, fav: k.fav, imageUrl: kinds[k.id] || null, sprite: spriteUrl(k.id, 0), adopted: mine.has(k.id), soon: !isOpenKind(k.id) })),
+      levels: levelsL(L), foodsBySp: freeFoodsL(L), species: Object.keys(SPECIES).map((id) => ({ id, name: spName(L, id) })), stages: stagesL(L), dailyCap: DAILY_GAIN_CAP, beta: petsMode() === 'admin',
     };
   };
-  api.get('/pets', wrap((req, res) => res.json(state(me(req)))));
+  api.get('/pets', wrap((req, res) => res.json(state(me(req), langOf(req)))));
 
   api.post('/pets/adopt', wrap((req, res) => {
     rateLimit(`padopt:${me(req)}`, 20, 60_000);
-    const uid = me(req), k = KIND[String(req.body?.kind || '')];
-    if (!k) throw bad('Bạn thú không hợp lệ');
-    if (!isOpenKind(k.id)) throw bad(`${k.name} sắp ra mắt, hiện chưa nhận nuôi được`);
+    const uid = me(req), L = langOf(req), k = KIND[String(req.body?.kind || '')];
+    if (!k) throw bad(ptr(L, 'err.badKind', 'Bạn thú không hợp lệ'));
+    if (!isOpenKind(k.id)) throw bad(ptr(L, 'err.soon', '{n} sắp ra mắt, hiện chưa nhận nuôi được', { n: k.name }));
     tx(() => {
-      const name = checkPetName(req.body?.name);
+      const name = checkPetName(req.body?.name, 0, L);
       const h = homeOf(uid);
-      if (myPets(uid).length >= capacityOf(h)) throw bad('Khu nhà đã đầy, hãy mở rộng để nuôi thêm');
-      if (db.prepare('SELECT 1 FROM pets WHERE user_id = ? AND kind = ?').get(uid, k.id)) throw bad(`Bạn đã nuôi ${k.name} rồi`);
+      if (myPets(uid).length >= capacityOf(h)) throw bad(ptr(L, 'err.homeFull', 'Khu nhà đã đầy, hãy mở rộng để nuôi thêm'));
+      if (db.prepare('SELECT 1 FROM pets WHERE user_id = ? AND kind = ?').get(uid, k.id)) throw bad(ptr(L, 'err.already', 'Bạn đã nuôi {n} rồi', { n: k.name }));
       db.prepare('INSERT INTO pets (user_id, kind, name, food, fun, clean, health, stat_at, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(uid, k.id, name, 70, 70, 70, 70, now(), now());
     });
-    res.status(201).json(state(uid));
+    res.status(201).json(state(uid, L));
   }));
 
   for (const action of Object.keys(ACTIONS)) {
     api.post(`/pets/:id/${action}`, wrap((req, res) => {
       rateLimit(`pcare:${me(req)}`, 120, 60_000);
-      const r = care(me(req), Number(req.params.id), action, req.body);
+      const r = care(me(req), Number(req.params.id), action, req.body, langOf(req));
       res.json({ ...r, balance: balanceOf(getUser(me(req))) });
     }));
   }
   // cho bạn thú vào hoặc ra chỗ ở của mình (chạm vào lồng trong phòng): chỉ khi đã có chỗ ở đúng loại
   api.post('/pets/:id/home', wrap((req, res) => {
     rateLimit(`pcare:${me(req)}`, 120, 60_000);
-    const uid = me(req), p = db.prepare('SELECT id, kind FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), uid);
-    if (!p) throw notFound('Không tìm thấy bạn thú này');
+    const uid = me(req), L = langOf(req), p = db.prepare('SELECT id, kind FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), uid);
+    if (!p) throw notFound(ptr(L, 'err.notFound', 'Không tìm thấy bạn thú này'));
     const type = HOME_OF[p.kind], inside = !!req.body?.in;
-    if (inside && !(habTiers(uid)[type] > 0)) throw bad(`Bạn chưa có ${HAB_TYPES[type].toLowerCase()} cho bạn ấy`);
+    if (inside && !(habTiers(uid)[type] > 0)) throw bad(ptr(L, 'err.noHab', 'Bạn chưa có {h} cho bạn ấy', { h: ptr(L, `habLow.${type}`, HAB_TYPES[type].toLowerCase()) }));
     db.prepare('UPDATE pets SET in_home = ? WHERE id = ?').run(inside ? 1 : 0, p.id);
-    res.json(state(uid));
+    res.json(state(uid, L));
   }));
   api.patch('/pets/:id', wrap((req, res) => {
-    const cur = db.prepare('SELECT name FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), me(req));
-    if (!cur) throw notFound('Không tìm thấy bạn thú này');
-    const name = cur.name === String(req.body?.name ?? '').trim() ? cur.name : checkPetName(req.body?.name, Number(req.params.id));
+    const L = langOf(req), cur = db.prepare('SELECT name FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), me(req));
+    if (!cur) throw notFound(ptr(L, 'err.notFound', 'Không tìm thấy bạn thú này'));
+    const name = cur.name === String(req.body?.name ?? '').trim() ? cur.name : checkPetName(req.body?.name, Number(req.params.id), L);
     const r = db.prepare('UPDATE pets SET name = ? WHERE id = ? AND user_id = ?').run(name, Number(req.params.id), me(req));
-    if (!r.changes) throw notFound('Không tìm thấy bạn thú này');
+    if (!r.changes) throw notFound(ptr(L, 'err.notFound', 'Không tìm thấy bạn thú này'));
     res.json({ ok: true, name });
   }));
 
   // mở rộng khu nhà: cần đủ cấp và đủ xu tím
   api.post('/pets/home/expand', wrap((req, res) => {
     rateLimit(`pexp:${me(req)}`, 10, 60_000);
-    const uid = me(req);
+    const uid = me(req), L = langOf(req);
     tx(() => {
       const h = homeOf(uid), T = tiers(), nxt = T.find((x) => x.tier === h.tier + 1);
-      if (!nxt) throw bad('Khu nhà đã ở bậc cao nhất');
+      if (!nxt) throw bad(ptr(L, 'err.maxTier', 'Khu nhà đã ở bậc cao nhất'));
       const u = getUser(uid);
-      if ((u.lvl || 0) < nxt.minLevel) throw bad(`Cần đạt cấp ${LEVEL_NAMES[nxt.minLevel]} để mở rộng lên ${nxt.name}`);
-      if (balanceOf(u) < nxt.price) throw bad('Bạn chưa đủ xu tím để mở rộng khu nhà');
+      if ((u.lvl || 0) < nxt.minLevel) throw bad(ptr(L, 'err.needLevel', 'Cần đạt cấp {l} để mở rộng lên {t}', { l: lvName(L, nxt.minLevel), t: tierName(L, nxt) }));
+      if (balanceOf(u) < nxt.price) throw bad(ptr(L, 'err.coinsExpand', 'Bạn chưa đủ xu tím để mở rộng khu nhà'));
       if (nxt.price) db.prepare('UPDATE users SET coins_spent = coins_spent + ? WHERE id = ?').run(nxt.price, uid);
       db.prepare('UPDATE pet_home SET tier = ? WHERE user_id = ?').run(nxt.tier, uid);
     });
-    res.json(state(uid));
+    res.json(state(uid, L));
   }));
 
   // mặc quần áo / vòng cổ cho một bạn (phải đã mua, đúng loài); item rỗng = bỏ ra
   api.post('/pets/:id/wear', wrap((req, res) => {
-    const slot = req.body?.slot; if (!['outfit', 'collar'].includes(slot)) throw bad('Chỉ mặc được quần áo hoặc vòng cổ');
+    const L = langOf(req), slot = req.body?.slot; if (!['outfit', 'collar'].includes(slot)) throw bad(ptr(L, 'err.wearSlot', 'Chỉ mặc được quần áo hoặc vòng cổ'));
     const p = db.prepare('SELECT * FROM pets WHERE id = ? AND user_id = ?').get(Number(req.params.id), me(req));
-    if (!p) throw notFound('Không tìm thấy bạn thú này');
+    if (!p) throw notFound(ptr(L, 'err.notFound', 'Không tìm thấy bạn thú này'));
     let id = null;
     if (req.body?.item) {
       const it = ITEM[`${slot}:${req.body.item}`];
-      if (!it) throw bad('Vật phẩm không tồn tại');
-      if (it.sp !== KIND[p.kind].sp) throw bad(`${it.name} không dành cho ${SPECIES[KIND[p.kind].sp].name.toLowerCase()}`);
-      if (!(owned(me(req))[`${slot}:${it.id}`] > 0)) throw bad('Bạn chưa có món này, hãy mua ở cửa hàng');
+      if (!it) throw bad(ptr(L, 'err.noItem', 'Vật phẩm không tồn tại'));
+      if (it.sp !== KIND[p.kind].sp) throw bad(ptr(L, 'err.notFor', '{i} không dành cho {s}', { i: itemName(L, slot, it), s: spFor(L, KIND[p.kind].sp) }));
+      if (!(owned(me(req))[`${slot}:${it.id}`] > 0)) throw bad(ptr(L, 'err.notOwned', 'Bạn chưa có món này, hãy mua ở cửa hàng'));
       id = it.id;
     }
     db.prepare(`UPDATE pets SET ${slot} = ? WHERE id = ?`).run(id, p.id);
-    res.json(state(me(req)));
+    res.json(state(me(req), L));
   }));
 
   // ---- cửa hàng -------------------------------------------------------------------------------------------------------
-  const shopView = (uid) => {
+  const shopView = (uid, L = 'vi') => {
     const inv = owned(uid), hab = habTiers(uid), mine = new Set(myPets(uid).map((p) => KIND[p.kind].sp));
-    const withState = (cat, it) => ({ ...it, qty: inv[`${cat}:${it.id}`] || 0, owned: (inv[`${cat}:${it.id}`] || 0) > 0, react: ['food', 'toy'].includes(cat) ? KINDS.filter((k) => k.sp === it.sp).map((k) => ({ name: k.name, level: TASTE[k.id][cat][it.id] })) : null });
+    const withState = (cat, it) => ({ ...it, name: itemName(L, cat, it), qty: inv[`${cat}:${it.id}`] || 0, owned: (inv[`${cat}:${it.id}`] || 0) > 0, react: ['food', 'toy'].includes(cat) ? KINDS.filter((k) => k.sp === it.sp).map((k) => ({ name: k.name, level: TASTE[k.id][cat][it.id] })) : null });
     const species = Object.entries(SPECIES).map(([sp, v]) => {
       const t = v.home, trade = SHOP[t].find((x) => x.tier === hab[t])?.price || 0;
       return {
-        id: sp, name: v.name, mine: mine.has(sp), pets: KINDS.filter((k) => k.sp === sp).map((k) => k.name),
+        id: sp, name: spName(L, sp), mine: mine.has(sp), pets: KINDS.filter((k) => k.sp === sp).map((k) => k.name),
         food: SHOP.food.filter((x) => x.sp === sp).map((x) => withState('food', x)),
         toy: SHOP.toy.filter((x) => x.sp === sp).map((x) => withState('toy', x)),
         outfit: SHOP.outfit.filter((x) => x.sp === sp).map((x) => withState('outfit', x)),
         collar: SHOP.collar.filter((x) => x.sp === sp).map((x) => withState('collar', x)),
-        home: { type: t, name: v.homeName, items: SHOP[t].map((it) => ({ ...it, size: it.tier, current: hab[t] === it.tier, worse: it.tier <= hab[t], cost: Math.max(0, it.price - trade), fits: areaUsed(uid) - hab[t] + it.tier <= roomOf(uid) })) },
+        home: { type: t, name: habName(L, t), items: SHOP[t].map((it) => ({ ...it, name: itemName(L, t, it), size: it.tier, current: hab[t] === it.tier, worse: it.tier <= hab[t], cost: Math.max(0, it.price - trade), fits: areaUsed(uid) - hab[t] + it.tier <= roomOf(uid) })) },
       };
     });
-    return { balance: balanceOf(getUser(uid)), levels: LEVELS, area: { total: roomOf(uid), used: areaUsed(uid) }, species, habMult: HAB_MULT, sleepBonus: HAB_SLEEP, habitat: hab };
+    return { balance: balanceOf(getUser(uid)), levels: levelsL(L), area: { total: roomOf(uid), used: areaUsed(uid) }, species, habMult: HAB_MULT, sleepBonus: HAB_SLEEP, habitat: hab };
   };
-  api.get('/pets/shop', wrap((req, res) => res.json(shopView(me(req)))));
+  api.get('/pets/shop', wrap((req, res) => res.json(shopView(me(req), langOf(req)))));
   api.post('/pets/shop/buy', wrap((req, res) => {
     rateLimit(`pbuy:${me(req)}`, 30, 60_000);
-    const uid = me(req), key = String(req.body?.item || ''), it = ITEM[key];
-    if (!it) throw bad('Vật phẩm không tồn tại');
+    const uid = me(req), L = langOf(req), key = String(req.body?.item || ''), it = ITEM[key];
+    if (!it) throw bad(ptr(L, 'err.noItem', 'Vật phẩm không tồn tại'));
     const qty = it.cat === 'food' ? Math.max(1, Math.min(20, Math.floor(Number(req.body?.qty) || 1))) : 1;
     tx(() => {
       const u = getUser(uid), inv = owned(uid), hab = habTiers(uid);
       let cost = it.price * qty;
-      if (['toy', 'outfit', 'collar'].includes(it.cat) && inv[key] > 0) throw bad('Bạn đã có món này rồi');
+      if (['toy', 'outfit', 'collar'].includes(it.cat) && inv[key] > 0) throw bad(ptr(L, 'err.owned', 'Bạn đã có món này rồi'));
       if (it.tier) {
-        if (it.tier <= hab[it.cat]) throw bad('Bạn đã có chỗ ở bậc này hoặc cao hơn');
+        if (it.tier <= hab[it.cat]) throw bad(ptr(L, 'err.habOwned', 'Bạn đã có chỗ ở bậc này hoặc cao hơn'));
         const room = tiers().find((x) => x.tier === homeOf(uid).tier).area;
-        if (areaUsed(uid) - hab[it.cat] + it.tier > room) throw bad(`Khu nhà chưa đủ diện tích để đặt ${it.name} (cần ${it.tier} ô, còn ${Math.max(0, room - (areaUsed(uid) - hab[it.cat]))} ô). Hãy nâng cấp khu nhà để có thêm diện tích`);
+        if (areaUsed(uid) - hab[it.cat] + it.tier > room) throw bad(ptr(L, 'err.noRoom', 'Khu nhà chưa đủ diện tích để đặt {i} (cần {n} ô, còn {f} ô). Hãy nâng cấp khu nhà để có thêm diện tích', { i: itemName(L, it.cat, it), n: it.tier, f: Math.max(0, room - (areaUsed(uid) - hab[it.cat])) }));
         cost = it.price - (SHOP[it.cat].find((x) => x.tier === hab[it.cat])?.price || 0); // đổi lên bậc cao: trừ giá món cũ
         // chốt chỉ số theo hệ số cũ trước khi chỗ ở mới có tác dụng
         const list = myPets(uid), fx = factorFn(uid, list.length), t = now();
         for (const p of list) if (HOME_OF[p.kind] === it.cat) settle(p, t, fx(p));
       }
-      if (balanceOf(u) < cost) throw bad('Bạn chưa đủ xu tím để mua vật phẩm này');
+      if (balanceOf(u) < cost) throw bad(ptr(L, 'err.coinsBuy', 'Bạn chưa đủ xu tím để mua vật phẩm này'));
       db.prepare('UPDATE users SET coins_spent = coins_spent + ? WHERE id = ?').run(cost, uid);
       db.prepare('INSERT INTO pet_inventory (user_id, item, qty) VALUES (?,?,?) ON CONFLICT(user_id, item) DO UPDATE SET qty = qty + excluded.qty').run(uid, key, qty);
       if (it.tier) for (const old of SHOP[it.cat]) if (old.tier < it.tier) db.prepare('DELETE FROM pet_inventory WHERE user_id = ? AND item = ?').run(uid, `${it.cat}:${old.id}`); // đổi lên bậc cao: món cũ được thu lại (đã trừ giá)
     });
-    res.json(shopView(uid));
+    res.json(shopView(uid, L));
   }));
 
   // thăm nhà bạn bè
@@ -570,31 +594,31 @@ export function mountPets(api, wrap, adminOnly, checkUploadUrl) {
     }).filter(Boolean);
     res.json({ friends: out });
   }));
-  const visitView = (viewer, ownerId) => {
+  const visitView = (viewer, ownerId, L = 'vi') => {
     const o = getUser(ownerId);
-    if (!o || o.status !== 'active' || !canUsePets(ownerId)) throw notFound('Không tìm thấy khu nhà');
-    if (ownerId !== viewer && (!areFriends(viewer, ownerId) || isBlockedEither(viewer, ownerId))) throw forbidden('Chỉ thăm được nhà của bạn bè');
+    if (!o || o.status !== 'active' || !canUsePets(ownerId)) throw notFound(ptr(L, 'err.noHome', 'Không tìm thấy khu nhà'));
+    if (ownerId !== viewer && (!areFriends(viewer, ownerId) || isBlockedEither(viewer, ownerId))) throw forbidden(ptr(L, 'err.friendsOnly', 'Chỉ thăm được nhà của bạn bè'));
     const h = homeOf(ownerId), list = myPets(ownerId), t = now(), fx = factorFn(ownerId, list.length), cur = tiers().find((x) => x.tier === h.tier);
-    return { owner: { id: o.id, displayName: o.display_name }, home: { tier: cur.tier, name: cur.name, capacity: cur.capacity },
-      pets: list.map((p) => { const v = petView(p, t, fx(p)); return { id: v.id, sprite: v.sprite, anim: v.anim, homeType: v.homeType, inHome: v.inHome, outfit: v.outfit, collar: v.collar, kind: v.kind, emoji: v.emoji, initials: v.initials, color: v.color, imageUrl: v.imageUrl, name: v.name, stageName: v.stageName, stage: v.stage, mood: v.mood }; }),
+    return { owner: { id: o.id, displayName: o.display_name }, home: { tier: cur.tier, name: tierName(L, cur), capacity: cur.capacity },
+      pets: list.map((p) => { const v = petView(p, t, fx(p), imgMap(), L); return { id: v.id, sprite: v.sprite, anim: v.anim, homeType: v.homeType, inHome: v.inHome, outfit: v.outfit, collar: v.collar, kind: v.kind, emoji: v.emoji, initials: v.initials, color: v.color, imageUrl: v.imageUrl, name: v.name, stageName: v.stageName, stage: v.stage, mood: v.mood }; }),
       habitat: Object.fromEntries(Object.entries(habTiers(ownerId)).map(([k, n]) => [k, { tier: n }])),
       patted: !!db.prepare('SELECT 1 FROM pet_visits WHERE visitor_id = ? AND owner_id = ? AND day = ?').get(viewer, ownerId, dayKey()) };
   };
-  api.get('/pets/visit/:userId', wrap((req, res) => res.json(visitView(me(req), Number(req.params.userId)))));
+  api.get('/pets/visit/:userId', wrap((req, res) => res.json(visitView(me(req), Number(req.params.userId), langOf(req)))));
   api.post('/pets/visit/:userId/pat', wrap((req, res) => {
     rateLimit(`ppat:${me(req)}`, 30, 3600_000);
-    const owner = Number(req.params.userId); visitView(me(req), owner);
-    if (owner === me(req)) throw bad('Hãy chăm thú của bạn ở khu nhà của bạn nhé');
+    const L = langOf(req), owner = Number(req.params.userId); visitView(me(req), owner, L);
+    if (owner === me(req)) throw bad(ptr(L, 'err.ownHome', 'Hãy chăm thú của bạn ở khu nhà của bạn nhé'));
     const p = db.prepare('SELECT * FROM pets WHERE id = ? AND user_id = ?').get(Number(req.body?.petId), owner);
-    if (!p) throw notFound('Không tìm thấy bạn thú này');
+    if (!p) throw notFound(ptr(L, 'err.notFound', 'Không tìm thấy bạn thú này'));
     const done = tx(() => {
       if (db.prepare('SELECT 1 FROM pet_visits WHERE visitor_id = ? AND owner_id = ? AND day = ?').get(me(req), owner, dayKey())) return false;
       db.prepare('INSERT INTO pet_visits (visitor_id, owner_id, day) VALUES (?,?,?)').run(me(req), owner, dayKey());
       gain(settle(p, now(), factorFn(owner, myPets(owner).length)(p)).row, 3, now());
       return true;
     });
-    if (!done) throw bad('Hôm nay bạn đã vuốt ve thú ở nhà này rồi, mai quay lại nhé');
-    notify(owner, 'pet_visit', `${req.user.display_name} đã ghé thăm và vuốt ve ${p.name}`, { url: '/#/pets', tag: `petvisit-${me(req)}` });
+    if (!done) throw bad(ptr(L, 'err.patted', 'Hôm nay bạn đã vuốt ve thú ở nhà này rồi, mai quay lại nhé'));
+    notify(owner, 'pet_visit', ptr(getUser(owner)?.language || 'vi', 'notify.visit', '{u} đã ghé thăm và vuốt ve {n}', { u: req.user.display_name, n: p.name }), { url: '/#/pets', tag: `petvisit-${me(req)}` });
     res.json({ ok: true, petName: p.name });
   }));
 

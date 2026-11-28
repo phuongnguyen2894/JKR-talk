@@ -2530,3 +2530,41 @@ test('lỗi và thông báo theo ngôn ngữ: lỗi theo header x-lang, thông b
   const na = (await call('GET', '/notifications', null, a.token)).data.notifications[0];
   assert.equal(na.text, 'langB đã chấp nhận lời mời kết bạn');
 });
+
+test('Nuôi thú theo ngôn ngữ: tên đồ, loài, giai đoạn, tâm trạng, phản ứng và lỗi dịch theo header x-lang', async () => {
+  const adm = (await call('POST', '/auth/login', { email: 'admin@jkr.local', password: 'admin12345' })).data;
+  const u = await signup('petLang', 1);
+  await call('PUT', '/admin/pets/settings', { mode: 'all' }, adm.token);
+  const get = async (url, lang, method = 'GET', body) => (await fetch(BASE + url, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${u.token}`, 'x-lang': lang }, body: body ? JSON.stringify(body) : undefined })).json();
+  try {
+    const bad = await get('/pets/adopt', 'en', 'POST', { kind: 'abu', name: 'Abu' });
+    assert.equal(bad.error, 'You can\'t use a default name (Abu, Charsiu, Juad, Tofu, Udon, Uni)');
+    assert.equal((await call('POST', '/pets/adopt', { kind: 'abu', name: 'Lá Chuối' }, u.token)).status, 201);
+    const en = await get('/pets', 'en'), vi = await get('/pets', 'vi'), th = await get('/pets', 'th');
+    assert.equal(en.pets[0].species, 'Parrot'); assert.equal(vi.pets[0].species, 'Vẹt'); assert.equal(th.pets[0].species, 'นกแก้ว');
+    assert.equal(en.pets[0].stageName, 'Baby'); assert.equal(vi.pets[0].stageName, 'Bé');
+    assert.equal(en.home.name, 'Small room'); assert.equal(vi.home.name, 'Phòng nhỏ');
+    assert.ok(en.pets[0].mood.label && !/[ạảấầđ]/.test(en.pets[0].mood.label));
+    assert.equal(en.foodsBySp.parrot[0].name, 'Seeds');
+    assert.equal(en.kinds.find((k) => k.id === 'abu').trait, 'Chatterbox: gets bored easily without playtime');
+    const shop = await get('/pets/shop', 'zh');
+    assert.equal(shop.species.find((s) => s.id === 'parrot').home.items[0].name, '竹笼');
+    // phản ứng khi cho ăn theo ngôn ngữ
+    const r = await get(`/pets/${en.pets[0].id}/feed`, 'en', 'POST', { food: 'hat' });
+    assert.equal(r.reaction.text, 'Lá Chuối spreads his wings, hops on the perch and squawks "so yummy!"');
+    assert.equal(r.reaction.label, 'Loves it');
+    const again = await get(`/pets/${en.pets[0].id}/feed`, 'es', 'POST', { food: 'hat' });
+    assert.match(again.error, /^Espera \d+ segundos más$/);
+    // mọi khoá đều đủ 5 bản dịch (en, th, zh, es, pt), mọi bản giữ đủ chỗ điền tên
+    const { PETS } = await import('../public/i18n-pets.js');
+    for (const [k, v] of Object.entries(PETS)) assert.equal(v.length, 6, k);
+  } finally { await call('PUT', '/admin/pets/settings', { mode: 'admin' }, adm.token); }
+});
+
+test('Muay Thai: tên thay thế theo ngôn ngữ (tài khoản đã xóa, nhân vật chưa đặt tên)', async () => {
+  const { noName } = await import('../server/i18n.js');
+  assert.equal(noName('user', 'vi'), 'Người dùng');
+  assert.equal(noName('user', 'en'), 'User');
+  assert.equal(noName('fighter', 'th'), 'นักมวย');
+  assert.equal(noName('fighter', 'xx'), 'Võ sĩ');
+});

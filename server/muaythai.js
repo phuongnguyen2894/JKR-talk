@@ -7,6 +7,7 @@ import path from 'node:path';
 import { db, tx, now } from './db.js';
 import { HttpError, bad, notFound, getUser, rateLimit, isBlockedEither, locationOf, log } from './lib.js';
 import { balanceOf } from './levels.js';
+import { langOf, noName } from './i18n.js';
 
 export const MT = {
   MIN_STAKE: 10, MAX_STAKE: 500, PAYOUT_MULTIPLIER: 1.9, WINNER_ATTACK_RATE: 65,
@@ -108,21 +109,21 @@ export const defaultHead = () => db.prepare("SELECT value FROM mt_settings WHERE
 const charRow = (id) => db.prepare('SELECT * FROM mt_characters WHERE id = ?').get(id);
 const activeChars = () => db.prepare('SELECT * FROM mt_characters WHERE active = 1 ORDER BY sort_order').all();
 
-export function fighterView(side, type, id) {
+export function fighterView(side, type, id, L = 'vi') {
   const base = { side, corner: side === 'A' ? 'red' : 'blue', type, id: String(id), odds: MT.PAYOUT_MULTIPLIER };
   if (type === 'character') {
     const c = charRow(id);
-    return { ...base, name: c?.name || 'Võ sĩ', initials: c?.initials || '?', color: c?.color || '#6D28D9', headUrl: c?.head_image_url || null, isDefaultHead: false };
+    return { ...base, name: c?.name || noName('fighter', L), initials: c?.initials || '?', color: c?.color || '#6D28D9', headUrl: c?.head_image_url || null, isDefaultHead: false };
   }
   const u = getUser(Number(id));
   const alive = u && u.status === 'active';
   const own = alive ? u.avatar_url : null;
   return {
-    ...base, name: u && u.status !== 'deleted' ? u.display_name : 'Người dùng', initials: initialsOf(u?.display_name),
+    ...base, name: u && u.status !== 'deleted' ? u.display_name : noName('user', L), initials: initialsOf(u?.display_name),
     color: avatarHex(u?.avatar_color), headUrl: own || defaultHead(), isDefaultHead: !own,
   };
 }
-const fightersOf = (m) => [fighterView('A', m.a_type, m.a_id), fighterView('B', m.b_type, m.b_id)];
+const fightersOf = (m, L) => [fighterView('A', m.a_type, m.a_id, L), fighterView('B', m.b_type, m.b_id, L)];
 
 function checkFighter(f, playerId) {
   if (!f || !['character', 'user'].includes(f.type) || (typeof f.id !== 'string' && typeof f.id !== 'number')) throw err(400, 'INVALID_FIGHTERS', 'Võ sĩ không hợp lệ');
@@ -138,9 +139,9 @@ function checkFighter(f, playerId) {
 }
 
 const matchRow = (id) => db.prepare('SELECT * FROM mt_matches WHERE id = ?').get(id);
-function matchDto(m) {
+function matchDto(m, L) {
   return {
-    matchId: m.id, expiresAt: m.expires_at, fighters: fightersOf(m), stake: { min: MT.MIN_STAKE, max: MT.MAX_STAKE },
+    matchId: m.id, expiresAt: m.expires_at, fighters: fightersOf(m, L), stake: { min: MT.MIN_STAKE, max: MT.MAX_STAKE },
     payoutMultiplier: MT.PAYOUT_MULTIPLIER, mode: m.mode, status: m.status,
   };
 }
@@ -201,12 +202,12 @@ export function placeBet(uid, matchId, pick, stake, rng = crypto.randomInt) {
   });
 }
 
-function settledDto(m, uid) {
+function settledDto(m, uid, L) {
   const bet = db.prepare('SELECT * FROM mt_bets WHERE match_id = ?').get(m.id);
   const last = db.prepare('SELECT balance_after b FROM mt_ledger WHERE match_id = ? ORDER BY id DESC LIMIT 1').get(m.id);
   const stakeRow = db.prepare("SELECT balance_after b FROM mt_ledger WHERE match_id = ? AND reason = 'bet_stake'").get(m.id);
   return {
-    ...matchDto(m),
+    ...matchDto(m, L),
     result: { winner: m.winner, method: m.method, won: !!bet?.won, pick: bet?.pick, stake: bet?.stake || 0, payout: bet?.payout || 0 },
     script: JSON.parse(m.script || 'null'),
     balanceAfterStake: stakeRow?.b ?? balanceOf(getUser(uid)), balanceFinal: last?.b ?? balanceOf(getUser(uid)),
@@ -233,7 +234,7 @@ export function mountMuayThai(api, wrap, adminOnly, checkUploadUrl, uploadDir) {
   api.post('/mt/matches', wrap((req, res) => {
     rateLimit(`mtnew:${me(req)}`, 30, 60_000);
     const m = createMatch(me(req), req.body || {});
-    res.status(201).json({ ...matchDto(m), balance: walletOf(me(req)) });
+    res.status(201).json({ ...matchDto(m, langOf(req)), balance: walletOf(me(req)) });
   }));
   api.post('/mt/matches/:id/bet', wrap((req, res) => {
     checkBetInput(req.body?.pick, req.body?.stake); // đầu vào sai không tính vào giới hạn tốc độ
@@ -242,9 +243,9 @@ export function mountMuayThai(api, wrap, adminOnly, checkUploadUrl, uploadDir) {
   }));
   api.get('/mt/matches/:id', wrap((req, res) => {
     const m = ownMatch(me(req), String(req.params.id));
-    if (m.status === 'settled') return res.json(settledDto(m, me(req)));
+    if (m.status === 'settled') return res.json(settledDto(m, me(req), langOf(req)));
     if (m.status === 'expired' || m.expires_at < now()) throw err(410, 'MATCH_EXPIRED', 'Trận đã hết hạn, hãy tạo trận mới');
-    res.json({ ...matchDto(m), balance: walletOf(me(req)) });
+    res.json({ ...matchDto(m, langOf(req)), balance: walletOf(me(req)) });
   }));
   // Tìm người dùng làm võ sĩ: chỉ trả trường công khai (tên, tỉnh/thành, ảnh); bạn bè trước, rồi người cùng nhóm, rồi còn lại
   api.get('/mt/users', wrap((req, res) => {
